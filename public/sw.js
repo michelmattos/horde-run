@@ -1,8 +1,10 @@
 // Offline service worker. Paths are relative to the SW scope so it works under
 // /horde-run/ on GitHub Pages and / in preview. Bump VERSION to drop old caches.
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = `horde-run-${VERSION}`;
-const SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
+// The army-men figures are fetched by path (not hashed), so they are precached here and
+// refreshed by bumping VERSION whenever public/models/army-men.glb changes.
+const SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg', './models/army-men.glb'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

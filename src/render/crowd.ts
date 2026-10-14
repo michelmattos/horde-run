@@ -1,10 +1,12 @@
-// Thin-instance crowd renderer: one low-poly mesh per UnitKind, team colour via a
-// per-instance 'color' buffer, matrices rewritten every frame from the SimView.
-// Units are little plastic toy soldiers (one colour each, like real army men): a base
-// plate, legs, torso, head, helmet and a rifle held upright, so the same mesh reads
-// the same for both armies without turning it. The whole crowd is three draw calls
-// (mobs, champions, champion trim); buffers grow geometrically and nothing is
-// allocated per frame in steady state.
+// Thin-instance crowd renderer: classic green-vs-tan plastic toy army men. Each unit is
+// a real low-poly soldier figure on a thin base plate (public/models/army-men.glb, see
+// armyMen.ts): mobs are riflemen striding forward, the champion is a big kneeling
+// bazooka man. One mesh per UnitKind, team colour via a per-instance 'color' buffer, a
+// glossy single-colour plastic material, and matrices rewritten every frame from the
+// SimView with a little "hop" (bounce, forward lean and waddle, phase-offset per unit)
+// like a kid hopping the toys along. The whole crowd is two draw calls; buffers grow
+// geometrically and nothing is allocated per frame in steady state. Until the model
+// has loaded (or if it fails) simple procedural stand-in soldiers are drawn instead.
 import '@babylonjs/core/Meshes/thinInstanceMesh';
 import type { Scene } from '@babylonjs/core/scene';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
@@ -14,15 +16,40 @@ import { CreateBoxVertexData } from '@babylonjs/core/Meshes/Builders/boxBuilder'
 import { Matrix } from '@babylonjs/core/Maths/math.vector';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
+import { FresnelParameters } from '@babylonjs/core/Materials/fresnelParameters';
+import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight';
+import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import type { SimView } from '../contracts.ts';
 import { LAYOUT, Team, UnitKind } from '../contracts.ts';
 import { PALETTE } from './palette.ts';
+import { loadArmyMen } from './armyMen.ts';
+import type { ArmyMenGeometry } from './armyMen.ts';
 
+// Stand-in figure sizes (procedural fallback).
 const MOB_HEIGHT = 0.9;
 const CHAMPION_HEIGHT = 2.0;
-const BOB_HEIGHT = 0.1; // stand-in for baked vertex animation
-const BOB_SPEED = 12;
+// Model figure heights (base plate to helmet top) at the default unit radius. The
+// rifleman is a touch taller than the old stand-in so the pose reads on a phone; the
+// sim radius (LAYOUT) is unchanged, so crowd density stays the same.
+const MODEL_MOB_HEIGHT = 1.3;
+const MODEL_CHAMPION_HEIGHT = 2.6; // kneeling, so he is wider than he is tall
+// Hop: |sin| bounce with a forward lean on each hop and a side-to-side waddle.
+const HOP_HEIGHT = 0.11;
+const HOP_SPEED = 10;
+const HOP_LEAN = 0.16; // radians at the top of a hop
+const WADDLE = 0.1; // radians of roll either side
+const CHAMPION_BRIGHT = 1.12; // the champion is moulded a shade lighter so he pops
 const INITIAL_CAPACITY = 1024;
+// The figures stand three-quarter on to the lane camera rather than square: a profile
+// shows the helmet, the rifle and the striding legs, the army-man silhouette, where a
+// straight back view is just a green blob. Player toys face up the lane, the tan army
+// faces down it (toward the camera).
+const PLAYER_YAW = Math.PI - 0.7;
+const ENEMY_YAW = 0.55;
+// Moulded plastic colours: classic army green against the rival tan army (a shade
+// deeper than PALETTE.enemy so the glossy highlight doesn't wash the tan out).
+const PLAYER_PLASTIC = Color3.FromHexString('#3fa34d');
+const ENEMY_PLASTIC = Color3.FromHexString('#d4b47c');
 
 class InstanceBatch {
   readonly mesh: Mesh;
@@ -45,19 +72,32 @@ class InstanceBatch {
     this.capacity = cap;
     this.matrices = new Float32Array(cap * 16);
     this.colors = new Float32Array(cap * 4);
-    // Scale + translation matrices only; the constant entries are written once here.
     for (let i = 0; i < cap; i++) this.matrices[i * 16 + 15] = 1;
     this.mesh.thinInstanceSetBuffer('matrix', this.matrices, 16, false);
     this.mesh.thinInstanceSetBuffer('color', this.colors, 4, false);
     this.mesh.thinInstanceCount = 0;
   }
 
-  write(x: number, y: number, z: number, s: number, r: number, g: number, b: number): void {
+  // Uniform scale s, then pitch (about X), roll (about Z) and yaw (about Y), then translate.
+  write(x: number, y: number, z: number, s: number, pitch: number, roll: number, yaw: number, r: number, g: number, b: number): void {
     const m = this.matrices;
     const o = this.count * 16;
-    m[o] = s;
-    m[o + 5] = s;
-    m[o + 10] = s;
+    const cp = Math.cos(pitch);
+    const sp = Math.sin(pitch);
+    const cr = Math.cos(roll);
+    const sr = Math.sin(roll);
+    const cy = Math.cos(yaw);
+    const sy = Math.sin(yaw);
+    // Row-vector rotation Rx(pitch) * Rz(roll) * Ry(yaw), scaled.
+    m[o] = cr * cy * s;
+    m[o + 1] = sr * s;
+    m[o + 2] = -cr * sy * s;
+    m[o + 4] = (-cp * sr * cy + sp * sy) * s;
+    m[o + 5] = cp * cr * s;
+    m[o + 6] = (cp * sr * sy + sp * cy) * s;
+    m[o + 8] = (sp * sr * cy + cp * sy) * s;
+    m[o + 9] = -sp * cr * s;
+    m[o + 10] = (-sp * sr * sy + cp * cy) * s;
     m[o + 12] = x;
     m[o + 13] = y;
     m[o + 14] = z;
@@ -103,22 +143,46 @@ function merge(scene: Scene, name: string, parts: VertexData[]): Mesh {
 }
 
 export class CrowdRenderer {
-  private readonly mob: InstanceBatch;
-  private readonly champion: InstanceBatch;
-  private readonly championTrim: InstanceBatch;
+  private mob: InstanceBatch;
+  private champion: InstanceBatch;
+  private championTrim: InstanceBatch | null;
   private readonly material: StandardMaterial;
+  private readonly keyLight: DirectionalLight;
+  private modelReady = false;
+  private disposed = false;
 
   constructor(scene: Scene) {
-    // White diffuse so the instance colour shows through unchanged.
-    this.material = new StandardMaterial('crowdMat', scene);
-    this.material.diffuseColor = new Color3(1, 1, 1);
-    this.material.emissiveColor = new Color3(0.22, 0.22, 0.22);
-    this.material.specularColor = Color3.Black();
-    this.material.freeze();
-
+    // Key light for the toys only: low from the camera's left, so the glossy highlight
+    // lands on helmets, shoulders and rifles rather than flaring on the flat base plates.
+    this.keyLight = new DirectionalLight('toyKey', new Vector3(0.8, -0.45, 0.4), scene);
+    this.keyLight.intensity = 0.55;
+    this.keyLight.diffuse = new Color3(1, 0.98, 0.94);
+    this.keyLight.specular = new Color3(1, 1, 1);
+    this.material = plasticMaterial(scene); // after the key light: the material is frozen
     this.mob = new InstanceBatch(this.buildMob(scene));
     this.champion = new InstanceBatch(this.buildChampion(scene));
     this.championTrim = new InstanceBatch(this.buildChampionTrim(scene));
+    this.keyLight.includedOnlyMeshes = [this.mob.mesh, this.champion.mesh, this.championTrim.mesh];
+    void loadArmyMen().then((geo) => {
+      if (geo && !this.disposed) this.useModel(scene, geo);
+    });
+  }
+
+  // Swap the stand-ins for the real army-men figures. New meshes get fresh batches (the
+  // next update() refills them), and the stand-in meshes are disposed.
+  private useModel(scene: Scene, geo: ArmyMenGeometry): void {
+    const mob = new Mesh('armyManRifleman', scene);
+    geo.rifleman.applyToMesh(mob);
+    const champ = new Mesh('armyManBazooka', scene);
+    geo.bazooka.applyToMesh(champ);
+    this.mob.mesh.dispose();
+    this.champion.mesh.dispose();
+    this.championTrim?.mesh.dispose();
+    this.championTrim = null;
+    this.mob = new InstanceBatch(this.finish(mob));
+    this.champion = new InstanceBatch(this.finish(champ));
+    this.keyLight.includedOnlyMeshes = [mob, champ];
+    this.modelReady = true;
   }
 
   private finish(mesh: Mesh): Mesh {
@@ -130,7 +194,7 @@ export class CrowdRenderer {
     return mesh;
   }
 
-  // Mob: a toy soldier on its base plate, feet at y = 0, radius LAYOUT.mobRadius.
+  // Stand-in mob (until the model loads): a toy soldier on its base plate on its base plate, feet at y = 0, radius LAYOUT.mobRadius.
   private buildMob(scene: Scene): Mesh {
     const h = MOB_HEIGHT;
     const r = LAYOUT.mobRadius;
@@ -145,7 +209,7 @@ export class CrowdRenderer {
     return this.finish(merge(scene, 'mob', parts));
   }
 
-  // Champion (the Sergeant): a big toy soldier, radius LAYOUT.championRadius. Its gold
+  // Stand-in champion (the Sergeant): a big toy soldier, radius LAYOUT.championRadius. Its gold
   // helmet, shoulder boards and belt live in a second batch (buildChampionTrim) drawn
   // with the same matrices, so team colour and gold stay separate at one extra draw call.
   private buildChampion(scene: Scene): Mesh {
@@ -176,41 +240,88 @@ export class CrowdRenderer {
 
   update(view: SimView, time: number): void {
     const n = view.count;
+    const trim = this.championTrim;
     this.mob.ensureCapacity(n);
     this.champion.ensureCapacity(n);
-    this.championTrim.ensureCapacity(n);
+    trim?.ensureCapacity(n);
     this.mob.count = 0;
     this.champion.count = 0;
-    this.championTrim.count = 0;
+    if (trim) trim.count = 0;
+    const model = this.modelReady;
+    const mobH = model ? MODEL_MOB_HEIGHT : 1;
+    const champH = model ? MODEL_CHAMPION_HEIGHT : 1;
     const gr = PALETTE.gold.r;
     const gg = PALETTE.gold.g;
     const gb = PALETTE.gold.b;
     const { posX, posZ, team, kind, radius } = view;
-    const pr = PALETTE.player.r;
-    const pg = PALETTE.player.g;
-    const pb = PALETTE.player.b;
-    const er = PALETTE.enemy.r;
-    const eg = PALETTE.enemy.g;
-    const eb = PALETTE.enemy.b;
+    const pc = model ? PLAYER_PLASTIC : PALETTE.player;
+    const ec = model ? ENEMY_PLASTIC : PALETTE.enemy;
+    const pr = pc.r;
+    const pg = pc.g;
+    const pb = pc.b;
+    const er = ec.r;
+    const eg = ec.g;
+    const eb = ec.b;
+    const cb = CHAMPION_BRIGHT;
     for (let i = 0; i < n; i++) {
       const isChampion = kind[i] === UnitKind.Champion;
       const base = isChampion ? LAYOUT.championRadius : LAYOUT.mobRadius;
       const s = radius[i] > 0 ? radius[i] / base : 1;
-      const bob = Math.abs(Math.sin(time * BOB_SPEED + i)) * BOB_HEIGHT * s;
-      const batch = isChampion ? this.champion : this.mob;
-      if (team[i] === Team.Player) batch.write(posX[i], bob, posZ[i], s, pr, pg, pb);
-      else batch.write(posX[i], bob, posZ[i], s, er, eg, eb);
-      if (isChampion) this.championTrim.write(posX[i], bob, posZ[i], s, gr, gg, gb);
+      // Phase from time and position: stable per unit (the sim reorders its arrays) and
+      // varied across the crowd, so the army hops along out of step.
+      const x = posX[i];
+      const z = posZ[i];
+      const phase = time * HOP_SPEED + z * 1.9 + x * 3.7;
+      const sn = Math.sin(phase);
+      const hop = Math.abs(sn);
+      const player = team[i] === Team.Player;
+      // Figures face -Z: the player's army turns round to march up the lane (+Z).
+      const yaw = player ? PLAYER_YAW : ENEMY_YAW;
+      const lean = model ? -hop * HOP_LEAN * (isChampion ? 0.4 : 1) : 0;
+      const roll = model ? sn * WADDLE * (isChampion ? 0.5 : 1) : 0;
+      const y = hop * HOP_HEIGHT * s * (isChampion ? 0.6 : 1);
+      if (isChampion) {
+        const k = s * champH;
+        if (player) this.champion.write(x, y, z, k, lean, roll, yaw, pr * cb, pg * cb, pb * cb);
+        else this.champion.write(x, y, z, k, lean, roll, yaw, er * cb, eg * cb, eb * cb);
+        trim?.write(x, y, z, k, 0, 0, 0, gr, gg, gb);
+      } else {
+        const k = s * mobH;
+        if (player) this.mob.write(x, y, z, k, lean, roll, yaw, pr, pg, pb);
+        else this.mob.write(x, y, z, k, lean, roll, yaw, er, eg, eb);
+      }
     }
     this.mob.commit();
     this.champion.commit();
-    this.championTrim.commit();
+    trim?.commit();
   }
 
   dispose(): void {
+    this.disposed = true;
     this.mob.mesh.dispose();
     this.champion.mesh.dispose();
-    this.championTrim.mesh.dispose();
+    this.championTrim?.mesh.dispose();
     this.material.dispose();
+    this.keyLight.dispose();
   }
+}
+
+// Glossy injection-moulded plastic: the instance colour drives diffuse and a little
+// emissive (so shadowed sides stay the team colour, not black), a white specular
+// highlight from the toy key light sits on top uncoloured (the sky light has none), and an emissive fresnel rim brightens the silhouette
+// edges like light catching the curve of a plastic figure.
+function plasticMaterial(scene: Scene): StandardMaterial {
+  const m = new StandardMaterial('armyMenPlastic', scene);
+  m.diffuseColor = new Color3(0.92, 0.92, 0.92);
+  m.emissiveColor = new Color3(0.24, 0.24, 0.24);
+  m.specularColor = new Color3(1, 1, 0.96);
+  m.specularPower = 18;
+  const rim = new FresnelParameters();
+  rim.leftColor = new Color3(0.6, 0.6, 0.6); // edge-on
+  rim.rightColor = new Color3(0.16, 0.16, 0.16); // facing the camera
+  rim.power = 2.2;
+  rim.bias = 0;
+  m.emissiveFresnelParameters = rim;
+  m.freeze();
+  return m;
 }
