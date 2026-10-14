@@ -30,11 +30,11 @@ export interface BattleSim {
   setEnemyBaseX?(x: number): void;
 }
 
-// What the player did this battle, for star goals. Counted only while playing.
+// What the player did this battle. Counted only while playing. endTime decides the
+// target-time star; the counters are for the result screen and tuning.
 export interface BattleStats {
   mobsFired: number;
   championsLaunched: number;
-  gatesTouched: Set<string>; // ids of every gate any player mob crossed
   endTime?: number; // state.time when the outcome was decided
 }
 
@@ -68,7 +68,7 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
     outcome: 'playing',
     enemyBaseX: level.enemyBase.x,
   };
-  const stats: BattleStats = { mobsFired: 0, championsLaunched: 0, gatesTouched: new Set() };
+  const stats: BattleStats = { mobsFired: 0, championsLaunched: 0 };
 
   // Boss strafe state: phases sorted by threshold, highest (the opening phase) first.
   const phases = level.boss ? level.boss.phases.slice().sort((a, b) => b.belowHp - a.belowHp) : [];
@@ -194,7 +194,6 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
     if (playing) {
       for (let i = first; i < events.length; i++) {
         const e = events[i];
-        if (e.type === 'gate') stats.gatesTouched.add(e.gateId);
         if (e.type !== 'baseHit') continue;
         if (e.team === Team.Enemy) state.enemyBaseHp = Math.max(0, state.enemyBaseHp - e.damage);
         else state.playerBaseHp = Math.max(0, state.playerBaseHp - e.damage);

@@ -1,4 +1,4 @@
-// Pooled one-shot effects. Gate rings and clash dust are reused meshes; arrows, debris,
+// Pooled one-shot effects. Gate rings and clash dust are reused meshes; foam darts, debris,
 // puffs and the boss phase ring come from fixed particle/tracer pools drawn as two
 // thin-instance batches. Spawning an effect never allocates, and no effect ever
 // touches the camera: all hit feedback lives on the units, gates, bases and defenders.
@@ -20,10 +20,10 @@ const PUFF_LIFE = 0.35;
 const PUFF_MIN_INTERVAL = 0.06; // clash events arrive by the dozen; throttle the puffs
 const PARTICLES = 192;
 const TRACERS = 24;
-const ARROW_TIME = 0.15;
-const ARROW_LEN = 0.9;
-const ARROW_FROM_Y = 2.4; // tower battlement height
-const ARROW_TO_Y = 0.5;
+const DART_TIME = 0.15;
+const DART_LEN = 0.7;
+const DART_FROM_Y = 2.6; // the rifleman on top of a block tower
+const DART_TO_Y = 0.5;
 const GRAVITY = 18;
 
 interface Fx {
@@ -47,7 +47,7 @@ export class Effects {
   private readonly particles = new ParticlePool(PARTICLES);
   private readonly tracers = new TracerPool(TRACERS);
   private readonly chunkBatch: PropBatch;
-  private readonly arrowBatch: PropBatch;
+  private readonly dartBatch: PropBatch;
   private readonly rand = mulberry32(0x9e3779b9);
 
   constructor(scene: Scene) {
@@ -70,10 +70,10 @@ export class Effects {
     }
 
     const lit = instanceLitMaterial(scene, 'fxChunkMat');
-    const unlit = instanceUnlitMaterial(scene, 'fxArrowMat');
+    const unlit = instanceUnlitMaterial(scene, 'fxDartMat');
     this.instMats = [lit, unlit];
     this.chunkBatch = new PropBatch(unitMesh(scene, 'fxChunks', 'box'), lit, PARTICLES);
-    this.arrowBatch = new PropBatch(unitMesh(scene, 'fxArrows', 'box'), unlit, TRACERS);
+    this.dartBatch = new PropBatch(unitMesh(scene, 'fxDarts', 'box'), unlit, TRACERS);
   }
 
   private idle(mesh: Mesh): Fx {
@@ -99,12 +99,12 @@ export class Effects {
     this.start(fx, PUFF_LIFE, 0.6, 1.8);
   }
 
-  // A tower's arrow flies to (tx, tz); a tiny red puff marks where it lands.
-  arrow(x: number, z: number, tx: number, tz: number): void {
-    this.tracers.spawn(x, z, tx, tz, ARROW_TIME);
+  // A tower's foam dart flies to (tx, tz); a tiny tan puff marks where it lands.
+  dart(x: number, z: number, tx: number, tz: number): void {
+    this.tracers.spawn(x, z, tx, tz, DART_TIME);
   }
 
-  // Red chunks thrown out of a destroyed defender; walls throw more, wider.
+  // Tan toy-block chunks thrown out of a destroyed defender; walls throw more, wider.
   debris(x: number, z: number, wall: boolean, width: number): void {
     const n = wall ? 14 : 10;
     const spread = wall ? width * 0.5 : 0.5;
@@ -138,7 +138,7 @@ export class Effects {
     }
   }
 
-  // Boss phase change: a bright ring of gold and red sparks bursting out of the base.
+  // Boss phase change: a bright ring of gold and red sparks bursting out of the tank.
   phaseRing(x: number, z: number, width: number): void {
     const n = 28;
     const r = width * 0.35;
@@ -179,17 +179,17 @@ export class Effects {
     t.step(dt);
     const e = PALETTE.enemy;
     for (let i = 0; i < t.endedCount; i++) this.burst(t.endedX[i], t.endedZ[i], 4, 1.2, 1.5, 0.25, 0.14, e.r * 1.2, e.g, e.b, 0.4);
-    this.arrowBatch.begin();
+    this.dartBatch.begin();
     for (let i = 0; i < t.capacity; i++) {
       if (!t.isLive(i)) continue;
       const k = t.progress(i);
       const dx = t.x1[i] - t.x0[i];
       const dz = t.z1[i] - t.z0[i];
-      const y = ARROW_FROM_Y + (ARROW_TO_Y - ARROW_FROM_Y) * k + 0.8 * k * (1 - k);
+      const y = DART_FROM_Y + (DART_TO_Y - DART_FROM_Y) * k + 0.8 * k * (1 - k);
       const yaw = Math.atan2(dx, dz);
-      this.arrowBatch.write(t.x0[i] + dx * k, y, t.z0[i] + dz * k, 0.11, 0.11, ARROW_LEN, yaw, 1, 0.9, 0.6);
+      this.dartBatch.write(t.x0[i] + dx * k, y, t.z0[i] + dz * k, 0.13, 0.13, DART_LEN, yaw, 1, 0.55, 0.12); // orange foam dart
     }
-    this.arrowBatch.commit();
+    this.dartBatch.commit();
 
     const p = this.particles;
     p.step(dt);
@@ -225,8 +225,8 @@ export class Effects {
     this.tracers.clear();
     this.chunkBatch.begin();
     this.chunkBatch.commit();
-    this.arrowBatch.begin();
-    this.arrowBatch.commit();
+    this.dartBatch.begin();
+    this.dartBatch.commit();
   }
 
   private reset(fx: Fx): void {
@@ -238,7 +238,7 @@ export class Effects {
     for (const fx of this.rings) fx.mesh.dispose();
     for (const fx of this.puffs) fx.mesh.dispose();
     this.chunkBatch.dispose();
-    this.arrowBatch.dispose();
+    this.dartBatch.dispose();
     for (const m of [this.ringGood, this.ringBad, this.puffMat, ...this.instMats]) m.dispose();
   }
 }

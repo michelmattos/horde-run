@@ -1,6 +1,6 @@
 {
   "id": "1-4",
-  "name": "Arrow Tower",
+  "name": "Block Tower",
   "lane": {
     "width": 10,
     "length": 58
@@ -147,14 +147,6 @@
     "hp": 110,
     "damage": 85
   },
-  "goals": [
-    {
-      "type": "noChampion"
-    },
-    {
-      "type": "time",
-      "seconds": 100
-    }
-  ],
-  "intro": "Arrow towers shoot your mobs as they pass. Mobs that reach a tower damage it."
+  "targetTime": 95,
+  "intro": "Toy block towers shoot your soldiers as they pass. Soldiers that reach a tower knock it down."
 }

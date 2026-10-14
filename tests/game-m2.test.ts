@@ -1,5 +1,5 @@
-// Milestone 2 game rules: validation of the new level fields, the Goblin King's
-// strafing base and phases, battle stats, star goals, and the bot's new habits.
+// Milestone 2 game rules: validation of the new level fields, the Tin General's
+// strafing tank and phases, battle stats, the three fixed stars, and the bot's new habits.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { BOSS_AMP_EASE, createBattle } from '../src/game/battle.ts';
@@ -60,7 +60,7 @@ function fakeSim() {
 }
 
 const BOSS: BossDef = {
-  name: 'Goblin King',
+  name: 'Tin General',
   phases: [
     { belowHp: 0.25, strafe: { amplitude: 2, period: 3 }, summon: 7, trickle: 20 },
     { belowHp: 1, strafe: { amplitude: 1, period: 6 } },
@@ -109,11 +109,9 @@ test('validateLevel rejects bad M2 fields with the file and field named', () => 
   bad((l) => (l.defenders = Array.from({ length: 17 }, (_, i) => ({ id: `d${i}`, kind: 'wall', x: 0, z: 20, hp: 5 }))), /defenders.*at most 16/);
   bad((l) => (l.gates[0].uses = 0), /gates\[0\]\.uses/);
   bad((l) => (l.gates[0].uses = 2.5), /gates\[0\]\.uses.*integer/);
-  bad((l) => (l.goals[0] = { type: 'speedrun' }), /goals\[0\]\.type/);
-  bad((l) => (l.goals[0] = { type: 'time', seconds: 0 }), /goals\[0\]\.seconds/);
-  bad((l) => (l.goals[0] = { type: 'baseHp', minFraction: 1.5 }), /goals\[0\]\.minFraction/);
-  bad((l) => (l.goals[0] = { type: 'avoidGate', gateId: 'ghost' }), /goals\[0\]\.gateId.*"ghost"/);
-  bad((l) => (l.goals[0] = { type: 'maxMobs', mobs: 10.5 }), /goals\[0\]\.mobs/);
+  bad((l) => (l.targetTime = 0), /targetTime/);
+  bad((l) => (l.targetTime = '90'), /targetTime/);
+  bad((l) => (l.goals = [{ type: 'noChampion' }]), /goals.*no longer supported/);
   bad((l) => (l.intro = ''), /intro/);
 
   const boss = () => JSON.parse(JSON.stringify(LEVELS[9]));
@@ -127,10 +125,10 @@ test('validateLevel rejects bad M2 fields with the file and field named', () => 
   bad((l) => (l.enemyBase.x = 1), /boss\.phases.*outside the lane/, boss);
 });
 
-test('validateLevel keeps one goal on a non-shipped level', () => {
+test('validateLevel: targetTime is optional on a non-shipped level', () => {
   const l = JSON.parse(JSON.stringify(LEVELS[0]));
-  l.goals = [{ type: 'noChampion' }];
-  assert.deepEqual(validateLevel(l, 'custom.json').goals, [{ type: 'noChampion' }]);
+  delete l.targetTime;
+  assert.equal(validateLevel(l, 'custom.json').targetTime, undefined);
 });
 
 // ---------- Boss ----------
@@ -253,15 +251,11 @@ test('a boss battle runs with the real sim (misses do no damage)', () => {
 
 // ---------- Stats and stars ----------
 
-test('battle stats count mobs fired, champions and every gate touched', () => {
+test('battle stats count mobs fired, champions and the end time', () => {
   const f = fakeSim();
   const b = createBattle(level(), f.sim, rand);
   for (let s = 0; s < SIM_HZ; s++) b.step(input({ firing: true }), []);
   assert.equal(b.stats.mobsFired, 18);
-  f.push({ type: 'gate', gateId: 'a', x: 0, z: 10, added: 3 });
-  f.push({ type: 'gate', gateId: 'trap', x: 0, z: 10, added: 0 });
-  b.step(input(), []);
-  assert.deepEqual([...b.stats.gatesTouched].sort(), ['a', 'trap']);
   for (let s = 0; s < 2 * SIM_HZ; s++) b.step(input({ firing: true }), []);
   b.step(input({ championPressed: true }), []);
   assert.equal(b.stats.championsLaunched, 1);
@@ -289,46 +283,37 @@ function st(over: Partial<BattleState> = {}): BattleState {
   };
 }
 function stats(over: Partial<BattleStats> = {}): BattleStats {
-  return { mobsFired: 500, championsLaunched: 0, gatesTouched: new Set(), ...over };
+  return { mobsFired: 500, championsLaunched: 0, ...over };
 }
 
-test('evaluateStars: win plus each goal, only on a victory', () => {
-  const lv = level({ gates: [{ id: 'trap', op: 'div', value: 2, x: 0, z: 10, width: 3 }], goals: [{ type: 'time', seconds: 60 }, { type: 'avoidGate', gateId: 'trap' }] });
+test('evaluateStars: win, base above half health, target time; only on a victory', () => {
+  const lv = level({ targetTime: 60 });
   assert.deepEqual(evaluateStars(lv, st(), stats()), [true, true, true]);
-  assert.deepEqual(evaluateStars(lv, st({ time: 61 }), stats()), [true, false, true]);
+  assert.deepEqual(evaluateStars(lv, st({ time: 61 }), stats()), [true, true, false]);
+  assert.deepEqual(evaluateStars(lv, st({ time: 60 }), stats()), [true, true, false], 'the target must be beaten, not matched');
   assert.deepEqual(evaluateStars(lv, st({ time: 61 }), stats({ endTime: 59 })), [true, true, true], 'the victory time counts, not the settle time');
-  assert.deepEqual(evaluateStars(lv, st(), stats({ gatesTouched: new Set(['trap']) })), [true, true, false]);
+  assert.deepEqual(evaluateStars(lv, st({ playerBaseHp: 50 }), stats()), [true, false, true], 'exactly half is not above half');
+  assert.deepEqual(evaluateStars(lv, st({ playerBaseHp: 51 }), stats()), [true, true, true]);
   assert.deepEqual(evaluateStars(lv, st({ outcome: 'defeat' }), stats()), [false, false, false]);
   assert.deepEqual(evaluateStars(lv, st({ outcome: 'playing' }), stats()), [false, false, false]);
+  // The champion, mobs fired and gates touched no longer matter.
+  assert.deepEqual(evaluateStars(lv, st(), stats({ championsLaunched: 3, mobsFired: 99999 })), [true, true, true]);
 });
 
-test('evaluateStars: every goal type', () => {
-  const two = (g: LevelDef['goals']) => level({ goals: g });
-  assert.deepEqual(evaluateStars(two([{ type: 'baseHp', minFraction: 0.8 }, { type: 'baseHp', minFraction: 0.81 }]), st(), stats()), [true, true, false]);
-  assert.deepEqual(evaluateStars(two([{ type: 'noChampion' }, { type: 'maxMobs', mobs: 500 }]), st(), stats()), [true, true, true]);
-  assert.deepEqual(evaluateStars(two([{ type: 'noChampion' }, { type: 'maxMobs', mobs: 499 }]), st(), stats({ championsLaunched: 1 })), [true, false, false]);
-});
-
-test('levels without goals: stars 2 and 3 follow star 1', () => {
-  assert.deepEqual(evaluateStars(level(), st(), stats()), [true, true, true]);
+test('a level without a target time: star 3 follows star 1', () => {
+  assert.deepEqual(evaluateStars(level(), st({ time: 999 }), stats()), [true, true, true]);
   assert.deepEqual(evaluateStars(level(), st({ outcome: 'defeat' }), stats()), [false, false, false]);
   assert.deepEqual(goalStatus(level(), st({ outcome: 'playing' }), stats()), ['pending', 'pending', 'pending']);
 });
 
-test('goalStatus is live: pending until decided, failing the moment a goal is lost', () => {
-  const lv = level({ goals: [{ type: 'time', seconds: 60 }, { type: 'maxMobs', mobs: 300 }] });
+test('goalStatus is live: pending until decided, failing the moment a star is lost', () => {
+  const lv = level({ targetTime: 60 });
   const playing = st({ outcome: 'playing', time: 30 });
-  assert.deepEqual(goalStatus(lv, playing, stats({ mobsFired: 200 })), ['pending', 'pending', 'pending']);
-  assert.deepEqual(goalStatus(lv, { ...playing, time: 60 }, stats({ mobsFired: 200 })), ['pending', 'failed', 'pending']);
-  assert.deepEqual(goalStatus(lv, playing, stats({ mobsFired: 301 })), ['pending', 'pending', 'failed']);
-  assert.deepEqual(goalStatus(lv, st({ time: 40 }), stats({ mobsFired: 300 })), ['met', 'met', 'met']);
-  assert.deepEqual(goalStatus(lv, st({ outcome: 'defeat', time: 40 }), stats({ mobsFired: 10 })), ['failed', 'failed', 'failed']);
-
-  const lv2 = level({ gates: [{ id: 'g', op: 'div', value: 2, x: 0, z: 10, width: 3 }], goals: [{ type: 'baseHp', minFraction: 0.5 }, { type: 'avoidGate', gateId: 'g' }] });
-  assert.deepEqual(goalStatus(lv2, st({ outcome: 'playing', playerBaseHp: 49 }), stats()), ['pending', 'failed', 'pending']);
-  assert.deepEqual(goalStatus(lv2, st({ outcome: 'playing' }), stats({ gatesTouched: new Set(['g']) })), ['pending', 'pending', 'failed']);
-  const lv3 = level({ goals: [{ type: 'noChampion' }, { type: 'noChampion' }] });
-  assert.deepEqual(goalStatus(lv3, st({ outcome: 'playing' }), stats({ championsLaunched: 1 })), ['pending', 'failed', 'failed']);
+  assert.deepEqual(goalStatus(lv, playing, stats()), ['pending', 'pending', 'pending']);
+  assert.deepEqual(goalStatus(lv, { ...playing, time: 60 }, stats()), ['pending', 'pending', 'failed']);
+  assert.deepEqual(goalStatus(lv, { ...playing, playerBaseHp: 50 }, stats()), ['pending', 'failed', 'pending']);
+  assert.deepEqual(goalStatus(lv, st({ time: 40 }), stats()), ['met', 'met', 'met']);
+  assert.deepEqual(goalStatus(lv, st({ outcome: 'defeat', time: 40 }), stats()), ['failed', 'failed', 'failed']);
 });
 
 // ---------- Autoplay ----------

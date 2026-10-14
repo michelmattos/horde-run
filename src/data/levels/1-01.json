@@ -105,15 +105,6 @@
     "hp": 90,
     "damage": 75
   },
-  "goals": [
-    {
-      "type": "time",
-      "seconds": 85
-    },
-    {
-      "type": "baseHp",
-      "minFraction": 0.75
-    }
-  ],
-  "intro": "Drag to aim the cannon. Fire through the x2 gate to double your crowd."
+  "targetTime": 80,
+  "intro": "Drag to aim the cannon. Fire through the x2 gate to double your soldiers."
 }

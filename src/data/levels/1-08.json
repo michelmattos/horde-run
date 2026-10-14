@@ -1,6 +1,6 @@
 {
   "id": "1-8",
-  "name": "Gauntlet",
+  "name": "Under the Bed",
   "lane": {
     "width": 10,
     "length": 62
@@ -95,97 +95,97 @@
   "enemyWaves": [
     {
       "at": 7,
-      "count": 185,
+      "count": 213,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 16,
-      "count": 192,
+      "count": 221,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 25,
-      "count": 199,
+      "count": 229,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 34,
-      "count": 206,
+      "count": 237,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 43,
-      "count": 213,
+      "count": 245,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 52,
-      "count": 220,
+      "count": 253,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 61,
-      "count": 227,
+      "count": 261,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 70,
-      "count": 234,
+      "count": 269,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 79,
-      "count": 241,
+      "count": 277,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 88,
-      "count": 248,
+      "count": 285,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 97,
-      "count": 255,
+      "count": 293,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 106,
-      "count": 262,
+      "count": 301,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 115,
-      "count": 269,
+      "count": 309,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 124,
-      "count": 276,
+      "count": 317,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 133,
-      "count": 283,
+      "count": 325,
       "x": 1.5,
       "spread": 3.5
     }
   ],
   "enemySpawnRate": {
-    "perSecond": 13,
+    "perSecond": 14.95,
     "startAt": 2
   },
   "champion": {
@@ -193,14 +193,5 @@
     "hp": 130,
     "damage": 95
   },
-  "goals": [
-    {
-      "type": "avoidGate",
-      "gateId": "1-8-div2"
-    },
-    {
-      "type": "time",
-      "seconds": 115
-    }
-  ]
+  "targetTime": 100
 }

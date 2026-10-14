@@ -172,7 +172,7 @@ export class ParticlePool {
 
 // ---------- Tracer pool ----------
 
-// Arrows in flight from (x0,z0) to (x1,z1). Slots are reused round-robin; arrows that
+// Tower darts in flight from (x0,z0) to (x1,z1). Slots are reused round-robin; darts that
 // land during step() are listed in endedX/endedZ (endedCount of them) so the caller
 // can spawn an impact puff without callbacks or allocation.
 export class TracerPool {
@@ -244,15 +244,23 @@ export class TracerPool {
 
 // ---------- Scenery placement ----------
 
+// Bedroom props on the floor beside the rug (World 1 'Bedroom Floor').
+export type PropKind = 'block' | 'book' | 'crayon';
+
 export interface SceneryProp {
-  kind: 'tree' | 'bush';
+  kind: PropKind;
   x: number;
   z: number;
   scale: number;
-  shade: number; // 0..1, picks a green variant
+  yaw: number; // radians about +Y
+  shade: number; // 0..1, picks a toy colour
+  stack: number; // blocks: 1..3 cubes high; books: 1..2 books; crayons: 1
 }
 
-// Small deterministic PRNG (mulberry32) so the valley looks the same on every retry.
+// Footprint radius of a prop at scale 1 (world units), so props never reach the rug.
+export const PROP_RADIUS: Record<PropKind, number> = { block: 0.75, book: 1.55, crayon: 1.35 };
+
+// Small deterministic PRNG (mulberry32) so the bedroom looks the same on every retry.
 export function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
@@ -266,21 +274,25 @@ export function mulberry32(seed: number): () => number {
 
 export const SCENERY_CLEARANCE = 1.2; // world units kept free between the lane edge and any prop
 
-// Trees and bushes scattered on both sides of the lane, never inside it (nor its rails).
-// Rows run from zMin to zMax; props reach out to `reach` units beyond the lane edge so
-// wide screens see more valley.
+// Building blocks, books and crayons scattered on both sides of the lane, never inside
+// it (nor its border). Rows run from zMin to zMax; props reach out to `reach` units
+// beyond the lane edge so wide screens see more of the bedroom floor.
 export function scatterScenery(seed: number, laneWidth: number, zMin: number, zMax: number, count: number, reach = 22): SceneryProp[] {
   const rand = mulberry32(seed);
   const props: SceneryProp[] = [];
   const edge = laneWidth / 2 + SCENERY_CLEARANCE;
   for (let i = 0; i < count; i++) {
     const side = i % 2 === 0 ? -1 : 1;
-    const kind = rand() < 0.65 ? 'tree' : 'bush';
-    const scale = kind === 'tree' ? 0.8 + rand() * 0.6 : 0.6 + rand() * 0.5;
-    // Bias towards the lane so the valley frames it; the radius keeps props off the rail.
-    const out = edge + scale * 0.7 + Math.pow(rand(), 1.6) * reach;
+    const roll = rand();
+    const kind: PropKind = roll < 0.55 ? 'block' : roll < 0.78 ? 'book' : 'crayon';
+    const scale = kind === 'block' ? 0.8 + rand() * 0.5 : 0.85 + rand() * 0.35;
+    // Bias towards the lane so the props frame it; the footprint keeps them off the rug.
+    const out = edge + PROP_RADIUS[kind] * scale + Math.pow(rand(), 1.6) * reach;
     const z = zMin + rand() * (zMax - zMin);
-    props.push({ kind, x: side * out, z, scale, shade: rand() });
+    const yaw = rand() * Math.PI * 2;
+    const shade = rand();
+    const stack = kind === 'block' ? 1 + Math.floor(rand() * 3) : kind === 'book' ? 1 + Math.floor(rand() * 2) : 1;
+    props.push({ kind, x: side * out, z, scale, yaw, shade, stack });
   }
   return props;
 }

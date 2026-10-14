@@ -1,6 +1,6 @@
 {
   "id": "1-9",
-  "name": "King's Guard",
+  "name": "General's Guard",
   "lane": {
     "width": 10,
     "length": 64
@@ -11,10 +11,10 @@
     "aimLimit": 4
   },
   "playerBase": {
-    "hp": 350
+    "hp": 280
   },
   "enemyBase": {
-    "hp": 2200,
+    "hp": 1540,
     "x": 0,
     "width": 6
   },
@@ -89,104 +89,104 @@
   "enemyWaves": [
     {
       "at": 7,
-      "count": 220,
+      "count": 277,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 16,
-      "count": 227,
+      "count": 286,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 25,
-      "count": 234,
+      "count": 295,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 34,
-      "count": 241,
-      "x": 0,
-      "spread": 3.5
-    },
-    {
-      "at": 43,
-      "count": 248,
-      "x": -1.5,
-      "spread": 3.5
-    },
-    {
-      "at": 52,
-      "count": 255,
-      "x": 1.5,
-      "spread": 3.5
-    },
-    {
-      "at": 61,
-      "count": 262,
-      "x": 0,
-      "spread": 3.5
-    },
-    {
-      "at": 70,
-      "count": 269,
-      "x": -1.5,
-      "spread": 3.5
-    },
-    {
-      "at": 79,
-      "count": 276,
-      "x": 1.5,
-      "spread": 3.5
-    },
-    {
-      "at": 88,
-      "count": 283,
-      "x": 0,
-      "spread": 3.5
-    },
-    {
-      "at": 97,
-      "count": 290,
-      "x": -1.5,
-      "spread": 3.5
-    },
-    {
-      "at": 106,
-      "count": 297,
-      "x": 1.5,
-      "spread": 3.5
-    },
-    {
-      "at": 115,
       "count": 304,
       "x": 0,
       "spread": 3.5
     },
     {
+      "at": 43,
+      "count": 312,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 52,
+      "count": 321,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 61,
+      "count": 330,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 70,
+      "count": 339,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 79,
+      "count": 348,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 88,
+      "count": 357,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 97,
+      "count": 365,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 106,
+      "count": 374,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 115,
+      "count": 383,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
       "at": 124,
-      "count": 311,
+      "count": 392,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 133,
-      "count": 318,
+      "count": 401,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 142,
-      "count": 660,
+      "count": 832,
       "x": 0,
       "spread": 4.5,
       "interval": 0.03
     }
   ],
   "enemySpawnRate": {
-    "perSecond": 14,
+    "perSecond": 17.64,
     "startAt": 2
   },
   "champion": {
@@ -194,14 +194,5 @@
     "hp": 140,
     "damage": 100
   },
-  "goals": [
-    {
-      "type": "baseHp",
-      "minFraction": 0.5
-    },
-    {
-      "type": "time",
-      "seconds": 120
-    }
-  ]
+  "targetTime": 120
 }

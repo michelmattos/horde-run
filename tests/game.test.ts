@@ -280,7 +280,8 @@ test('all shipped levels validate and form World 1', () => {
   for (const l of LEVELS) {
     assert.deepEqual(validateLevel(JSON.parse(JSON.stringify(l)), l.id), l);
     assert.equal(l.lane.width, 10);
-    assert.equal(l.goals?.length, 2, `${l.id} goals`);
+    assert.ok(l.targetTime !== undefined && l.targetTime > 0, `${l.id} targetTime`);
+    assert.equal((l as { goals?: unknown }).goals, undefined, `${l.id} has no per-level goals`);
   }
   const gates = LEVELS.flatMap((l) => l.gates);
   assert.ok(gates.some((g) => g.op === 'mul' && g.value === 2));
@@ -292,10 +293,8 @@ test('all shipped levels validate and form World 1', () => {
   for (const g of gates) assert.ok(g.width >= 2.5 && g.width <= 4, `${g.id} width`);
   const defenders = LEVELS.flatMap((l) => l.defenders ?? []);
   assert.ok(defenders.some((d) => d.kind === 'tower') && defenders.some((d) => d.kind === 'wall'));
-  // Goal variety across the world.
-  assert.equal(new Set(LEVELS.flatMap((l) => l.goals!.map((g) => g.type))).size, 5);
   const boss = LEVELS[9].boss;
-  assert.ok(boss && boss.name === 'Goblin King' && boss.phases.length === 3);
+  assert.ok(boss && boss.name === 'Tin General' && boss.phases.length === 3);
   assert.ok(LEVELS.slice(0, 9).every((l) => !l.boss));
 });
 
@@ -303,7 +302,7 @@ test('the World 1 file lists every level in order and validates', () => {
   assert.equal(WORLDS.length, 1);
   const w = getWorld('w1');
   assert.ok(w);
-  assert.deepEqual({ ...w, levels: undefined }, { id: 'w1', name: 'Green Valley', faction: 'Goblins', levels: undefined });
+  assert.deepEqual({ ...w, levels: undefined }, { id: 'w1', name: 'Bedroom Floor', faction: 'Tan Army', levels: undefined });
   assert.deepEqual(w.levels, LEVELS.map((l) => l.id));
   assert.equal(getWorld('w9'), undefined);
   const bad = (mutate: (o: any) => void, pattern: RegExp) => {

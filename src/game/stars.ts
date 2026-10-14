@@ -1,47 +1,32 @@
-// Star rating (concept §4.1): star 1 is winning, stars 2 and 3 are the level's two
-// optional goals (LevelDef.goals[0..1]). Goals only count on a victory.
+// Star rating (concept §4.1): the same three goals on every level.
+//   Star 1: win the battle.
+//   Star 2: win with the player base above half health (STAR_BASE_HP_FRACTION).
+//   Star 3: win before the level's target time. A level without one awards it for any win.
+// Stars 2 and 3 only count on a victory.
 //
-// A level without goals (or with only one) has its missing stars equal to star 1, so
-// an unconfigured level awards 3 stars for a win and none for a loss.
-//
-// goalStatus is live: the HUD shows each goal as pending until it is decided. A goal
-// fails the moment it can no longer be met (the clock passed, the champion launched,
-// the gate was touched, too many mobs fired, base HP dropped too low); at the outcome
-// every undecided goal becomes met on a victory and failed on a defeat.
+// goalStatus is live: the HUD shows each star as pending until it is decided. Star 2
+// fails the moment the base drops to half health or below, star 3 the moment the clock
+// reaches the target time; at the outcome every undecided star becomes met on a victory
+// and failed on a defeat.
 
-import type { BattleState, LevelDef, StarGoal } from '../contracts.ts';
+import type { BattleState, LevelDef } from '../contracts.ts';
+import { STAR_BASE_HP_FRACTION } from '../contracts.ts';
 import type { BattleStats } from './battle.ts';
 
 export type GoalStatus = 'pending' | 'met' | 'failed';
 
-// Has this goal already been lost, whatever happens next?
-function goalFailed(g: StarGoal, state: BattleState, stats: BattleStats): boolean {
-  switch (g.type) {
-    case 'time':
-      return (stats.endTime ?? state.time) >= g.seconds;
-    case 'baseHp':
-      return state.playerBaseHp / state.playerBaseMaxHp < g.minFraction;
-    case 'noChampion':
-      return stats.championsLaunched > 0;
-    case 'avoidGate':
-      return stats.gatesTouched.has(g.gateId);
-    case 'maxMobs':
-      return stats.mobsFired > g.mobs;
-  }
-}
-
-function status(g: StarGoal | undefined, state: BattleState, stats: BattleStats): GoalStatus {
-  if (state.outcome === 'defeat') return 'failed';
-  if (!g) return state.outcome === 'victory' ? 'met' : 'pending';
-  if (goalFailed(g, state, stats)) return 'failed';
+function decide(lost: boolean, state: BattleState): GoalStatus {
+  if (state.outcome === 'defeat' || lost) return 'failed';
   return state.outcome === 'victory' ? 'met' : 'pending';
 }
 
-// Three entries: [win, goal 1, goal 2].
+// Three entries: [win, base above half health, beat the target time].
 export function goalStatus(level: LevelDef, state: BattleState, stats: BattleStats): GoalStatus[] {
   const win: GoalStatus = state.outcome === 'victory' ? 'met' : state.outcome === 'defeat' ? 'failed' : 'pending';
-  const goals = level.goals ?? [];
-  return [win, status(goals[0], state, stats), status(goals[1], state, stats)];
+  const baseLost = !(state.playerBaseHp > state.playerBaseMaxHp * STAR_BASE_HP_FRACTION);
+  const t = stats.endTime ?? state.time;
+  const timeLost = level.targetTime !== undefined && t >= level.targetTime;
+  return [win, decide(baseLost, state), decide(timeLost, state)];
 }
 
 export function evaluateStars(level: LevelDef, state: BattleState, stats: BattleStats): [boolean, boolean, boolean] {

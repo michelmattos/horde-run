@@ -1,7 +1,7 @@
 // World map layout math: nodes stay on screen, climb upward and never overlap.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mapLayout } from '../src/meta/mapLayout.ts';
+import { TITLE_CARD_MS, mapLayout, worldTitle } from '../src/meta/mapLayout.ts';
 
 for (const width of [320, 375, 430, 480]) {
   test(`mapLayout keeps 10 nodes inside ${width}px, rising and apart`, () => {
@@ -28,4 +28,10 @@ test('mapLayout degrades gracefully', () => {
   for (const p of narrow) assert.equal(p.x, 40, 'too narrow to swing: straight up the middle');
   const tight = mapLayout(4, 400, { nodeSize: 90, step: 10 });
   for (let i = 1; i < tight.length; i++) assert.ok(tight[i].y - tight[i - 1].y >= 90, 'step never below node size');
+});
+
+test('world title card text', () => {
+  assert.equal(worldTitle({ id: 'w1', name: 'Bedroom Floor' }), 'World 1 · Bedroom Floor');
+  assert.equal(worldTitle({ id: 'w12', name: 'Attic' }), 'World 12 · Attic');
+  assert.ok(TITLE_CARD_MS >= 1000 && TITLE_CARD_MS <= 4000, 'brief');
 });

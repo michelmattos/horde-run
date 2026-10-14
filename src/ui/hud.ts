@@ -21,7 +21,7 @@ import { readSafeAreaInsets } from './safeArea.ts';
 import { hudStarStyle, mixHex, pipLit, popScale } from './uiLogic.ts';
 import type { GoalState } from './uiLogic.ts';
 
-// Optional per-level extras. goals: star 1 = win, then the level's two goals.
+// Optional per-level extras. goals: the three stars (win, base above half, target time).
 export interface HudInfo {
   bossName?: string;
   bossPhases?: number;
@@ -34,8 +34,9 @@ export interface Hud {
   dispose(): void;
 }
 
-const PLAYER = '#3d7bff';
-const ENEMY = '#ff4d4d';
+// Team colours match the toy armies on the field: green player, tan enemy.
+const PLAYER = '#43b14b';
+const ENEMY = '#e0b76f';
 const GOLD = '#ffd34d';
 const TRACK = 'rgba(0,0,0,0.45)';
 const EDGE = 16;
@@ -143,10 +144,10 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
   }
   const levelText = label('level', 14, Control.HORIZONTAL_ALIGNMENT_LEFT);
   const enemyText = label('enemy-count', 14, Control.HORIZONTAL_ALIGNMENT_RIGHT);
-  enemyText.color = '#ffc2c2';
+  enemyText.color = '#f3dcb0';
   const playerBar = bar('player-hp', PLAYER);
   const playerText = label('player-count', 15, Control.HORIZONTAL_ALIGNMENT_LEFT);
-  playerText.color = '#cfe0ff';
+  playerText.color = '#c9f0c4';
 
   const pause = topLeft(new Rectangle('pause'));
   pause.background = 'rgba(0,0,0,0.4)';

@@ -2,7 +2,8 @@
 // and integration's smoke test. It always fires, sweeps its aim toward the lane x
 // whose gate chain grows the crowd most (traps score badly so they are avoided),
 // turns to defend when enemies get close to the base, and launches the champion.
-// Skill scales the aim noise and slow wandering sweeps.
+// Skill scales the aim noise and slow wandering sweeps; `attempt` shifts the noise in
+// time, so attempts 0, 1, 2... play like separate tries by the same player.
 //
 // Milestone 2: live walls and towers on the aim line count as costs (and a tower's
 // range as a smaller one), broken one-use gates are dropped (from the sim events
@@ -47,8 +48,9 @@ interface Obstacle {
   range: number; // towers: shooting radius; walls: 0
 }
 
-export function createAutoplay(level: LevelDef, opts?: { skill?: number }): Autoplay {
+export function createAutoplay(level: LevelDef, opts?: { skill?: number; attempt?: number }): Autoplay {
   const skill = Math.min(1, Math.max(0, opts?.skill ?? 0.7));
+  const noiseShift = (opts?.attempt ?? 0) * 11.3; // seconds; a fixed offset per attempt
   const lim = level.cannon.aimLimit;
   const sloppiness = 1 - skill;
   // Gates and defenders sorted by z once, so the chain is evaluated in crossing order.
@@ -221,7 +223,8 @@ export function createAutoplay(level: LevelDef, opts?: { skill?: number }): Auto
     const threat = threatX(sim.view);
     let target = !Number.isNaN(threat) ? threat : !Number.isNaN(champTarget) ? champTarget : bestX(state, time);
     // Slow periodic sweeps plus jitter, both shrinking as skill rises.
-    target += sloppiness * (2.5 * Math.sin((2 * Math.PI * time) / 7) + 1.5 * wobble(time));
+    const nt = time + noiseShift;
+    target += sloppiness * (2.5 * Math.sin((2 * Math.PI * nt) / 7) + 1.5 * wobble(nt));
     target = Math.min(lim, Math.max(-lim, target));
 
     const maxStep = AIM_SPEED * dt;

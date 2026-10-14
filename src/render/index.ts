@@ -45,6 +45,7 @@ export interface GameRenderer {
   loadLevel(level: LevelDef): void;
   frame(f: RenderFrame): void;
   dispose(): void;
+  readonly cameraZoom: number; // current crowd zoom-out (0 = framed view, up to ZOOM_MAX); for debugging
 }
 
 let activeScaler: ResolutionScaler | null = null;
@@ -124,7 +125,7 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
           effects.missPuff(e.x, e.z);
           break;
         case 'defenderShot':
-          effects.arrow(e.x, e.z, e.tx, e.tz);
+          effects.dart(e.x, e.z, e.tx, e.tz);
           break;
         case 'defenderHit':
           defenders.hit(e.id);
@@ -145,6 +146,9 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
 
   return {
     scene,
+    get cameraZoom() {
+      return rig.zoomAmount;
+    },
 
     loadLevel(def: LevelDef): void {
       level?.dispose();
@@ -152,6 +156,7 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
       defenders.load(def.defenders);
       cannon.setFireRate(def.cannon.fireRate);
       effects.clear();
+      rig.resetZoom();
       scaler.warmUp(); // shader compiles and uploads after a load are not a steady frame time
       reframe();
     },
@@ -164,6 +169,7 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
       cannon.update(f.cannonX, f.time, f.battle.outcome === 'playing');
       crowd.update(f.view, f.time);
       effects.update(dt);
+      rig.update(dt, f.battle.playerUnits); // gentle crowd zoom-out; the camera never shakes
       if (scaler.sample(f.dt)) {
         engine.setHardwareScalingLevel(scaler.scalingLevel);
         reframe();

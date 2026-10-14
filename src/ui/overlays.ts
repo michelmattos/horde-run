@@ -13,7 +13,7 @@ export interface LevelIntroOptions {
   code: string; // '1-4'
   levelName: string;
   intro?: string; // shown highlighted as 'New: ...'
-  goals: readonly string[]; // 3 labels, star 1 = 'Win the battle'
+  goals: readonly string[]; // the 3 star labels (starGoalLabels): win, base above half, target time
   earned: readonly boolean[]; // best stars so far
   boss?: string;
   onPlay(): void;
@@ -56,19 +56,19 @@ const CSS = `
 .hr-ov.hr-on{display:flex}
 .hr-card{width:100%;max-width:360px;margin:auto;display:flex;flex-direction:column;gap:12px;text-align:center}
 .hr-h{margin:0 0 4px;font-size:44px;font-weight:900;letter-spacing:.02em;line-height:1.1}
-.hr-victory .hr-h{color:#7fb2ff}
+.hr-victory .hr-h{color:#8ee08f}
 .hr-defeat .hr-h{color:#ff7a7a}
 .hr-sub{margin:0 0 12px;font-size:16px;opacity:.8}
 .hr-btn{min-height:56px;width:100%;border:0;border-radius:14px;font:inherit;font-size:20px;font-weight:800;
   color:#fff;background:#38455c;touch-action:manipulation;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .hr-btn:active{filter:brightness(1.2)}
-.hr-btn.hr-primary{background:#2f6bff}
+.hr-btn.hr-primary{background:#2f9e44}
 .hr-ov [hidden]{display:none!important}
 .hr-stack{display:flex;flex-direction:column;gap:12px}
 .hr-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;font-size:17px;font-weight:600;text-align:left}
 .hr-toggle{min-width:96px;min-height:48px;border:0;border-radius:24px;font:inherit;font-weight:800;color:#fff;background:#38455c;touch-action:manipulation;cursor:pointer}
 .hr-toggle[aria-pressed=true]{background:#1f9d55}
-.hr-range{flex:1;min-height:48px;accent-color:#2f6bff;touch-action:manipulation}
+.hr-range{flex:1;min-height:48px;accent-color:#2f9e44;touch-action:manipulation}
 .hr-val{min-width:44px;text-align:right;font-variant-numeric:tabular-nums}
 .hr-pair{display:flex;gap:12px}
 .hr-pair>.hr-btn{flex:1}

@@ -6,6 +6,8 @@ import '@babylonjs/core/Meshes/thinInstanceMesh';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { CreateBoxVertexData } from '@babylonjs/core/Meshes/Builders/boxBuilder';
 import { CreateCylinderVertexData } from '@babylonjs/core/Meshes/Builders/cylinderBuilder';
+import type { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData';
+import { Matrix } from '@babylonjs/core/Maths/math.vector';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import type { Scene } from '@babylonjs/core/scene';
@@ -102,12 +104,16 @@ export function instanceUnlitMaterial(scene: Scene, name: string): StandardMater
 }
 
 // Unit-sized base mesh for a batch (1 x 1 x 1, centred on the origin); instances scale it.
-// 'cone' is a 7-sided cone (top diameter 0) used for trees and bushes.
-export function unitMesh(scene: Scene, name: string, shape: 'box' | 'cylinder' | 'cone'): Mesh {
-  const vd =
-    shape === 'box'
-      ? CreateBoxVertexData({ size: 1 })
-      : CreateCylinderVertexData({ height: 1, diameterTop: shape === 'cone' ? 0 : 1, diameterBottom: 1, tessellation: shape === 'cone' ? 7 : 10 });
+// 'rod' and 'tip' lie along local +Z (a cylinder and a cone pointing +Z), so yaw alone
+// turns them on the floor: crayons are a rod plus a tip.
+export function unitMesh(scene: Scene, name: string, shape: 'box' | 'cylinder' | 'rod' | 'tip'): Mesh {
+  let vd: VertexData;
+  if (shape === 'box') vd = CreateBoxVertexData({ size: 1 });
+  else if (shape === 'cylinder') vd = CreateCylinderVertexData({ height: 1, diameter: 1, tessellation: 10 });
+  else {
+    vd = CreateCylinderVertexData({ height: 1, diameterTop: shape === 'tip' ? 0 : 1, diameterBottom: 1, tessellation: 8 });
+    vd.transform(Matrix.RotationX(Math.PI / 2)); // +Y axis → +Z
+  }
   const mesh = new Mesh(name, scene);
   vd.applyToMesh(mesh);
   return mesh;

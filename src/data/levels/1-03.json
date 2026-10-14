@@ -141,15 +141,6 @@
     "hp": 110,
     "damage": 85
   },
-  "goals": [
-    {
-      "type": "avoidGate",
-      "gateId": "1-3-div2"
-    },
-    {
-      "type": "baseHp",
-      "minFraction": 0.6
-    }
-  ],
-  "intro": "Red gates are traps: ÷ halves your mobs and - wipes them out. Thread the x3."
+  "targetTime": 110,
+  "intro": "Red gates are traps: ÷ halves your soldiers and - wipes them out. Thread the x3."
 }

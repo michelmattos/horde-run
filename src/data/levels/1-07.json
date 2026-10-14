@@ -14,7 +14,7 @@
     "hp": 330
   },
   "enemyBase": {
-    "hp": 1900,
+    "hp": 1615,
     "x": 0,
     "width": 6
   },
@@ -61,85 +61,85 @@
   "enemyWaves": [
     {
       "at": 8,
-      "count": 175,
+      "count": 184,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 18,
-      "count": 179,
+      "count": 188,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 28,
-      "count": 183,
+      "count": 192,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 38,
-      "count": 187,
+      "count": 196,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 48,
-      "count": 191,
+      "count": 201,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 58,
-      "count": 195,
+      "count": 205,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 68,
-      "count": 199,
+      "count": 209,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 78,
-      "count": 203,
+      "count": 213,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 88,
-      "count": 207,
+      "count": 217,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 98,
-      "count": 211,
+      "count": 222,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 108,
-      "count": 215,
+      "count": 226,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 118,
-      "count": 219,
+      "count": 230,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 128,
-      "count": 223,
+      "count": 234,
       "x": 0,
       "spread": 3.5
     }
   ],
   "enemySpawnRate": {
-    "perSecond": 10,
+    "perSecond": 10.5,
     "startAt": 2
   },
   "champion": {
@@ -147,14 +147,6 @@
     "hp": 120,
     "damage": 90
   },
-  "goals": [
-    {
-      "type": "noChampion"
-    },
-    {
-      "type": "maxMobs",
-      "mobs": 1600
-    }
-  ],
-  "intro": "Cracked gates break after so many mobs. Use them up, then switch."
+  "targetTime": 105,
+  "intro": "Cracked gates break after so many soldiers. Use them up, then switch."
 }

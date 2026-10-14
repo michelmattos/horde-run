@@ -6,9 +6,11 @@
 // Per rendered frame: loop.advance → input.sample → battle.step (which steps the sim)
 // → renderer.frame → hud.update. The sim runs at a fixed SIM_HZ. While a menu covers
 // the battlefield nothing moves, so the loop draws one frame under it and then stops
-// (concept §8 "Heat and battery"); wake() restarts it. The camera never shakes.
+// (concept §8 "Heat and battery"); wake() restarts it. Drawing is capped at 60 fps even
+// on a 120 Hz screen (iPhone 17 Pro Max): rAF callbacks that come too soon are skipped.
+// The camera only zooms out gently as the crowd grows; it never shakes.
 import { Engine } from '@babylonjs/core/Engines/engine';
-import { LAYOUT, Team, UnitKind, starGoalLabel } from './contracts.ts';
+import { LAYOUT, Team, UnitKind, starGoalLabels } from './contracts.ts';
 import type { BattleState, LevelDef, SaveData, SimEvent, WorldDef } from './contracts.ts';
 import { createSim } from './sim/index.ts';
 import type { Sim } from './sim/index.ts';
@@ -18,7 +20,7 @@ import { getLevel, getLevelById, getWorld } from './game/levels.ts';
 import { evaluateStars, goalStatus } from './game/stars.ts';
 import { createRenderer } from './render/index.ts';
 import { createRng } from './core/rng.ts';
-import { createFixedStep } from './core/loop.ts';
+import { createFixedStep, createFrameCap } from './core/loop.ts';
 import { loadSettings } from './core/settings.ts';
 import { createInput } from './core/input.ts';
 import { isLandscapeTouch, watchInterruptions } from './core/lifecycle.ts';
@@ -37,7 +39,8 @@ declare global {
   interface Window {
     __horde?: {
       state(): BattleState;
-      fps(): number;
+      fps(): number; // frames actually drawn per second (capped at 60)
+      zoom(): number; // current crowd zoom-out of the camera (0 = none)
       level(): string;
       spawn(n: number): void;
       units(): number; // live sim units (stacked units count once)
@@ -58,7 +61,7 @@ const engine = new Engine(
   false, // the renderer owns hardware scaling (automatic resolution scaling)
 );
 
-const world: WorldDef = getWorld('w1') ?? { id: 'w1', name: 'Green Valley', faction: 'Goblins', levels: [getLevel(0).id] };
+const world: WorldDef = getWorld('w1') ?? { id: 'w1', name: 'Bedroom Floor', faction: 'Tan Army', levels: [getLevel(0).id] };
 const levelDef = (id: string): LevelDef => getLevelById(id) ?? getLevel(0);
 
 const settings = loadSettings();
@@ -67,6 +70,7 @@ const input = createInput(canvas, settings);
 const haptics = createHaptics(settings);
 const overlays = createOverlays(app, settings);
 const loop = createFixedStep();
+const frameCap = createFrameCap();
 const hud = createHud(renderer.scene, input, { onPause: () => pause('user') });
 
 let save: SaveData = loadSave();
@@ -92,9 +96,6 @@ let outcomeAt = -1; // sim time the outcome was reached, -1 while playing
 let resultShown = false;
 const events: SimEvent[] = []; // sim and battle events since the last rendered frame
 
-function goalLabels(l: LevelDef): string[] {
-  return ['Win the battle', ...(l.goals ?? []).map((g) => starGoalLabel(g, l))];
-}
 
 function nextLevelId(id: string): string | undefined {
   const i = world.levels.indexOf(id);
@@ -108,7 +109,7 @@ function openLevelCard(id: string): void {
     code: l.id,
     levelName: l.name,
     intro: l.intro,
-    goals: goalLabels(l),
+    goals: starGoalLabels(l),
     earned: save.levels[l.id]?.stars ?? [false, false, false],
     boss: l.boss?.name,
     onPlay: () => startLevel(l.id),
@@ -186,7 +187,7 @@ function showResult(b: Battle): void {
     timeSeconds: time,
     hasNext: !!next,
     stars: victory ? stars : [false, false, false],
-    goals: goalLabels(level),
+    goals: starGoalLabels(level),
     newBest: r.newBest,
     onRetry: () => startLevel(id),
     onNext: () => (next ? openLevelCard(next) : showMap()),
@@ -208,6 +209,7 @@ function simStep(): void {
 
 let looping = false;
 let woke = false; // the next frame is the first after a restart; its delta spans the menu time
+let drawnFps = 0; // smoothed rate of frames actually drawn (rAF may tick faster than the cap)
 
 // (Re)starts the render loop; a no-op while running or while no battlefield is on screen.
 function wake(): void {
@@ -215,6 +217,7 @@ function wake(): void {
   looping = true;
   woke = true;
   loop.reset();
+  frameCap.reset();
   engine.runRenderLoop(renderFrame);
 }
 
@@ -228,7 +231,12 @@ function renderFrame(): void {
     stopLoop();
     return;
   }
-  const dt = woke ? 0 : engine.getDeltaTime() / 1000;
+  // 60 fps cap: skip rAF callbacks that arrive sooner than one 60 Hz frame. Nothing is
+  // drawn on a skipped callback, so the canvas keeps showing the last frame.
+  const gap = frameCap.tick(performance.now());
+  if (gap < 0) return;
+  if (gap > 0) drawnFps = drawnFps > 0 ? drawnFps + (1 / gap - drawnFps) * 0.1 : 1 / gap;
+  const dt = woke ? 0 : gap;
   woke = false;
   if (!input.paused) loop.advance(dt, simStep);
   // After the outcome the crowd keeps settling (the sim keeps stepping) until the result screen.
@@ -269,7 +277,8 @@ else showMap();
 
 window.__horde = {
   state: () => (battle ? battle.state : ({} as BattleState)),
-  fps: () => engine.getFps(),
+  fps: () => drawnFps,
+  zoom: () => renderer.cameraZoom,
   level: () => (inBattle ? level.id : 'map'),
   spawn: (n: number) => {
     const count = Math.max(0, Math.floor(n));

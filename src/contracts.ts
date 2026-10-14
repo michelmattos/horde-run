@@ -181,18 +181,15 @@ export interface BossDef {
   phases: BossPhaseDef[];
 }
 
-// Optional star goals; star 1 is always "win", stars 2 and 3 are LevelDef.goals[0..1].
-export type StarGoal =
-  | { type: 'time'; seconds: number }
-  | { type: 'baseHp'; minFraction: number }
-  | { type: 'noChampion' }
-  | { type: 'avoidGate'; gateId: string }
-  | { type: 'maxMobs'; mobs: number };
+// Stars (concept §4.1): the same three goals on every level. Star 1 is winning, star 2
+// is finishing with the player base above half health, star 3 is winning faster than
+// the level's target time. All three need a victory.
+export const STAR_BASE_HP_FRACTION = 0.5; // star 2 needs playerBaseHp / max strictly above this
 
 export interface LevelDef {
   defenders?: DefenderDef[];
   boss?: BossDef;
-  goals?: StarGoal[]; // exactly 2 on shipped levels
+  targetTime?: number; // seconds; star 3 is a victory before this (required on shipped levels)
   intro?: string; // one-line tip shown on the level card when the level introduces something
 }
 
@@ -203,8 +200,8 @@ export interface BattleState {
 
 export interface WorldDef {
   id: string; // 'w1'
-  name: string; // 'Green Valley'
-  faction: string; // 'Goblins'
+  name: string; // 'Bedroom Floor'
+  faction: string; // 'Tan Army'
   levels: string[]; // level ids in play order, e.g. '1-1'..'1-10'
 }
 
@@ -217,19 +214,11 @@ export interface SaveData {
   levels: Record<string, LevelProgress>;
 }
 
-export function starGoalLabel(g: StarGoal, level?: LevelDef): string {
-  switch (g.type) {
-    case 'time':
-      return `Win in under ${g.seconds} s`;
-    case 'baseHp':
-      return `Keep ${Math.round(g.minFraction * 100)}% base HP`;
-    case 'noChampion':
-      return 'Win without the champion';
-    case 'avoidGate': {
-      const gate = level?.gates.find((x) => x.id === g.gateId);
-      return gate ? `Never touch the ${gateLabel(gate)} gate` : 'Avoid the trap gate';
-    }
-    case 'maxMobs':
-      return `Fire at most ${g.mobs} mobs`;
-  }
+// Labels for the three stars, in order. A level without a target time awards star 3 for any win.
+export function starGoalLabels(level: LevelDef): [string, string, string] {
+  return [
+    'Win the battle',
+    `Keep your base above ${Math.round(STAR_BASE_HP_FRACTION * 100)}% health`,
+    level.targetTime !== undefined ? `Win in under ${level.targetTime} s` : 'Win the battle',
+  ];
 }

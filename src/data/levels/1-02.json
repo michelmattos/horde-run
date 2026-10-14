@@ -119,15 +119,6 @@
     "hp": 100,
     "damage": 80
   },
-  "goals": [
-    {
-      "type": "maxMobs",
-      "mobs": 1300
-    },
-    {
-      "type": "time",
-      "seconds": 95
-    }
-  ],
-  "intro": "Two doors: +2 gives every mob two friends, x2 only doubles it. Pick the better one."
+  "targetTime": 85,
+  "intro": "Two doors: +2 gives every soldier two friends, x2 only doubles it. Pick the better one."
 }

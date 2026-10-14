@@ -1,6 +1,6 @@
 {
   "id": "1-6",
-  "name": "Stone Wall",
+  "name": "Block Wall",
   "lane": {
     "width": 10,
     "length": 60
@@ -65,85 +65,85 @@
   "enemyWaves": [
     {
       "at": 8,
-      "count": 180,
+      "count": 216,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 18,
-      "count": 187,
+      "count": 224,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 28,
-      "count": 194,
+      "count": 233,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 38,
-      "count": 201,
+      "count": 241,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 48,
-      "count": 208,
-      "x": -1.5,
-      "spread": 3.5
-    },
-    {
-      "at": 58,
-      "count": 215,
-      "x": 1.5,
-      "spread": 3.5
-    },
-    {
-      "at": 68,
-      "count": 222,
-      "x": 0,
-      "spread": 3.5
-    },
-    {
-      "at": 78,
-      "count": 229,
-      "x": -1.5,
-      "spread": 3.5
-    },
-    {
-      "at": 88,
-      "count": 236,
-      "x": 1.5,
-      "spread": 3.5
-    },
-    {
-      "at": 98,
-      "count": 243,
-      "x": 0,
-      "spread": 3.5
-    },
-    {
-      "at": 108,
       "count": 250,
       "x": -1.5,
       "spread": 3.5
     },
     {
+      "at": 58,
+      "count": 258,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 68,
+      "count": 266,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 78,
+      "count": 275,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 88,
+      "count": 283,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 98,
+      "count": 292,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 108,
+      "count": 300,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
       "at": 118,
-      "count": 257,
+      "count": 308,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 128,
-      "count": 264,
+      "count": 317,
       "x": 0,
       "spread": 3.5
     }
   ],
   "enemySpawnRate": {
-    "perSecond": 12,
+    "perSecond": 14.4,
     "startAt": 2
   },
   "champion": {
@@ -151,15 +151,6 @@
     "hp": 120,
     "damage": 90
   },
-  "goals": [
-    {
-      "type": "time",
-      "seconds": 105
-    },
-    {
-      "type": "avoidGate",
-      "gateId": "1-6-minus2"
-    }
-  ],
-  "intro": "Walls soak up mobs. A champion smashes them: launch it straight at the wall."
+  "targetTime": 110,
+  "intro": "Block walls soak up soldiers. Your champion smashes them: launch it straight at the wall."
 }

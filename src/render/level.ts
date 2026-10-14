@@ -1,7 +1,8 @@
-// Per-level visuals: Green Valley ground and scenery, lane, rails, gates with labels
-// (one-use gates show a count line and break apart), both bases with diegetic HP bars,
-// and the Goblin King on boss levels. The enemy base sits on its own node so it can
-// strafe; its HP bar and the king move with it. Everything here is rebuilt by loadLevel
+// Per-level visuals: the Bedroom Floor (wooden floorboards with toy props), the lane as
+// a navy play rug with a cream border, gates with labels (one-use gates show a count line
+// and break apart), both bases as toy forts with diegetic HP bars, and on boss levels
+// the Tin General on his wind-up tank. The enemy base sits on its own node so it can
+// strafe; its HP bar and the tank move with it. Everything here is rebuilt by loadLevel
 // and disposed as a unit, so retries never leak meshes, materials or textures.
 import type { Scene } from '@babylonjs/core/scene';
 import type { Mesh } from '@babylonjs/core/Meshes/mesh';
@@ -15,9 +16,9 @@ import { Color3 } from '@babylonjs/core/Maths/math.color';
 import type { BattleState, GateDef, LevelDef } from '../contracts.ts';
 import { LAYOUT, gateLabel, gateX } from '../contracts.ts';
 import { PALETTE } from './palette.ts';
-import { flatMaterial, unlitMaterial } from './materials.ts';
-import { ValleyScenery } from './scenery.ts';
-import { GoblinKing } from './boss.ts';
+import { flatMaterial, unlitMaterial, woodFloorMaterial } from './materials.ts';
+import { BedroomScenery } from './scenery.ts';
+import { TinGeneral } from './boss.ts';
 import { gateBreakAt, hpFraction, usesLeftText } from './fxLogic.ts';
 
 const GATE_HEIGHT = 1.6;
@@ -65,8 +66,8 @@ export class LevelVisuals {
   private readonly gateFlashGood: StandardMaterial;
   private readonly gateFlashBad: StandardMaterial;
   private readonly materials: StandardMaterial[] = [];
-  private readonly scenery: ValleyScenery;
-  private readonly king: GoblinKing | null;
+  private readonly scenery: BedroomScenery;
+  private readonly boss: TinGeneral | null;
   private readonly breakOut = { scale: 1, alpha: 1, done: false };
   private baseX: number;
 
@@ -88,39 +89,50 @@ export class LevelVisuals {
     this.gateFlashGood = unlitTracked(this.materials, scene, 'gateFlashGood', new Color3(0.75, 1, 0.8));
     this.gateFlashBad = unlitTracked(this.materials, scene, 'gateFlashBad', new Color3(1, 0.7, 0.7));
 
-    // Valley floor: a large grassy ground under everything so wide screens see scenery, not lane.
-    const ground = CreateGround('scenery', { width: 600, height: 800 }, scene);
+    // Bedroom floor: large wooden floorboards under everything so wide screens see the room, not lane.
+    const groundW = 600;
+    const groundH = 800;
+    const ground = CreateGround('floor', { width: groundW, height: groundH }, scene);
     ground.position.set(0, -0.03, (zMin + zMax) / 2);
-    ground.material = mat('sceneryMat', PALETTE.scenery, 0.3);
+    const floorMat = woodFloorMaterial(scene, 'floorMat', 1.4, groundW, groundH);
+    this.materials.push(floorMat);
+    ground.material = floorMat;
     this.addStatic(ground);
-    this.scenery = new ValleyScenery(scene, level);
+    this.scenery = new BedroomScenery(scene, level);
 
-    const lane = CreateGround('lane', { width: w, height: zMax - zMin }, scene);
-    lane.position.set(0, 0, (zMin + zMax) / 2);
-    lane.material = mat('laneMat', PALETTE.lane, 0.35);
+    // The lane is a navy play rug, slightly longer than the battlefield.
+    const rugMin = zMin - 1.5;
+    const rugMax = zMax + 1.5;
+    const lane = CreateGround('rug', { width: w, height: rugMax - rugMin }, scene);
+    lane.position.set(0, 0, (rugMin + rugMax) / 2);
+    lane.material = mat('rugMat', PALETTE.lane, 0.35);
     this.addStatic(lane);
 
-    // Cross stripes every few units give the eye a sense of depth and speed.
-    const stripeMat = mat('stripeMat', PALETTE.laneStripe, 0.35);
+    // Woven cross stripes every few units give the eye a sense of depth and speed.
+    const stripeMat = mat('rugStripeMat', PALETTE.laneStripe, 0.35);
     for (let z = 5; z < length - 1; z += 5) {
-      const s = CreateGround('stripe', { width: w, height: 0.25 }, scene);
+      const s = CreateGround('rugStripe', { width: w, height: 0.3 }, scene);
       s.position.set(0, 0.005, z);
       s.material = stripeMat;
       this.addStatic(s);
     }
 
-    const railMat = mat('railMat', PALETTE.rail, 0.3);
+    // Cream rug border down both sides (flat, so it never hides units at the lane edge).
+    const borderMat = mat('rugBorderMat', PALETTE.rail, 0.3);
     for (const side of [-1, 1]) {
-      const rail = CreateBox('rail', { width: 0.18, height: 0.3, depth: zMax - zMin }, scene);
-      rail.position.set(side * (w / 2 + 0.09), 0.15, (zMin + zMax) / 2);
-      rail.material = railMat;
-      this.addStatic(rail);
+      const border = CreateBox('rugBorder', { width: 0.4, height: 0.04, depth: rugMax - rugMin }, scene);
+      border.position.set(side * (w / 2 + 0.2), 0.02, (rugMin + rugMax) / 2);
+      border.material = borderMat;
+      this.addStatic(border);
     }
 
-    this.playerBase = this.buildBase(scene, 'playerBase', PALETTE.player, 0, w + 0.36, zMin, LAYOUT.playerBaseZ, PALETTE.hpPlayer);
-    this.enemyBase = this.buildBase(scene, 'enemyBase', PALETTE.enemy, this.baseX, level.enemyBase.width, length, zMax, PALETTE.hpEnemy);
+    this.playerBase = this.buildBase(scene, 'playerBase', PALETTE.player, PALETTE.playerDark, 0, w + 0.36, zMin, LAYOUT.playerBaseZ, PALETTE.hpPlayer);
+    // On a boss level the enemy base is the Tin General's wind-up tank: a tin hull.
+    const hull = level.boss ? PALETTE.tin : PALETTE.enemy;
+    const trim = level.boss ? PALETTE.tinDark : PALETTE.enemyDark;
+    this.enemyBase = this.buildBase(scene, 'enemyBase', hull, trim, this.baseX, level.enemyBase.width, length, zMax, PALETTE.hpEnemy);
     this.playerBase.node.freezeWorldMatrix();
-    this.king = level.boss ? new GoblinKing(scene) : null;
+    this.boss = level.boss ? new TinGeneral(scene, level.enemyBase.width, LAYOUT.enemyBaseDepth, BASE_HEIGHT) : null;
 
     for (const g of level.gates) this.buildGate(scene, g);
 
@@ -142,6 +154,7 @@ export class LevelVisuals {
     scene: Scene,
     name: string,
     color: Color3,
+    trim: Color3,
     x: number,
     width: number,
     z0: number,
@@ -162,6 +175,21 @@ export class LevelVisuals {
     block.position.set(0, BASE_HEIGHT / 2, (z1 - z0) / 2);
     block.material = material;
     local(block);
+
+    // Toy-fort battlements: a row of blocks along the top's far edge (seen from the
+    // camera), clear of the HP bar. The boss's tank has its turret instead.
+    const trimMat = flatMaterial(scene, `${name}TrimMat`, trim, 0.35);
+    this.materials.push(trimMat);
+    const n = Math.max(3, Math.round(width / 1.2) | 1);
+    const step = width / n;
+    const edgeZ = z1 - z0 - 0.35;
+    const fort = !(name === 'enemyBase' && this.level.boss);
+    for (let i = 0; fort && i < n; i += 2) {
+      const m = CreateBox(`${name}Merlon`, { width: step * 0.9, height: 0.4, depth: 0.6 }, scene);
+      m.position.set(-width / 2 + step * (i + 0.5), BASE_HEIGHT + 0.2, edgeZ);
+      m.material = trimMat;
+      local(m);
+    }
 
     // HP bar floats above the base's lane-facing edge.
     const hpWidth = Math.min(width * 0.8, 6);
@@ -291,14 +319,14 @@ export class LevelVisuals {
     const enemy = z > this.level.lane.length / 2;
     const b = enemy ? this.enemyBase : this.playerBase;
     b.flash = Math.max(b.flash, BASE_FLASH_TIME);
-    if (enemy) this.king?.hit();
+    if (enemy) this.boss?.hit();
     return enemy ? 'enemy' : 'player';
   }
 
-  // Boss phase change: a long white flash on the enemy base and a pop on the king.
+  // Boss phase change: a long white flash on the tank and a pop on the Tin General.
   bossPhase(): void {
     this.enemyBase.flash = PHASE_FLASH_TIME;
-    this.king?.phase();
+    this.boss?.phase();
   }
 
   update(time: number, dt: number, battle: BattleState): void {
@@ -322,7 +350,7 @@ export class LevelVisuals {
     this.enemyBase.node.position.x = this.baseX;
     this.updateBase(this.playerBase, battle.playerBaseHp, battle.playerBaseMaxHp, dt);
     this.updateBase(this.enemyBase, battle.enemyBaseHp, battle.enemyBaseMaxHp, dt);
-    this.king?.update(this.baseX, BASE_HEIGHT, this.level.lane.length + 1.8, time, dt, battle.enemyBaseHp > 0);
+    this.boss?.update(this.baseX, this.level.lane.length + LAYOUT.enemyBaseDepth / 2, time, dt, battle.enemyBaseHp > 0);
   }
 
   private updateBreak(g: GateVisual, dt: number): void {
@@ -356,7 +384,7 @@ export class LevelVisuals {
     // materials (and their dynamic textures) we created.
     this.root.dispose(false, false);
     this.scenery.dispose();
-    this.king?.dispose();
+    this.boss?.dispose();
     for (const m of this.materials) m.dispose(true, true);
     this.materials.length = 0;
     this.gates.length = 0;

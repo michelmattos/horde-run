@@ -3,7 +3,7 @@
 // instead of producing a silently broken battle. Worlds (src/data/worlds) list their
 // level ids in play order and are checked against the shipped levels the same way.
 
-import type { BossDef, DefenderDef, DefenderKind, EnemyWaveDef, GateDef, GateOp, LevelDef, StarGoal, WorldDef } from '../contracts.ts';
+import type { BossDef, DefenderDef, DefenderKind, EnemyWaveDef, GateDef, GateOp, LevelDef, WorldDef } from '../contracts.ts';
 import { DEFENDER_DEFAULTS, LAYOUT } from '../contracts.ts';
 import l01 from '../data/levels/1-01.json' with { type: 'json' };
 import l02 from '../data/levels/1-02.json' with { type: 'json' };
@@ -21,7 +21,6 @@ const MAX_GATES = 32; // the sim tracks gates crossed in a 32-bit mask
 const MAX_DEFENDERS = 16; // the sim's fixed defender capacity
 const GATE_OPS: readonly GateOp[] = ['mul', 'add', 'sub', 'div'];
 const DEFENDER_KINDS: readonly DefenderKind[] = ['tower', 'wall'];
-const GOAL_TYPES: readonly StarGoal['type'][] = ['time', 'baseHp', 'noChampion', 'avoidGate', 'maxMobs'];
 
 type Obj = Record<string, unknown>;
 
@@ -148,32 +147,6 @@ function validateBoss(raw: unknown, source: string): BossDef {
   return { name, phases };
 }
 
-function validateGoal(raw: unknown, i: number, gates: GateDef[], source: string): StarGoal {
-  const p = `goals[${i}].`;
-  const o = obj(raw, source, `goals[${i}]`);
-  const type = o.type as StarGoal['type'];
-  switch (type) {
-    case 'time':
-      return { type, seconds: pos(o, 'seconds', source, p) };
-    case 'baseHp': {
-      const minFraction = pos(o, 'minFraction', source, p);
-      if (minFraction > 1) fail(source, `${p}minFraction`, `must be <= 1 (got ${minFraction})`);
-      return { type, minFraction };
-    }
-    case 'noChampion':
-      return { type };
-    case 'avoidGate': {
-      const gateId = str(o, 'gateId', source, p);
-      if (!gates.some((g) => g.id === gateId)) fail(source, `${p}gateId`, `"${gateId}" is not a gate of this level`);
-      return { type, gateId };
-    }
-    case 'maxMobs':
-      return { type, mobs: posInt(o, 'mobs', source, p) };
-    default:
-      fail(source, `${p}type`, `must be one of ${GOAL_TYPES.join('/')} (got ${JSON.stringify(o.type)})`);
-  }
-}
-
 function validateWave(raw: unknown, i: number, source: string): EnemyWaveDef {
   const p = `enemyWaves[${i}].`;
   const o = obj(raw, source, `enemyWaves[${i}]`);
@@ -261,15 +234,16 @@ export function validateLevel(raw: unknown, source: string): LevelDef {
     level.boss = boss;
   }
 
-  if (o.goals !== undefined) level.goals = arr(o, 'goals', source).map((g, i) => validateGoal(g, i, gates, source));
+  if (o.goals !== undefined) fail(source, 'goals', 'is no longer supported: every level uses the same three stars; set targetTime instead');
+  if (o.targetTime !== undefined) level.targetTime = pos(o, 'targetTime', source, '');
   if (o.intro !== undefined) level.intro = str(o, 'intro', source, '');
   return level;
 }
 
-// Shipped levels must also carry exactly two star goals.
+// Shipped levels must also carry a target time for star 3.
 function shippedLevel(raw: unknown, source: string): LevelDef {
   const level = validateLevel(raw, source);
-  if (level.goals?.length !== 2) fail(source, 'goals', `must have exactly 2 entries on a shipped level (got ${level.goals?.length ?? 0})`);
+  if (level.targetTime === undefined) fail(source, 'targetTime', 'is required on a shipped level');
   return level;
 }
 

@@ -27,3 +27,13 @@ export function mapLayout(count: number, width: number, opts: MapLayoutOptions =
   }
   return out;
 }
+
+// ---------- World title card ----------
+// No story (concept §4.1): a world opens with a brief title card, nothing more.
+export const TITLE_CARD_MS = 2200; // auto-dismiss after this long; a tap dismisses sooner
+
+// 'w1' + 'Bedroom Floor' → 'World 1 · Bedroom Floor'.
+export function worldTitle(world: { id: string; name: string }): string {
+  const m = /(\d+)$/.exec(world.id);
+  return `World ${m ? Number(m[1]) : world.id} · ${world.name}`;
+}

@@ -1,6 +1,6 @@
 {
   "id": "1-10",
-  "name": "Goblin King",
+  "name": "Tin General",
   "lane": {
     "width": 10,
     "length": 62
@@ -11,10 +11,10 @@
     "aimLimit": 4
   },
   "playerBase": {
-    "hp": 250
+    "hp": 150
   },
   "enemyBase": {
-    "hp": 3800,
+    "hp": 2280,
     "x": 0,
     "width": 5
   },
@@ -47,91 +47,91 @@
   "enemyWaves": [
     {
       "at": 8,
-      "count": 200,
+      "count": 230,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 18,
-      "count": 207,
+      "count": 238,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 28,
-      "count": 214,
+      "count": 246,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 38,
-      "count": 221,
+      "count": 254,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 48,
-      "count": 228,
+      "count": 262,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 58,
-      "count": 235,
+      "count": 270,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 68,
-      "count": 242,
+      "count": 278,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 78,
-      "count": 249,
+      "count": 286,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 88,
-      "count": 256,
+      "count": 294,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 98,
-      "count": 263,
+      "count": 302,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 108,
-      "count": 270,
+      "count": 311,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 118,
-      "count": 277,
+      "count": 319,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 128,
-      "count": 284,
+      "count": 327,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 138,
-      "count": 291,
+      "count": 335,
       "x": -1.5,
       "spread": 3.5
     }
   ],
   "enemySpawnRate": {
-    "perSecond": 17,
+    "perSecond": 22.1,
     "startAt": 2
   },
   "champion": {
@@ -140,7 +140,7 @@
     "damage": 110
   },
   "boss": {
-    "name": "Goblin King",
+    "name": "Tin General",
     "phases": [
       {
         "belowHp": 1,
@@ -156,7 +156,7 @@
           "period": 7
         },
         "summon": 80,
-        "trickle": 20
+        "trickle": 26.0
       },
       {
         "belowHp": 0.25,
@@ -165,18 +165,10 @@
           "period": 5
         },
         "summon": 120,
-        "trickle": 26
+        "trickle": 33.8
       }
     ]
   },
-  "goals": [
-    {
-      "type": "time",
-      "seconds": 145
-    },
-    {
-      "type": "noChampion"
-    }
-  ],
-  "intro": "The Goblin King rides his base across the lane. Lead your shots!"
+  "targetTime": 130,
+  "intro": "The Tin General rides a wind-up tank across the lane. Lead your shots!"
 }

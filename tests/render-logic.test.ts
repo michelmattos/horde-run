@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ResolutionScaler } from '../src/render/resolution.ts';
-import { FAR_NDC_Y, NEAR_NDC_Y, computeFraming, screenRows } from '../src/render/framing.ts';
+import { FAR_NDC_Y, NEAR_NDC_Y, ZOOM_MAX, computeFraming, crowdZoomTarget, easeZoom, screenRows, zoomedFov } from '../src/render/framing.ts';
 
 function feed(s: ResolutionScaler, dt: number, seconds: number): void {
   for (let t = 0; t < seconds; t += dt) s.sample(dt);
@@ -62,4 +62,26 @@ test('framing honours the requested rows', () => {
   const moved = computeFraming({ ...input, farNdcY: 0.66, nearNdcY: -0.45 });
   assert.ok(Math.abs(project(moved, 59) - 0.66) < 1e-3, `far row ${project(moved, 59)}`);
   assert.ok(Math.abs(project(moved, 1.5) + 0.45) < 1e-3, `near row ${project(moved, 1.5)}`);
+});
+
+test('crowd zoom-out: grows smoothly with the crowd, capped, never overshoots', () => {
+  assert.equal(crowdZoomTarget(0), 0);
+  assert.equal(crowdZoomTarget(5000), ZOOM_MAX);
+  let prev = -1;
+  for (let n = 0; n <= 1200; n += 50) {
+    const z = crowdZoomTarget(n);
+    assert.ok(z >= prev && z <= ZOOM_MAX, `monotonic at ${n}`);
+    prev = z;
+  }
+  // Eases toward the target at 60 fps without stepping past it.
+  let zoom = 0;
+  let last = 0;
+  for (let i = 0; i < 600; i++) {
+    zoom = easeZoom(zoom, 1000, 1 / 60);
+    assert.ok(zoom >= last && zoom <= ZOOM_MAX + 1e-12);
+    assert.ok(zoom - last < 0.01, 'no visible step in one frame');
+    last = zoom;
+  }
+  assert.ok(ZOOM_MAX - zoom < 0.001, 'settles at the full zoom-out');
+  assert.ok(zoomedFov(1, 0.15) > 1 && zoomedFov(1, 0) === 1);
 });

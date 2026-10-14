@@ -26,7 +26,7 @@ function memStore(init: Record<string, string> = {}): KeyValueStore & { data: Re
   };
 }
 
-const world: WorldDef = { id: 'w1', name: 'Green Valley', faction: 'Goblins', levels: ['1-1', '1-2', '1-3'] };
+const world: WorldDef = { id: 'w1', name: 'Bedroom Floor', faction: 'Tan Army', levels: ['1-1', '1-2', '1-3'] };
 const win = (stars: [boolean, boolean, boolean], time: number) => ({ victory: true, stars, time });
 
 test('load/write roundtrip', () => {

@@ -1,8 +1,10 @@
-// Enemy defenders (arrow towers and walls) drawn as thin instances: one lit cylinder
-// batch, one lit box batch and one unlit box batch for the HP bars, so up to 16
-// defenders cost three draw calls. load() rebuilds the slot list per level; update()
-// rewrites the instance buffers from the live DefenderView list each frame.
-// Hits flash the defender towards white and pop its scale; the camera never moves.
+// Enemy defenders built from toy blocks in the tan army's colours, drawn as thin
+// instances: one lit box batch and one unlit box batch for the HP bars, so up to 16
+// defenders cost two draw calls. A tower is two stacked blocks with a tan soldier on
+// top firing foam darts; a wall is a row of blocks with a second, staggered row on top.
+// load() rebuilds the slot list per level; update() rewrites the instance buffers from
+// the live DefenderView list each frame. Hits flash the defender towards white and pop
+// its scale; the camera never moves.
 import type { Scene } from '@babylonjs/core/scene';
 import type { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import type { DefenderDef, DefenderKind, DefenderView } from '../contracts.ts';
@@ -14,10 +16,9 @@ import { hpFraction, popScale, showHpBar } from './fxLogic.ts';
 const MAX_DEFENDERS = 16;
 const FLASH_TIME = 0.12;
 const POP_AMOUNT = 0.14;
-const TOWER_BODY_H = 1.8;
-const TOWER_CAP_H = 0.35;
-const WALL_H = 1.2;
-const MERLON_H = 0.35;
+const TOWER_BLOCK = 0.72; // tower block edge as a fraction of its footprint width
+const SOLDIER_H = 0.62;
+const WALL_H = 1.3; // two rows of blocks
 const HP_BAR_H = 0.22;
 const HP_BAR_GAP = 0.45;
 
@@ -34,7 +35,6 @@ interface Slot {
 }
 
 export class DefenderVisuals {
-  private readonly cylinders: PropBatch;
   private readonly boxes: PropBatch;
   private readonly bars: PropBatch;
   private readonly materials: StandardMaterial[];
@@ -45,8 +45,7 @@ export class DefenderVisuals {
     const lit = instanceLitMaterial(scene, 'defenderLit');
     const unlit = instanceUnlitMaterial(scene, 'defenderBars');
     this.materials = [lit, unlit];
-    this.cylinders = new PropBatch(unitMesh(scene, 'defenderCyl', 'cylinder'), lit, MAX_DEFENDERS * 2);
-    this.boxes = new PropBatch(unitMesh(scene, 'defenderBox', 'box'), lit, MAX_DEFENDERS * 10);
+    this.boxes = new PropBatch(unitMesh(scene, 'defenderBox', 'box'), lit, MAX_DEFENDERS * 16);
     this.bars = new PropBatch(unitMesh(scene, 'defenderBar', 'box'), unlit, MAX_DEFENDERS * 2);
   }
 
@@ -106,7 +105,6 @@ export class DefenderVisuals {
   }
 
   private draw(): void {
-    this.cylinders.begin();
     this.boxes.begin();
     this.bars.begin();
     for (const s of this.slots) {
@@ -117,52 +115,49 @@ export class DefenderVisuals {
       const top = s.kind === 'tower' ? this.drawTower(s, sc, glow) : this.drawWall(s, sc, glow);
       if (showHpBar(s.hp, s.maxHp)) this.drawBar(s, top + HP_BAR_GAP);
     }
-    this.cylinders.commit();
     this.boxes.commit();
     this.bars.commit();
   }
 
-  // Red cylinder, darker cap with four merlons, and a small archer between them. Returns the top y.
+  // Two stacked toy blocks (light and dark tan, the top one a little twisted) with a tan
+  // soldier standing on top. Returns the top y.
   private drawTower(s: Slot, sc: number, glow: number): number {
-    const w = s.width * sc;
     const e = PALETTE.enemy;
     const d = PALETTE.enemyDark;
-    const bodyH = TOWER_BODY_H * sc;
-    const capH = TOWER_CAP_H * sc;
-    this.cylinders.write(s.x, bodyH / 2, s.z, w * 0.75, bodyH, w * 0.75, 0, e.r * glow, e.g * glow, e.b * glow);
-    this.cylinders.write(s.x, bodyH + capH / 2, s.z, w, capH, w, 0, d.r * glow, d.g * glow, d.b * glow);
-    const my = bodyH + capH + (MERLON_H * sc) / 2;
-    const r = w * 0.36;
-    const m = w * 0.2;
-    const mh = MERLON_H * sc;
-    this.boxes.write(s.x - r, my, s.z, m, mh, m, 0, d.r * glow, d.g * glow, d.b * glow);
-    this.boxes.write(s.x + r, my, s.z, m, mh, m, 0, d.r * glow, d.g * glow, d.b * glow);
-    this.boxes.write(s.x, my, s.z - r, m, mh, m, 0, d.r * glow, d.g * glow, d.b * glow);
-    this.boxes.write(s.x, my, s.z + r, m, mh, m, 0, d.r * glow, d.g * glow, d.b * glow);
-    // Archer nub: a goblin head peeking over the battlement.
-    const ah = 0.5 * sc;
-    this.boxes.write(s.x, bodyH + capH + ah / 2, s.z, 0.32 * sc, ah, 0.32 * sc, 0, e.r * 1.15 * glow, e.g * 1.3 * glow, e.b * glow);
-    return bodyH + capH + ah;
+    const b = s.width * TOWER_BLOCK * sc;
+    this.boxes.write(s.x, b / 2, s.z, b, b, b, 0, d.r * glow, d.g * glow, d.b * glow);
+    this.boxes.write(s.x, b * 1.5, s.z, b * 0.92, b, b * 0.92, 0.3, e.r * glow, e.g * glow, e.b * glow);
+    // The rifleman: legs/torso and a head, in the army's tan.
+    const h = SOLDIER_H * sc;
+    const top = b * 2;
+    this.boxes.write(s.x, top + h * 0.35, s.z, 0.34 * sc, h * 0.7, 0.24 * sc, 0, e.r * 0.92 * glow, e.g * 0.92 * glow, e.b * 0.92 * glow);
+    this.boxes.write(s.x, top + h * 0.85, s.z, 0.24 * sc, h * 0.3, 0.24 * sc, 0, e.r * glow, e.g * glow, e.b * glow);
+    return top + h;
   }
 
-  // Red box with crenellation blocks along the top. Returns the top y.
+  // A toy-block wall: a bottom row of blocks in alternating tans, a staggered top row. Returns the top y.
   private drawWall(s: Slot, sc: number, glow: number): number {
     const e = PALETTE.enemy;
     const d = PALETTE.enemyDark;
     const w = s.width * sc;
-    const h = WALL_H * sc;
-    this.boxes.write(s.x, h / 2, s.z, w, h, s.depth * sc, 0, e.r * 0.85 * glow, e.g * 0.85 * glow, e.b * 0.85 * glow);
-    const n = Math.max(2, Math.min(7, Math.round(s.width / 0.8)));
+    const rowH = (WALL_H / 2) * sc;
+    const depth = s.depth * sc;
+    const n = Math.max(2, Math.min(7, Math.round(s.width / 0.9)));
     const step = w / n;
-    const mh = MERLON_H * sc;
     for (let i = 0; i < n; i++) {
+      const c = i % 2 === 0 ? e : d;
       const x = s.x - w / 2 + step * (i + 0.5);
-      this.boxes.write(x, h + mh / 2, s.z, step * 0.55, mh, s.depth * sc * 0.9, 0, d.r * glow, d.g * glow, d.b * glow);
+      this.boxes.write(x, rowH / 2, s.z, step * 0.96, rowH, depth, 0, c.r * glow, c.g * glow, c.b * glow);
     }
-    return h + mh;
+    for (let i = 0; i < n - 1; i++) {
+      const c = i % 2 === 0 ? d : e;
+      const x = s.x - w / 2 + step * (i + 1);
+      this.boxes.write(x, rowH * 1.5, s.z, step * 0.96, rowH, depth * 0.9, 0, c.r * glow, c.g * glow, c.b * glow);
+    }
+    return rowH * 2;
   }
 
-  // Same style as the base bars: dark back, enemy-red fill growing from the left edge.
+  // Same style as the base bars: dark back, enemy-tan fill growing from the left edge.
   private drawBar(s: Slot, y: number): void {
     const frac = hpFraction(s.hp, s.maxHp);
     const bw = Math.max(1.6, Math.min(s.width, 3));
@@ -175,7 +170,6 @@ export class DefenderVisuals {
   }
 
   dispose(): void {
-    this.cylinders.dispose();
     this.boxes.dispose();
     this.bars.dispose();
     for (const m of this.materials) m.dispose();
