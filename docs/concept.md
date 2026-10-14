@@ -164,7 +164,7 @@ Touch is the primary input. Mouse and keyboard are mapped onto the same actions 
 - **Portrait first**: levels are designed for a tall phone screen. Wider screens show more scenery at the sides, never more lane.
 - **Safe areas**: the HUD stays clear of notches and the home indicator (`env(safe-area-inset-*)`), and the layout uses `100dvh` so the browser's collapsing toolbar doesn't crop the game.
 - **Readable at arm's length**: big gate numbers and high-contrast team colours, legible on a 6-inch screen.
-- Fixed, tilted top-down camera looking up the lane, with light screen shake and zoom-out as the crowd grows.
+- Fixed, tilted top-down camera looking up the lane, with a gentle zoom-out as the crowd grows. **No screen shake** (tried in the prototype; it felt bad on the phone).
 
 ### Phone performance
 

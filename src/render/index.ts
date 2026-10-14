@@ -42,9 +42,6 @@ export interface GameRenderer {
   dispose(): void;
 }
 
-const SHAKE_BASE_HIT = 0.12;
-const SHAKE_CHAMPION = 0.25;
-
 let activeScaler: ResolutionScaler | null = null;
 
 // Current render pixel ratio (render pixels per CSS pixel) of the live renderer; for debugging.
@@ -112,10 +109,7 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
           effects.dust(e.x, e.z);
           break;
         case 'baseHit':
-          if (level.flashBaseAt(e.z) === 'enemy') rig.addShake(SHAKE_BASE_HIT);
-          break;
-        case 'championLaunched':
-          rig.addShake(SHAKE_CHAMPION);
+          level.flashBaseAt(e.z);
           break;
         default:
           break;
