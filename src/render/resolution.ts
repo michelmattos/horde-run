@@ -28,6 +28,9 @@ const IGNORE_DT = 0.25; // tab switches and hitches are not a steady frame time
 export class ResolutionScaler {
   readonly cap: number;
   ratio: number;
+  // Lowest ratio a step down may reach right now (the renderer raises it while cheaper
+  // savings, such as a lower shadow/post tier, are still available).
+  floor = MIN_RATIO;
   private avgMs = 16.7;
   private slowFor = 0;
   private fastFor = 0;
@@ -35,9 +38,13 @@ export class ResolutionScaler {
   private sinceUp = Infinity; // seconds since the last step up
   private ignoreFor = 0;
 
-  constructor(devicePixelRatio: number) {
+  // `start`: a ratio remembered from an earlier session (clamped to [MIN_RATIO, cap]).
+  constructor(devicePixelRatio: number, start?: number) {
     this.cap = Math.min(Math.max(devicePixelRatio, MIN_RATIO), MAX_RATIO);
-    this.ratio = this.cap;
+    this.ratio =
+      start !== undefined && start > 0
+        ? Math.min(this.cap, Math.max(MIN_RATIO, Math.round(start / STEP) * STEP))
+        : this.cap;
   }
 
   // Ignore frame times for `seconds` (call on level load) and forget the step-up backoff.
@@ -67,8 +74,9 @@ export class ResolutionScaler {
       this.slowFor = 0;
       this.fastFor = 0;
     }
-    if (this.slowFor >= SLOW_HOLD && this.ratio > MIN_RATIO) {
-      this.ratio = Math.max(MIN_RATIO, this.ratio - STEP);
+    const floor = Math.max(MIN_RATIO, Math.min(this.floor, this.cap));
+    if (this.slowFor >= SLOW_HOLD && this.ratio > floor) {
+      this.ratio = Math.max(floor, this.ratio - STEP);
       if (this.sinceUp < FAILED_UP_WINDOW) this.upHold = Math.min(UP_HOLD_MAX, this.upHold * 2);
       this.sinceUp = Infinity;
       this.settle();

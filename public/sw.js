@@ -1,10 +1,23 @@
 // Offline service worker. Paths are relative to the SW scope so it works under
 // /horde-run/ on GitHub Pages and / in preview. Bump VERSION to drop old caches.
-const VERSION = 'v2';
+const VERSION = 'v3';
 const CACHE = `horde-run-${VERSION}`;
-// The army-men figures are fetched by path (not hashed), so they are precached here and
-// refreshed by bumping VERSION whenever public/models/army-men.glb changes.
-const SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg', './models/army-men.glb'];
+// Assets fetched by path (not hashed by the bundler) are precached here and refreshed by
+// bumping VERSION whenever one of them changes: the look's HDRI, the oak floor textures,
+// the champion's baked AO and the UI font.
+const SHELL = [
+  './',
+  './index.html',
+  './manifest.webmanifest',
+  './icon.svg',
+  './look/bedroom-env.hdr',
+  './models/environment-oak-albedo.jpg',
+  './models/environment-oak-normal.jpg',
+  './models/environment-oak-orm.jpg',
+  './models/champion-ao.bin',
+  './ui/fredoka-600.woff2',
+  './ui/fredoka-700.woff2',
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

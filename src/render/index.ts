@@ -1,19 +1,27 @@
 // Render entry point: owns the Babylon scene and draws a battle each frame from the
 // sim view and battle state. Integration calls createRenderer once, loadLevel per
 // battle (retry / next) and frame() every rendered frame.
+//
+// The picture comes from the shared look (look/index.ts: warm window sun with a fitted
+// PCF shadow map, cool sky / warm floor-bounce fill, HDRI reflections, ACES grade, MSAA or
+// FXAA, mild bloom and a warm vignette) and the procedural toy models in models/. Two
+// governors keep a phone at 60 fps: the look's quality tier (shadow map size, crowd
+// shadows vs blob shadows, post-processing) and the render resolution. They take turns:
+// whenever one steps, the other ignores frame times for a moment, so a slow stretch
+// costs one notch, not two.
 import type { Engine } from '@babylonjs/core/Engines/engine';
 import { Scene } from '@babylonjs/core/scene';
-import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight';
-import { Vector3 } from '@babylonjs/core/Maths/math.vector';
-import { Color3 } from '@babylonjs/core/Maths/math.color';
 import type { BattleState, DefenderView, LevelDef, SimEvent, SimView } from '../contracts.ts';
-import { DEFENDER_DEFAULTS } from '../contracts.ts';
-import { PALETTE } from './palette.ts';
+import { DEFENDER_DEFAULTS, LAYOUT } from '../contracts.ts';
+import { createLook, readSavedRender, writeSavedRender } from './look/index.ts';
+import type { Look } from './look/index.ts';
 import { LevelVisuals } from './level.ts';
 import { CrowdRenderer } from './crowd.ts';
 import { Effects } from './effects.ts';
 import { DefenderVisuals } from './defenders.ts';
 import { Cannon } from './cannon.ts';
+import { HpBars } from './hpBars.ts';
+import { createPropKit } from './models/props.ts';
 import { CameraRig } from './cameraRig.ts';
 import { ResolutionScaler } from './resolution.ts';
 import { screenRows } from './framing.ts';
@@ -34,18 +42,30 @@ export interface RenderFrame {
 export interface HudReserve {
   top: number;
   bottom: number;
+  topBar?: number; // bottom of the top HUD's first row; tall far-end models may rise to it
 }
 
 export interface RendererOptions {
   hudReserve?: () => HudReserve; // read on every reframe, so inset changes are picked up on resize
 }
 
+export interface RenderStats {
+  drawCalls: number; // every pass of the last frame: shadow map, main, post
+  activeMeshes: number;
+  activeIndices: number; // indices drawn by the main pass (triangles x 3, thin instances included)
+  totalVertices: number; // vertices held by all meshes in the scene
+  quality: string; // look tier: high / medium / low
+  pixelRatio: number; // render pixels per CSS pixel
+}
+
 export interface GameRenderer {
-  readonly scene: Scene; // the HUD (Babylon GUI) attaches to this scene
+  readonly scene: Scene;
   loadLevel(level: LevelDef): void;
   frame(f: RenderFrame): void;
   dispose(): void;
   readonly cameraZoom: number; // current crowd zoom-out (0 = framed view, up to ZOOM_MAX); for debugging
+  stats(): RenderStats; // last rendered frame's cost; for debugging and the smoke test
+  contextRestored(): void; // the WebGL context came back: resize, refit, re-warm before drawing
 }
 
 let activeScaler: ResolutionScaler | null = null;
@@ -55,30 +75,51 @@ export function getRenderPixelRatio(): number {
   return activeScaler ? activeScaler.ratio : 1;
 }
 
+// Lowest render pixel ratio allowed on each quality tier (see frame()).
+const RATIO_FLOOR = { high: 1.25, medium: 1, low: 0.75 } as const;
+
+// Shadow frustum margin beside the rug: the props the portrait camera can see there.
+const SHADOW_SIDE_MARGIN = 7;
+
 export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: RendererOptions = {}): GameRenderer {
   const scene = new Scene(engine);
-  scene.clearColor = PALETTE.clear.clone();
-  scene.autoClear = true; // scenery covers most of the view, but a clear is cheap and avoids smearing past the far plane
+  scene.autoClear = true; // the room covers most of the view, but a clear is cheap and avoids smearing past the far plane
   scene.autoClearDepthAndStencil = true;
   scene.skipPointerMovePicking = true;
-
-  const light = new HemisphericLight('sky', new Vector3(0.2, 1, -0.3), scene);
-  light.intensity = 0.95;
-  light.groundColor = new Color3(0.35, 0.38, 0.45);
-  light.specular = Color3.Black();
+  scene.skipPointerDownPicking = true;
+  scene.skipPointerUpPicking = true;
 
   const rig = new CameraRig(scene);
   scene.activeCamera = rig.camera;
-  const crowd = new CrowdRenderer(scene);
-  const effects = new Effects(scene);
-  const defenders = new DefenderVisuals(scene);
-  const cannon = new Cannon(scene);
+  const look: Look = createLook(scene, { camera: rig.camera, remember: true });
+  const crowd = new CrowdRenderer(scene, look);
+  const effects = new Effects(scene, look);
+  const defenders = new DefenderVisuals(scene, look);
+  const cannon = new Cannon(scene, look);
+  const props = createPropKit(scene, look);
+  const bars = new HpBars(scene);
+  defenders.onBlocksFell = (points) => {
+    for (const p of points) effects.dust(p.x, p.z);
+  };
 
-  const scaler = new ResolutionScaler(window.devicePixelRatio || 1);
+  // Start from the tier and ratio the last session settled on (a URL-forced tier starts
+  // at the device ratio and remembers nothing).
+  const scaler = new ResolutionScaler(window.devicePixelRatio || 1, look.locked ? undefined : readSavedRender().ratio);
+  const rememberRatio = (): void => {
+    if (!look.locked) writeSavedRender({ ratio: scaler.ratio });
+  };
   activeScaler = scaler;
   engine.setHardwareScalingLevel(scaler.scalingLevel);
 
   let level: LevelVisuals | null = null;
+  const lastStats: RenderStats = {
+    drawCalls: 0,
+    activeMeshes: 0,
+    activeIndices: 0,
+    totalVertices: 0,
+    quality: look.quality,
+    pixelRatio: scaler.ratio,
+  };
 
   const reframe = (): void => {
     if (!level) return;
@@ -86,8 +127,13 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
     const aspect = h > 0 ? engine.getRenderWidth() / h : 0.46;
     const reserve = opts.hudReserve?.();
     const rows = reserve ? screenRows(canvas.clientHeight, reserve.top, reserve.bottom) : undefined;
-    rig.reframe(level.level, aspect, rows);
+    // The enemy flag tip / boss plume ends at least 16 px under the HUD's top bar row
+    // (the level-name row under it fades out early; its badges sit at the right edge).
+    const ch = canvas.clientHeight;
+    const limit = reserve && rows && ch > 0 ? 1 - (2 * ((reserve.topBar ?? reserve.top) + 16)) / ch : undefined;
+    rig.reframe(level.level, aspect, rows, level.farTop(), limit);
     level.setLabelTilt(rig.pitch);
+    bars.setTilt(rig.pitch);
   };
 
   const onResize = (): void => {
@@ -120,13 +166,17 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
           break;
         case 'baseHit':
           level.flashBaseAt(e.z);
+          effects.baseHit(e.x, e.z, e.team);
           break;
         case 'baseMiss':
           effects.missPuff(e.x, e.z);
           break;
-        case 'defenderShot':
-          effects.dart(e.x, e.z, e.tx, e.tz);
+        case 'defenderShot': {
+          const from = defenders.shot(e.id, e.tx, e.tz);
+          if (from) effects.dart(from.x, from.z, e.tx, e.tz, from.y);
+          else effects.dart(e.x, e.z, e.tx, e.tz);
           break;
+        }
         case 'defenderHit':
           defenders.hit(e.id);
           break;
@@ -152,12 +202,25 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
 
     loadLevel(def: LevelDef): void {
       level?.dispose();
-      level = new LevelVisuals(scene, def);
+      level = new LevelVisuals(scene, look, def, props);
       defenders.load(def.defenders);
       cannon.setFireRate(def.cannon.fireRate);
       effects.clear();
       rig.resetZoom();
-      scaler.warmUp(); // shader compiles and uploads after a load are not a steady frame time
+      // Sun shadows cover the lane, both bases, the flag and the props beside the rug.
+      const half = def.lane.width / 2 + SHADOW_SIDE_MARGIN;
+      look.fitShadows({
+        minX: -half,
+        maxX: half,
+        minZ: LAYOUT.playerBaseZ - LAYOUT.playerBaseDepth - 1,
+        maxZ: def.lane.length + LAYOUT.enemyBaseDepth * (def.boss ? 1.7 : 1.3) + 1.5,
+        maxY: def.boss ? 7 : 5.2,
+      });
+      // A tier drop mid-battle left its shader-changing parts for now, behind the load.
+      look.applyPending();
+      // Shader compiles and uploads after a load are not a steady frame time.
+      scaler.warmUp();
+      look.warmUp();
       reframe();
     },
 
@@ -169,12 +232,46 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
       cannon.update(f.cannonX, f.time, f.battle.outcome === 'playing');
       crowd.update(f.view, f.time);
       effects.update(dt);
+      bars.begin();
+      level?.drawBars(bars);
+      defenders.drawBars(bars);
+      bars.commit();
       rig.update(dt, f.battle.playerUnits); // gentle crowd zoom-out; the camera never shakes
-      if (scaler.sample(f.dt)) {
+      // Degrade in alternating notches: ratio 1.5 -> 1.25, then the high -> medium tier,
+      // ratio -> 1.0, medium -> low, ratio -> 0.75. The resolution may only drop to the
+      // floor of the current tier; at the floor the tier governor takes the next notch.
+      // Each step quiets the other governor for a moment.
+      scaler.floor = RATIO_FLOOR[look.quality];
+      const atFloor = scaler.ratio <= Math.min(scaler.floor, scaler.cap) + 1e-6;
+      if (atFloor && look.sample(f.dt)) scaler.warmUp(1);
+      else if (scaler.sample(f.dt)) {
         engine.setHardwareScalingLevel(scaler.scalingLevel);
+        look.warmUp(1);
+        rememberRatio();
         reframe();
       }
+      const calls0 = engine._drawCalls.current; // the counter only ever accumulates
       scene.render();
+      lastStats.drawCalls = engine._drawCalls.current - calls0;
+      lastStats.activeMeshes = scene.getActiveMeshes().length;
+      lastStats.activeIndices = scene.getActiveIndices();
+      lastStats.totalVertices = scene.getTotalVertices();
+      lastStats.quality = look.quality;
+      lastStats.pixelRatio = scaler.ratio;
+    },
+
+    stats(): RenderStats {
+      return { ...lastStats };
+    },
+
+    contextRestored(): void {
+      // Babylon has rebuilt the GPU resources by now; shaders recompile on the next
+      // frames, so give both governors a warm-up and redraw the shadow map.
+      engine.setHardwareScalingLevel(scaler.scalingLevel);
+      engine.resize();
+      look.contextRestored();
+      scaler.warmUp();
+      reframe();
     },
 
     dispose(): void {
@@ -184,8 +281,15 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
       observer?.disconnect();
       level?.dispose();
       level = null;
+      crowd.dispose();
+      effects.dispose();
+      defenders.dispose();
+      cannon.dispose();
+      props.dispose();
+      bars.dispose();
+      look.dispose();
       if (activeScaler === scaler) activeScaler = null;
-      scene.dispose(); // takes crowd, effects, defenders, cannon, light and camera with it
+      scene.dispose();
     },
   };
 }

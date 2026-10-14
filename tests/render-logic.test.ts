@@ -48,7 +48,7 @@ test('resolution backs off after a step up that failed', () => {
 });
 
 test('screen rows keep defaults on a plain screen and move inward for the HUD and insets', () => {
-  assert.deepEqual(screenRows(844, 70, 150), { near: NEAR_NDC_Y, far: FAR_NDC_Y });
+  assert.deepEqual(screenRows(844, 70, 120), { near: NEAR_NDC_Y, far: FAR_NDC_Y });
   const notched = screenRows(844, 47 + 70, 34 + 190);
   assert.ok(notched.far < FAR_NDC_Y && notched.near > NEAR_NDC_Y);
   assert.ok(Math.abs(((1 - notched.far) / 2) * 844 - 117) < 1e-6, 'far row sits at the HUD bottom');

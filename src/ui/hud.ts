@@ -1,25 +1,31 @@
-// In-battle HUD drawn with Babylon GUI inside the canvas.
+// In-battle HUD in the toy-box sticker style (docs/art-direction.md section 7).
 //
-// Sizes are CSS px: the root container is scaled by (render px / CSS px), so the
-// HUD stays the same physical size whatever hardware scaling the renderer picks.
-// Button hits are tested on DOM pointerdown against the same CSS-px rects (and
-// registered as blocked regions with the input), so a second finger can press
-// CHAMPION while the first keeps firing, independent of scene picking.
-// Feedback is colour, alpha and scale pops on HUD widgets only: nothing here
-// moves the camera or the screen.
+// It is DOM over the canvas (not Babylon GUI) so it gets the self-hosted rounded font,
+// real outlines and gradients, and costs no draw calls. The layer is
+// pointer-events:none, so drags reach the canvas; only the pause and CHAMP buttons
+// take touches. Both are also registered as blocked regions with the input, and the
+// CHAMP hit circle extends a little past its ring (as before), so a second finger can
+// press it while the first keeps aiming. Per frame, update() only writes what
+// changed; HP fills and the charge ring move with transforms / dash offsets.
+// Feedback is colour and small scale pops on HUD widgets only: nothing here moves the
+// camera or the screen. Sizes live in HUD_METRICS (uiLogic.ts), which hudReserve()
+// also uses, so the camera framing keeps exactly the covered strips clear.
 import type { Scene } from '@babylonjs/core/scene';
-import type { Observer } from '@babylonjs/core/Misc/observable';
-import type { AbstractEngine } from '@babylonjs/core/Engines/abstractEngine';
-import { AdvancedDynamicTexture } from '@babylonjs/gui/2D/advancedDynamicTexture';
-import { Control } from '@babylonjs/gui/2D/controls/control';
-import { Rectangle } from '@babylonjs/gui/2D/controls/rectangle';
-import { Ellipse } from '@babylonjs/gui/2D/controls/ellipse';
-import { TextBlock } from '@babylonjs/gui/2D/controls/textBlock';
 import type { BattleState } from '../contracts.ts';
 import type { Input } from '../core/input.ts';
 import { readSafeAreaInsets } from './safeArea.ts';
-import { hudStarStyle, mixHex, pipLit, popScale } from './uiLogic.ts';
+import {
+  HUD_METRICS as M,
+  formatCount,
+  hpFraction,
+  hudReserveFor,
+  hudStarLook,
+  pipLit,
+  ringDashOffset,
+} from './uiLogic.ts';
 import type { GoalState } from './uiLogic.ts';
+import { UI, WOOD_BG, injectUiTheme, outlineShadow } from './theme.ts';
+import { championIcon, crossIcon, fortIcon, pauseIcon, soldierIcon, starIcon, tickIcon } from './icons.ts';
 
 // Optional per-level extras. goals: the three stars (win, base above half, target time).
 export interface HudInfo {
@@ -34,409 +40,458 @@ export interface Hud {
   dispose(): void;
 }
 
-// Team colours match the toy armies on the field: green player, tan enemy.
-const PLAYER = '#43b14b';
-const ENEMY = '#e0b76f';
-const GOLD = '#ffd34d';
-const TRACK = 'rgba(0,0,0,0.45)';
-const EDGE = 16;
-const CHAMP_D = 76; // champion button diameter (>= 64 CSS px)
-const PAUSE_S = 48;
-const HIT_SLOP = 8;
-const FONT = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
-
-const BAR_H = 20; // enemy bar, tall enough to carry the boss name
-const ROW2_Y = BAR_H + 6; // level name / stars / enemy count row, below the bar
-const ROW2_H = 22;
-const STAR_W = 18;
 const MAX_PIPS = 6;
-const PIP_D = 8;
-const PHASE_PULSE_MS = 450;
-const STAR_POP_MS = 350;
-// Top margin + the taller of (pause button, enemy bar + level row), below the top inset.
-const TOP_ROWS = 12 + Math.max(PAUSE_S, ROW2_Y + ROW2_H);
-const CLEAR = 14; // gap kept between the HUD and the battlefield framing
+const HIT_SLOP = 8;
+const RING_STROKE = 8;
+const RING_R = (M.champRing - RING_STROKE) / 2;
+const RING_C = 2 * Math.PI * RING_R;
+const PRESS_MS = 120;
+const LEVEL_NAME_SECONDS = 3; // battle seconds the level name stays under the enemy bar
 
 // CSS px of the canvas the HUD covers at the top and bottom (safe-area insets included),
-// for the camera framing. The bottom figure keeps the cannon row above the champion button.
-export function hudReserve(): { top: number; bottom: number } {
-  const ins = readSafeAreaInsets();
-  return { top: ins.top + TOP_ROWS + CLEAR, bottom: ins.bottom + EDGE + CHAMP_D + CLEAR + 36 };
+// for the camera framing.
+export function hudReserve(): { top: number; bottom: number; topBar: number } {
+  return hudReserveFor(readSafeAreaInsets());
 }
 
-function place(c: Control, left: number, top: number, w: number, h: number): void {
-  c.leftInPixels = left;
-  c.topInPixels = top;
-  c.widthInPixels = w;
-  c.heightInPixels = h;
+const SAT = 'env(safe-area-inset-top,0px)';
+const SAB = 'env(safe-area-inset-bottom,0px)';
+const SAL = 'env(safe-area-inset-left,0px)';
+const SAR = 'env(safe-area-inset-right,0px)';
+
+const CSS = `
+.tb-hud{position:absolute;inset:0;z-index:4;pointer-events:none;overflow:hidden;font-family:var(--tb-font);
+  font-variant-numeric:tabular-nums;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.tb-hud[hidden]{display:none}
+.tb-hud button{pointer-events:auto;touch-action:none;-webkit-tap-highlight-color:transparent;font:inherit;padding:0;margin:0;cursor:pointer}
+
+/* ----- Top ----- */
+.tb-top{position:absolute;top:calc(${SAT} + ${M.topPad}px);left:calc(${SAL} + ${M.edge}px);right:calc(${SAR} + ${M.edge}px);
+  height:${Math.max(M.pause, M.barH + M.rowGap + M.row2H)}px;display:flex;gap:10px}
+.tb-pause{flex:none;position:relative;width:${M.pause}px;height:${M.pause}px;border-radius:50%;border:3.5px solid ${UI.ink};
+  background:radial-gradient(90% 70% at 35% 22%,rgba(255,230,190,.45),transparent 55%),${WOOD_BG};
+  box-shadow:inset 0 -3px 0 rgba(0,0,0,.25),0 4px 0 #26160b,0 4px 0 3px ${UI.ink},0 8px 10px rgba(20,10,2,.3);
+  display:flex;align-items:center;justify-content:center;transition:transform 90ms cubic-bezier(.3,1.6,.6,1)}
+.tb-pause.tb-down{transform:translateY(4px)}
+.tb-pause svg{width:30px;height:30px}
+.tb-main{flex:1;min-width:0;position:relative}
+.tb-ebar{position:absolute;left:0;right:0;top:0;height:${M.barH}px}
+.tb-frame{position:absolute;inset:0 0 0 18px;border-radius:${M.barH / 2}px;border:3px solid ${UI.ink};padding:4px;box-sizing:border-box;
+  background:${WOOD_BG};box-shadow:inset 0 2px 0 rgba(255,225,180,.3),0 3px 0 ${UI.ink},0 6px 8px rgba(20,10,2,.3)}
+.tb-track{position:relative;height:100%;border-radius:999px;overflow:hidden;background:linear-gradient(180deg,#140b05,#2a1a0e 45%,#382414);
+  box-shadow:inset 0 2px 3px rgba(0,0,0,.7),0 0 0 2px #1a0f07;transform:translateZ(0)}
+.tb-fill{position:absolute;inset:0;border-radius:999px;transform-origin:0 50%;will-change:transform;
+  transition:transform 120ms ease-out}
+.tb-fill::after{content:'';position:absolute;left:8px;right:8px;top:2px;height:26%;border-radius:999px;background:rgba(255,255,255,.3)}
+.tb-fill-tan{background:linear-gradient(180deg,#f7ebcf 0%,#e2c896 30%,#d6b47c 62%,#c8a46a 100%);
+  box-shadow:inset 0 0 0 1.5px rgba(26,15,7,.9),inset 0 -3px 0 rgba(120,82,36,.45)}
+.tb-fill-tan::after{background:rgba(255,255,255,.6)}
+.tb-track::after{content:'';position:absolute;inset:0;border-radius:999px;pointer-events:none;
+  background:repeating-linear-gradient(90deg,transparent 0 calc(10% - 2px),rgba(43,29,18,.38) calc(10% - 2px) 10%)}
+.tb-fill-green{background:linear-gradient(180deg,${UI.armyLight} 0%,${UI.army} 58%,${UI.armyDark} 100%)}
+.tb-ebar.tb-pulse .tb-fill-tan{animation:tb-flash 300ms ease-out}
+.tb-ebar.tb-pulse .tb-frame{animation:tb-pop 150ms cubic-bezier(.3,1.6,.6,1)}
+@keyframes tb-flash{0%,40%{filter:brightness(1.8)}100%{filter:none}}
+@keyframes tb-pop{0%{transform:scale(1)}50%{transform:scale(1.06,1.1)}100%{transform:scale(1)}}
+.tb-bar-text{position:absolute;inset:0 12px 0 50px;display:flex;align-items:center;gap:6px;color:${UI.cream};
+  text-shadow:${outlineShadow(1.8)};font-weight:700;line-height:1}
+.tb-boss{font-size:13px;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.tb-gap{flex:1}
+.tb-pips{display:flex;gap:4px}
+.tb-pip{width:10px;height:10px;border-radius:50%;border:2px solid ${UI.ink};background:rgba(255,246,227,.25);box-sizing:border-box}
+.tb-pip.tb-lit{background:${UI.yellow};box-shadow:inset 0 -2px 0 rgba(0,0,0,.2)}
+.tb-epct{font-size:15px;min-width:4ch;text-align:right;color:#fff}
+.tb-eunits{flex:none;display:flex;align-items:center;gap:2px;height:${M.row2H - 4}px;padding:0 9px 0 3px;border-radius:13px;border:2.5px solid ${UI.ink};
+  box-sizing:border-box;background:radial-gradient(90% 80% at 35% 25%,${UI.tanLight},${UI.tan} 60%,${UI.tanDark});box-shadow:0 2px 0 ${UI.ink};
+  color:${UI.cream};text-shadow:${outlineShadow(1.6)};font-size:15px;font-weight:700;line-height:1}
+.tb-eunits svg{width:20px;height:20px}
+.tb-eunits[hidden]{display:none}
+.tb-badge{position:absolute;box-sizing:border-box;border-radius:50%;border:3px solid ${UI.ink};display:flex;align-items:center;justify-content:center}
+.tb-ebadge{left:0;top:-4px;width:42px;height:42px;
+  background:radial-gradient(80% 70% at 35% 25%,${UI.tanLight},${UI.tan} 55%,${UI.tanDark});
+  box-shadow:inset 0 -3px 0 rgba(0,0,0,.18),0 3px 0 ${UI.ink}}
+.tb-ebadge.tb-tin{background:radial-gradient(80% 70% at 35% 25%,#f2f4f6,${UI.tin} 55%,${UI.tinDark})}
+.tb-ebadge svg{width:34px;height:34px;margin-top:-2px}
+.tb-row2{position:absolute;left:18px;right:0;top:${M.barH + M.rowGap}px;height:${M.row2H}px;display:flex;align-items:center;gap:8px}
+.tb-level{flex:1;min-width:0;transition:opacity 600ms ease-out;font-size:17px;font-weight:700;color:#fff;text-shadow:${outlineShadow(2.2)};white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;padding:4px 4px 6px 4px}
+.tb-level.tb-faded{opacity:0}
+.tb-row2r{flex:none;margin-left:auto;display:flex;align-items:center;gap:8px}
+.tb-goals{flex:none;display:flex;gap:2px;height:${M.row2H}px;align-items:center;padding:0 6px;border-radius:15px;border:3px solid ${UI.ink};
+  box-sizing:border-box;background:${UI.cream};box-shadow:0 3px 0 ${UI.ink}}
+.tb-goals[hidden]{display:none}
+.tb-goal{position:relative;width:24px;height:24px}
+.tb-goal .tb-star{width:24px;height:24px;transition:transform 150ms cubic-bezier(.3,1.6,.6,1)}
+.tb-goal.tb-pending .tb-star-body{fill:#f3e6c8}
+.tb-goal.tb-pending .tb-star-shine{fill:#fffaf0}
+.tb-goal.tb-failed .tb-star-body{fill:#a39d92}
+.tb-goal.tb-failed .tb-star-shine{fill:#c1bbb0}
+.tb-goal.tb-failed .tb-star{opacity:.75}
+.tb-goal.tb-pop .tb-star{transform:scale(1.1)}
+.tb-mark{position:absolute;right:-4px;bottom:-3px;width:13px;height:13px;display:none}
+.tb-mark svg{width:13px;height:13px;display:block}
+.tb-goal.tb-met .tb-mark-tick,.tb-goal.tb-failed .tb-mark-cross{display:block}
+
+/* ----- Bottom ----- */
+.tb-bottom{position:absolute;left:calc(${SAL} + ${M.edge}px);right:calc(${SAR} + ${M.edge}px);bottom:calc(${SAB} + ${M.bottomPad}px);
+  height:${Math.max(M.champRing + M.champTagOver, M.armyBadge + M.armyGap + M.baseBarH)}px}
+.tb-army{position:absolute;left:0;bottom:0;width:min(200px,calc(100% - ${M.champRing + 16}px));height:${M.armyBadge + M.armyGap + M.baseBarH}px}
+.tb-abadge{left:0;top:0;width:${M.armyBadge}px;height:${M.armyBadge}px;z-index:1;
+  background:radial-gradient(80% 70% at 35% 25%,#a5dc84,${UI.army} 55%,${UI.armyDark});
+  box-shadow:inset 0 -3px 0 rgba(0,0,0,.2),0 4px 0 ${UI.ink},0 6px 8px rgba(20,10,2,.3)}
+.tb-abadge svg{width:40px;height:40px;margin-top:-2px}
+.tb-acount{position:absolute;left:${M.armyBadge - 16}px;top:6px;height:38px;min-width:84px;padding:0 14px 0 22px;border-radius:0 19px 19px 0;
+  display:flex;align-items:center;font-size:25px;font-weight:700;line-height:1;box-sizing:border-box}
+.tb-acount.tb-plank{border-radius:0 19px 19px 0;border-left:0}
+.tb-pbar{position:absolute;left:0;right:0;bottom:0;height:${M.baseBarH}px}
+.tb-pbar .tb-frame{inset:0 0 0 14px;border-radius:${M.baseBarH / 2}px;padding:3.5px}
+.tb-fbadge{left:0;top:-4px;width:32px;height:32px;
+  background:radial-gradient(80% 70% at 35% 25%,#a5dc84,${UI.army} 55%,${UI.armyDark});box-shadow:0 3px 0 ${UI.ink}}
+.tb-fbadge svg{width:24px;height:24px}
+
+.tb-champ{position:absolute;right:0;bottom:${M.champTagOver}px;width:${M.champRing}px;height:${M.champRing}px;border:0;border-radius:50%;
+  background:none}
+.tb-champ-body{position:absolute;inset:0;transform-origin:50% 60%}
+.tb-champ.tb-ready .tb-champ-body{animation:tb-bounce 1100ms cubic-bezier(.3,1.5,.6,1) infinite}
+@keyframes tb-bounce{0%{transform:scale(1)}9%{transform:scale(1.08)}17%{transform:scale(.985)}24%,100%{transform:scale(1)}}
+.tb-glow{position:absolute;inset:-20px;border-radius:50%;opacity:0;
+  background:radial-gradient(closest-side,rgba(255,197,49,.85),rgba(255,197,49,.35) 60%,rgba(255,197,49,0))}
+.tb-champ.tb-ready .tb-glow{opacity:1;animation:tb-glow 1100ms ease-in-out infinite}
+@keyframes tb-glow{0%,100%{opacity:.65}10%{opacity:1}}
+.tb-ring{position:absolute;inset:0;transform:rotate(-90deg)}
+.tb-ring-track{fill:rgba(43,29,18,.55);stroke:rgba(43,29,18,.7)}
+.tb-ring-fill{fill:none;stroke:#9be27a;stroke-linecap:round;transition:stroke-dashoffset 120ms linear}
+.tb-champ.tb-ready .tb-ring-fill{stroke:${UI.yellow}}
+.tb-ring-edge{fill:none;stroke:${UI.ink};stroke-width:2.5}
+.tb-face{position:absolute;left:${(M.champRing - M.champFace) / 2}px;top:${(M.champRing - M.champFace) / 2 - 3}px;width:${M.champFace}px;height:${M.champFace}px;
+  box-sizing:border-box;border-radius:50%;border:3.5px solid ${UI.ink};display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(70% 60% at 34% 24%,#b6ea8f 0%,#7cbf5e 22%,${UI.army} 58%,${UI.armyDark} 100%);
+  box-shadow:inset 0 -5px 0 rgba(0,0,0,.18),inset 0 3px 0 rgba(255,255,255,.35),0 5px 0 #23461d,0 5px 0 3px ${UI.ink};
+  transition:transform 90ms cubic-bezier(.3,1.6,.6,1),filter 150ms}
+.tb-champ:not(.tb-ready) .tb-face{filter:saturate(.8) brightness(.92)}
+.tb-champ.tb-down .tb-face{transform:translateY(4px);box-shadow:inset 0 -5px 0 rgba(0,0,0,.18),0 1px 0 #23461d,0 1px 0 3px ${UI.ink}}
+.tb-face svg{width:60px;height:60px;margin:-2px 0 0 2px}
+.tb-champ:not(.tb-ready) .tb-face svg{opacity:.8}
+.tb-tag{position:absolute;left:50%;bottom:-${M.champTagOver + 2}px;transform:translateX(-50%);height:24px;padding:0 10px;border-radius:12px;
+  border:3px solid ${UI.ink};box-sizing:border-box;display:flex;align-items:center;font-size:14px;font-weight:700;letter-spacing:.06em;
+  color:${UI.cream};text-shadow:${outlineShadow(1.5)};background:${WOOD_BG};box-shadow:0 3px 0 ${UI.ink};white-space:nowrap}
+.tb-champ.tb-ready .tb-tag{background:linear-gradient(#ffd862,${UI.yellow});color:${UI.ink};text-shadow:none}
+@media (prefers-reduced-motion: reduce){.tb-champ.tb-ready .tb-champ-body,.tb-champ.tb-ready .tb-glow{animation:none}}
+`;
+
+let stylesInjected = false;
+function injectStyles(): void {
+  if (stylesInjected) return;
+  stylesInjected = true;
+  injectUiTheme();
+  const style = document.createElement('style');
+  style.dataset.tb = 'hud';
+  style.textContent = CSS;
+  document.head.appendChild(style);
 }
 
-function topLeft<T extends Control>(c: T): T {
-  c.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-  c.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
-  return c;
+function div(cls: string, html = ''): HTMLDivElement {
+  const e = document.createElement('div');
+  e.className = cls;
+  if (html) e.innerHTML = html;
+  return e;
 }
 
-function label(name: string, size: number, align: number): TextBlock {
-  const t = topLeft(new TextBlock(name, ''));
-  t.color = 'white';
-  t.fontFamily = FONT;
-  t.fontWeight = '700';
-  t.fontSize = size;
-  t.textHorizontalAlignment = align;
-  t.outlineWidth = 3;
-  t.outlineColor = 'rgba(0,0,0,0.6)';
-  return t;
-}
-
-function bar(name: string, color: string): { track: Rectangle; fill: Rectangle } {
-  const track = topLeft(new Rectangle(name));
-  track.background = TRACK;
-  track.thickness = 0;
-  track.cornerRadius = 6;
-  const fill = topLeft(new Rectangle(name + '-fill'));
-  fill.background = color;
-  fill.thickness = 0;
-  fill.cornerRadius = 6;
-  track.addControl(fill);
-  return { track, fill };
+function hpBar(kind: 'enemy' | 'player'): { root: HTMLDivElement; fill: HTMLDivElement; text: HTMLDivElement } {
+  const root = div(kind === 'enemy' ? 'tb-ebar' : 'tb-pbar');
+  const frame = div('tb-frame');
+  const track = div('tb-track');
+  const fill = div(`tb-fill ${kind === 'enemy' ? 'tb-fill-tan' : 'tb-fill-green'}`);
+  track.append(fill);
+  frame.append(track);
+  const text = div('tb-bar-text');
+  root.append(frame, text);
+  return { root, fill, text };
 }
 
 export function createHud(scene: Scene, input: Input, opts: { onPause: () => void }): Hud {
-  const engine: AbstractEngine = scene.getEngine();
-  const canvas = engine.getRenderingCanvas() as HTMLCanvasElement;
-  const ui = AdvancedDynamicTexture.CreateFullscreenUI('hud', true, scene);
-  // Hits are handled in the DOM below; skip GUI picking work on every pointer event.
-  ui.disablePicking = true;
-  const root = ui.rootContainer;
+  injectStyles();
+  const canvas = scene.getEngine().getRenderingCanvas() as HTMLCanvasElement;
+  const host = canvas.parentElement ?? document.body;
 
-  // ----- Controls -----
-  const enemyBar = bar('enemy-hp', ENEMY);
-  // Boss extras live inside the enemy bar: bold name on the left, phase pips on the right.
-  const bossText = new TextBlock('boss-name', '');
-  bossText.color = 'white';
-  bossText.fontFamily = FONT;
-  bossText.fontWeight = '900';
-  bossText.fontSize = 12;
-  bossText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-  bossText.paddingLeftInPixels = 8;
-  bossText.outlineWidth = 3;
-  bossText.outlineColor = 'rgba(0,0,0,0.7)';
-  bossText.isVisible = false;
-  enemyBar.track.addControl(bossText);
-  const pips: Ellipse[] = [];
+  const hud = div('tb-hud');
+  hud.setAttribute('role', 'group');
+  hud.setAttribute('aria-label', 'Battle HUD');
+
+  // ----- Top: pause, enemy base HP (tan army badge + count, boss name and phase pips), level + goal stars -----
+  const top = div('tb-top');
+  const pause = document.createElement('button');
+  pause.type = 'button';
+  pause.className = 'tb-pause';
+  pause.setAttribute('aria-label', 'Pause');
+  pause.tabIndex = -1;
+  pause.innerHTML = pauseIcon(30);
+  const main = div('tb-main');
+  const enemy = hpBar('enemy');
+  const eBadge = div('tb-badge tb-ebadge', soldierIcon(34, UI.cream));
+  enemy.root.append(eBadge);
+  const bossText = document.createElement('span');
+  bossText.className = 'tb-boss';
+  const pipsBox = document.createElement('span');
+  pipsBox.className = 'tb-pips';
+  const pips: HTMLSpanElement[] = [];
   for (let i = 0; i < MAX_PIPS; i++) {
-    const p = new Ellipse('boss-pip');
-    p.widthInPixels = p.heightInPixels = PIP_D;
-    p.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
-    p.color = 'white';
-    p.thickness = 1.5;
-    p.isVisible = false;
-    enemyBar.track.addControl(p);
+    const p = document.createElement('span');
+    p.className = 'tb-pip';
+    p.hidden = true;
+    pipsBox.append(p);
     pips.push(p);
   }
-  const stars: TextBlock[] = [];
+  // The bar shows the base's HP as a percentage; the enemy soldier count lives in its own
+  // tan badge under the bar (a bare count on an HP bar read as 'enemy HP 0').
+  const ePct = document.createElement('span');
+  ePct.className = 'tb-epct';
+  ePct.setAttribute('aria-label', 'Enemy base health');
+  enemy.text.append(bossText, div('tb-gap'), pipsBox, ePct);
+  const eUnits = div('tb-eunits', soldierIcon(20, UI.cream));
+  eUnits.setAttribute('aria-label', 'Enemy soldiers');
+  const eCount = document.createElement('span');
+  eUnits.append(eCount);
+  eUnits.hidden = true;
+
+  const row2 = div('tb-row2');
+  const levelText = div('tb-level');
+  const goalsBox = div('tb-goals');
+  goalsBox.hidden = true;
+  const goalEls: HTMLDivElement[] = [];
   for (let i = 0; i < 3; i++) {
-    const t = label('goal-star', 17, Control.HORIZONTAL_ALIGNMENT_CENTER);
-    t.text = '\u2605';
-    t.isVisible = false;
-    stars.push(t);
+    const g = div(
+      'tb-goal tb-pending',
+      starIcon(24) +
+        `<span class="tb-mark tb-mark-tick">${tickIcon(13)}</span><span class="tb-mark tb-mark-cross">${crossIcon(13)}</span>`,
+    );
+    goalEls.push(g);
+    goalsBox.append(g);
   }
-  const levelText = label('level', 14, Control.HORIZONTAL_ALIGNMENT_LEFT);
-  const enemyText = label('enemy-count', 14, Control.HORIZONTAL_ALIGNMENT_RIGHT);
-  enemyText.color = '#f3dcb0';
-  const playerBar = bar('player-hp', PLAYER);
-  const playerText = label('player-count', 15, Control.HORIZONTAL_ALIGNMENT_LEFT);
-  playerText.color = '#c9f0c4';
+  const row2Right = div('tb-row2r');
+  row2Right.append(eUnits, goalsBox);
+  row2.append(levelText, row2Right);
+  main.append(enemy.root, row2);
+  top.append(pause, main);
 
-  const pause = topLeft(new Rectangle('pause'));
-  pause.background = 'rgba(0,0,0,0.4)';
-  pause.color = 'rgba(255,255,255,0.7)';
-  pause.thickness = 2;
-  pause.cornerRadius = 12;
-  for (const dx of [-7, 7]) {
-    const b = new Rectangle('pause-bar');
-    b.widthInPixels = 6;
-    b.heightInPixels = 20;
-    b.leftInPixels = dx;
-    b.background = 'white';
-    b.thickness = 0;
-    pause.addControl(b);
-  }
+  // ----- Bottom: army badge + count, player base HP, CHAMP button -----
+  const bottom = div('tb-bottom');
+  const army = div('tb-army');
+  const aBadge = div('tb-badge tb-abadge', soldierIcon(40, UI.cream));
+  const aCount = div('tb-acount tb-plank tb-outline-cream');
+  aCount.setAttribute('aria-label', 'Your army');
+  const player = hpBar('player');
+  player.root.append(div('tb-badge tb-fbadge', fortIcon(24, UI.cream, UI.yellow)));
+  army.append(player.root, aBadge, aCount);
 
-  const champ = topLeft(new Ellipse('champion'));
-  champ.background = 'rgba(0,0,0,0.45)';
-  champ.color = 'rgba(255,255,255,0.75)';
-  champ.thickness = 3;
-  const champFill = new Ellipse('champion-fill');
-  champFill.widthInPixels = CHAMP_D - 8;
-  champFill.heightInPixels = CHAMP_D - 8;
-  champFill.background = PLAYER;
-  champFill.thickness = 0;
-  champFill.scaleX = champFill.scaleY = 0;
-  champ.addControl(champFill);
-  const champText = new TextBlock('champion-label', 'CHAMP');
-  champText.color = 'white';
-  champText.fontFamily = FONT;
-  champText.fontWeight = '800';
-  champText.fontSize = 13;
-  champText.outlineWidth = 3;
-  champText.outlineColor = 'rgba(0,0,0,0.6)';
-  champ.addControl(champText);
+  const champ = document.createElement('button');
+  champ.type = 'button';
+  champ.className = 'tb-champ';
+  champ.setAttribute('aria-label', 'Champion');
+  champ.tabIndex = -1;
+  const S = M.champRing;
+  champ.innerHTML =
+    `<div class="tb-champ-body"><div class="tb-glow"></div>` +
+    `<svg class="tb-ring" viewBox="0 0 ${S} ${S}" width="${S}" height="${S}" aria-hidden="true">` +
+    `<circle class="tb-ring-track" cx="${S / 2}" cy="${S / 2}" r="${S / 2 - 1.5}" stroke-width="3"/>` +
+    `<circle class="tb-ring-fill" cx="${S / 2}" cy="${S / 2}" r="${RING_R}" stroke-width="${RING_STROKE}" stroke-dasharray="${RING_C.toFixed(2)}" stroke-dashoffset="${RING_C.toFixed(2)}"/>` +
+    `<circle class="tb-ring-edge" cx="${S / 2}" cy="${S / 2}" r="${S / 2 - 1.25}"/>` +
+    `</svg><div class="tb-face">${championIcon(60, UI.cream)}</div><div class="tb-tag">CHAMP</div></div>`;
+  const ringFill = champ.querySelector('.tb-ring-fill') as SVGCircleElement;
+  const champTag = champ.querySelector('.tb-tag') as HTMLDivElement;
+  bottom.append(army, champ);
 
-  for (const c of [enemyBar.track, levelText, enemyText, ...stars, playerBar.track, playerText, pause, champ])
-    root.addControl(c);
+  hud.append(top, bottom);
+  host.appendChild(hud);
 
-  // ----- Layout (CSS px) -----
-  let cssW = 0;
-  let cssH = 0;
-  let rectLeft = 0;
-  let rectTop = 0;
-  let enemyBarW = 0;
-  let playerBarW = 0;
-  let champCx = 0;
-  let champCy = 0;
-  let pauseX = 0;
-  let pauseY = 0;
-  let layoutDirty = true;
-  let hasGoals = false;
-
-  const relayout = (): void => {
-    layoutDirty = false;
-    const r = canvas.getBoundingClientRect();
-    rectLeft = r.left;
-    rectTop = r.top;
-    cssW = Math.max(1, r.width);
-    cssH = Math.max(1, r.height);
-    const k = engine.getRenderWidth() / cssW;
-    root.scaleX = root.scaleY = k;
-    root.widthInPixels = engine.getRenderWidth() / k;
-    root.heightInPixels = engine.getRenderHeight() / k;
-
-    const ins = readSafeAreaInsets();
-    const left = EDGE + ins.left;
-    const right = EDGE + ins.right;
-    const top = 12 + ins.top;
-    const bottom = EDGE + ins.bottom;
-
-    pauseX = left;
-    pauseY = top;
-    place(pause, pauseX, pauseY, PAUSE_S, PAUSE_S);
-
-    const ebX = pauseX + PAUSE_S + 12;
-    enemyBarW = Math.max(40, cssW - right - ebX);
-    place(enemyBar.track, ebX, top + 4, enemyBarW, BAR_H);
-    // Goal stars lead the level row; the name follows them.
-    const starsW = hasGoals ? STAR_W * 3 + 6 : 0;
-    for (let i = 0; i < 3; i++) place(stars[i], ebX + i * STAR_W, top + ROW2_Y, STAR_W, ROW2_H);
-    place(levelText, ebX + starsW, top + ROW2_Y, Math.max(20, enemyBarW * 0.65 - starsW), ROW2_H);
-    place(enemyText, ebX + enemyBarW * 0.35, top + ROW2_Y, enemyBarW * 0.65, ROW2_H);
-
-    champCx = cssW - right - CHAMP_D / 2;
-    champCy = cssH - bottom - CHAMP_D / 2;
-    place(champ, champCx - CHAMP_D / 2, champCy - CHAMP_D / 2, CHAMP_D, CHAMP_D);
-
-    playerBarW = Math.max(60, Math.min(180, cssW - left - right - CHAMP_D - 16));
-    const pbY = cssH - bottom - 14;
-    place(playerBar.track, left, pbY, playerBarW, 14);
-    place(playerText, left, pbY - 24, playerBarW, 22);
-
-    lastEnemyFill = lastPlayerFill = -1; // bar widths depend on layout
-  };
-
-  const markDirty = (): void => {
-    layoutDirty = true;
-  };
-  const resizeObs: Observer<AbstractEngine> = engine.onResizeObservable.add(markDirty);
-  window.addEventListener('resize', markDirty);
-
-  // ----- Hits (DOM, multi-touch safe) -----
+  // ----- Hits -----
   let visible = true;
   let disposed = false;
-  let pressFlashUntil = 0;
-  const inChampion = (clientX: number, clientY: number): boolean => {
+  const inChampion = (x: number, y: number): boolean => {
     if (!visible || disposed) return false;
-    const dx = clientX - rectLeft - champCx;
-    const dy = clientY - rectTop - champCy;
-    const r = CHAMP_D / 2 + HIT_SLOP;
-    return dx * dx + dy * dy <= r * r;
+    const r = champ.getBoundingClientRect();
+    if (r.width === 0) return false;
+    const dx = x - (r.left + r.width / 2);
+    const dy = y - (r.top + r.height / 2);
+    const rad = r.width / 2 + HIT_SLOP;
+    return dx * dx + dy * dy <= rad * rad;
   };
-  const inPause = (clientX: number, clientY: number): boolean => {
+  const inPause = (x: number, y: number): boolean => {
     if (!visible || disposed) return false;
-    const x = clientX - rectLeft;
-    const y = clientY - rectTop;
-    return (
-      x >= pauseX - HIT_SLOP &&
-      x <= pauseX + PAUSE_S + HIT_SLOP &&
-      y >= pauseY - HIT_SLOP &&
-      y <= pauseY + PAUSE_S + HIT_SLOP
-    );
+    const r = pause.getBoundingClientRect();
+    if (r.width === 0) return false;
+    return x >= r.left - HIT_SLOP && x <= r.right + HIT_SLOP && y >= r.top - HIT_SLOP && y <= r.bottom + HIT_SLOP;
   };
   input.addBlockedRegion(inChampion);
   input.addBlockedRegion(inPause);
 
-  const onPointerDown = (e: PointerEvent): void => {
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
-    if (inChampion(e.clientX, e.clientY)) {
-      input.pressChampion();
-      pressFlashUntil = performance.now() + 120;
-    } else if (inPause(e.clientX, e.clientY)) {
-      opts.onPause();
-    }
+  let champTimer = 0;
+  let pauseTimer = 0;
+  const pressChampion = (): void => {
+    input.pressChampion();
+    champ.classList.add('tb-down');
+    clearTimeout(champTimer);
+    champTimer = window.setTimeout(() => champ.classList.remove('tb-down'), PRESS_MS);
   };
-  canvas.addEventListener('pointerdown', onPointerDown, { capture: true });
+  const doPause = (): void => {
+    pause.classList.add('tb-down');
+    clearTimeout(pauseTimer);
+    pauseTimer = window.setTimeout(() => pause.classList.remove('tb-down'), PRESS_MS);
+    opts.onPause();
+  };
+  const onChampDown = (e: PointerEvent): void => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    pressChampion();
+  };
+  const onPauseDown = (e: PointerEvent): void => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    doPause();
+  };
+  // Touches just outside the buttons land on the canvas: same slop as the blocked regions.
+  const onCanvasDown = (e: PointerEvent): void => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (inChampion(e.clientX, e.clientY)) pressChampion();
+    else if (inPause(e.clientX, e.clientY)) doPause();
+  };
+  champ.addEventListener('pointerdown', onChampDown);
+  pause.addEventListener('pointerdown', onPauseDown);
+  canvas.addEventListener('pointerdown', onCanvasDown, { capture: true });
 
-  // ----- Per-frame update: only touch controls whose value changed -----
+  // ----- Per-frame update: only touch what changed -----
   let lastLevel = '';
   let lastEnemyUnits = -1;
+  let lastFaded: boolean | null = null;
   let lastPlayerUnits = -1;
   let lastEnemyFill = -1;
   let lastPlayerFill = -1;
   let lastCharge = -1;
   let wasFull = false;
-  let wasScaled = false;
-  let lastBoss = '';
+  let lastBoss: string | null = null;
   let lastPips = -1;
   let lastPhase = -1;
-  let phasePulseAt = -1e9;
-  let pulsing = false;
+  let hasGoals = false;
+  let pulseTimer = 0;
   const lastGoals: (GoalState | '')[] = ['', '', ''];
-  const starPopAt = [-1e9, -1e9, -1e9];
-  let starsPopping = false;
-
-  const frac = (hp: number, max: number): number => (max > 0 ? Math.min(1, Math.max(0, hp / max)) : 0);
+  const popTimers = [0, 0, 0];
 
   return {
     update(state, levelName, info) {
-      const goals = info?.goals;
-      const wantGoals = !!goals && goals.length > 0;
-      if (wantGoals !== hasGoals) {
-        hasGoals = wantGoals;
-        for (const st of stars) st.isVisible = wantGoals;
-        layoutDirty = true;
-      }
-      if (layoutDirty) relayout();
-      const now = performance.now();
-
+      if (disposed) return;
       // ----- Boss name and phase pips -----
       const boss = info?.bossName ?? '';
       if (boss !== lastBoss) {
         lastBoss = boss;
-        bossText.text = boss.toUpperCase();
-        bossText.isVisible = boss !== '';
+        bossText.textContent = boss.toUpperCase();
+        lastLevel = ''; // re-check the level name against the new boss name
+        eBadge.classList.toggle('tb-tin', boss !== '');
         lastPhase = -1;
       }
       const nPips = boss ? Math.min(MAX_PIPS, Math.max(0, info?.bossPhases ?? 0)) : 0;
       const phase = state.bossPhase ?? 0;
       if (nPips !== lastPips || phase !== lastPhase) {
         // Pulse only when the boss moves on to a later phase (a retry resets quietly).
-        if (lastPhase >= 0 && phase > lastPhase && nPips === lastPips) phasePulseAt = now;
+        if (lastPhase >= 0 && phase > lastPhase && nPips === lastPips) {
+          enemy.root.classList.remove('tb-pulse');
+          void enemy.root.offsetWidth;
+          enemy.root.classList.add('tb-pulse');
+          clearTimeout(pulseTimer);
+          pulseTimer = window.setTimeout(() => enemy.root.classList.remove('tb-pulse'), 320);
+        }
         lastPips = nPips;
         lastPhase = phase;
         for (let i = 0; i < MAX_PIPS; i++) {
-          const p = pips[i];
-          p.isVisible = i < nPips;
-          p.leftInPixels = -(6 + (nPips - 1 - i) * (PIP_D + 4));
-          p.background = pipLit(i, phase) ? 'white' : 'transparent';
+          pips[i].hidden = i >= nPips;
+          pips[i].classList.toggle('tb-lit', pipLit(i, phase));
         }
       }
-      const pulseT = now - phasePulseAt;
-      if (pulseT < PHASE_PULSE_MS) {
-        pulsing = true;
-        const s = popScale(pulseT, PHASE_PULSE_MS, 1.35);
-        enemyBar.track.scaleY = s;
-        enemyBar.track.scaleX = 1 + (s - 1) * 0.06;
-        enemyBar.fill.background = mixHex(ENEMY, '#ffffff', (s - 1) / 0.35);
-      } else if (pulsing) {
-        pulsing = false;
-        enemyBar.track.scaleX = enemyBar.track.scaleY = 1;
-        enemyBar.fill.background = ENEMY;
-      }
 
-      // ----- Goal stars: gold while alive, grey once failed (with a pop) -----
+      // ----- Goal stars: pending (pale gold), met (gold + tick), failed (grey + cross) -----
+      const goals = info?.goals;
+      const wantGoals = !!goals && goals.length > 0;
+      if (wantGoals !== hasGoals) {
+        hasGoals = wantGoals;
+        goalsBox.hidden = !wantGoals;
+      }
       if (goals) {
         for (let i = 0; i < 3; i++) {
           const g: GoalState = goals[i] ?? 'pending';
           if (g === lastGoals[i]) continue;
-          if (g === 'failed' && lastGoals[i] !== '') starPopAt[i] = now;
+          const changed = lastGoals[i] !== '';
           lastGoals[i] = g;
-          const look = hudStarStyle(g);
-          stars[i].color = look.color;
-          stars[i].alpha = look.alpha;
-        }
-      }
-      if (starsPopping || starPopAt.some((t) => now - t < STAR_POP_MS)) {
-        starsPopping = false;
-        for (let i = 0; i < 3; i++) {
-          const s = popScale(now - starPopAt[i], STAR_POP_MS, 1.6);
-          stars[i].scaleX = stars[i].scaleY = s;
-          if (s !== 1) starsPopping = true;
+          const el = goalEls[i];
+          el.className = `tb-goal ${hudStarLook(g).cls}`;
+          if (changed && g !== 'pending') {
+            el.classList.add('tb-pop');
+            clearTimeout(popTimers[i]);
+            popTimers[i] = window.setTimeout(() => el.classList.remove('tb-pop'), 150);
+          }
         }
       }
 
+      // The level name fades once the battle is under way (the title card already said it),
+      // so the far end of the lane stays clear.
+      const faded = state.time > LEVEL_NAME_SECONDS;
+      if (faded !== lastFaded) {
+        lastFaded = faded;
+        levelText.classList.toggle('tb-faded', faded);
+      }
       if (levelName !== lastLevel) {
         lastLevel = levelName;
-        levelText.text = levelName;
+        levelText.textContent = levelName;
+        // The boss bar already names him: do not repeat 'Tin General' under it.
+        levelText.hidden = boss !== '' && levelName.toLowerCase() === boss.toLowerCase();
       }
       const eu = Math.round(state.enemyUnits);
       if (eu !== lastEnemyUnits) {
         lastEnemyUnits = eu;
-        enemyText.text = `Enemy ${eu}`;
+        eCount.textContent = formatCount(eu);
+        eUnits.hidden = eu <= 0;
       }
       const pu = Math.round(state.playerUnits);
       if (pu !== lastPlayerUnits) {
         lastPlayerUnits = pu;
-        playerText.text = `Army ${pu}`;
+        aCount.textContent = formatCount(pu);
       }
-      const ef = Math.round(frac(state.enemyBaseHp, state.enemyBaseMaxHp) * enemyBarW);
+      const ef = Math.round(hpFraction(state.enemyBaseHp, state.enemyBaseMaxHp) * 500) / 500;
       if (ef !== lastEnemyFill) {
         lastEnemyFill = ef;
-        enemyBar.fill.widthInPixels = ef;
-        enemyBar.fill.isVisible = ef > 0;
+        enemy.fill.style.transform = `scaleX(${ef})`;
+        ePct.textContent = `${Math.ceil(ef * 100)}%`;
       }
-      const pf = Math.round(frac(state.playerBaseHp, state.playerBaseMaxHp) * playerBarW);
+      const pf = Math.round(hpFraction(state.playerBaseHp, state.playerBaseMaxHp) * 500) / 500;
       if (pf !== lastPlayerFill) {
         lastPlayerFill = pf;
-        playerBar.fill.widthInPixels = pf;
-        playerBar.fill.isVisible = pf > 0;
+        player.fill.style.transform = `scaleX(${pf})`;
       }
 
       const charge = Math.round(Math.min(1, Math.max(0, state.championCharge)) * 100) / 100;
       if (charge !== lastCharge) {
         lastCharge = charge;
-        champFill.scaleX = champFill.scaleY = charge;
+        ringFill.style.strokeDashoffset = ringDashOffset(charge, RING_C).toFixed(2);
       }
       const full = charge >= 1;
       if (full !== wasFull) {
         wasFull = full;
-        champ.color = full ? GOLD : 'rgba(255,255,255,0.75)';
-        champ.shadowColor = GOLD;
-        champ.shadowBlur = full ? 18 : 0;
-        champFill.background = full ? GOLD : PLAYER;
-        champText.color = full ? '#1b2433' : 'white';
-        champText.outlineWidth = full ? 0 : 3;
-      }
-      // Pulse while ready, shrink briefly on press; otherwise leave the GUI untouched.
-      const pressed = now < pressFlashUntil;
-      if (full || pressed) {
-        const s = pressed ? 0.9 : 1 + 0.05 * Math.sin(now * 0.008);
-        champ.scaleX = champ.scaleY = s;
-        wasScaled = true;
-      } else if (wasScaled) {
-        champ.scaleX = champ.scaleY = 1;
-        wasScaled = false;
+        champ.classList.toggle('tb-ready', full);
+        champTag.textContent = full ? 'CHAMP!' : 'CHAMP';
       }
     },
     setVisible(v) {
       visible = v;
-      root.isVisible = v;
+      hud.hidden = !v;
     },
     dispose() {
       disposed = true;
-      canvas.removeEventListener('pointerdown', onPointerDown, { capture: true });
-      window.removeEventListener('resize', markDirty);
-      engine.onResizeObservable.remove(resizeObs);
-      ui.dispose();
+      clearTimeout(champTimer);
+      clearTimeout(pauseTimer);
+      clearTimeout(pulseTimer);
+      for (const t of popTimers) clearTimeout(t);
+      champ.removeEventListener('pointerdown', onChampDown);
+      pause.removeEventListener('pointerdown', onPauseDown);
+      canvas.removeEventListener('pointerdown', onCanvasDown, { capture: true });
+      hud.remove();
     },
   };
 }

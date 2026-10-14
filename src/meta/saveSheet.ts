@@ -4,6 +4,7 @@
 import type { SaveData } from '../contracts.ts';
 import { exportSave, importSave, starCount, writeSave } from '../core/save.ts';
 import type { KeyValueStore } from '../core/save.ts';
+import { UI, WOOD_BG, injectUiTheme, outlineShadow } from '../ui/theme.ts';
 
 export interface SaveSheet {
   open(): void;
@@ -14,29 +15,27 @@ export interface SaveSheet {
 
 const CSS = `
 .hm-sheet-bg{position:fixed;inset:0;z-index:20;display:none;align-items:flex-end;justify-content:center;
-  background:rgba(8,16,10,0.6);font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#fff;
-  -webkit-user-select:none;user-select:none;touch-action:manipulation}
+  font-family:var(--tb-font);color:${UI.ink};-webkit-user-select:none;user-select:none;touch-action:manipulation}
 .hm-sheet-bg.hm-on{display:flex}
 .hm-sheet{width:100%;max-width:480px;max-height:90dvh;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;
-  box-sizing:border-box;background:#1f3324;border-radius:20px 20px 0 0;display:flex;flex-direction:column;gap:12px;
-  padding:20px max(16px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
-.hm-sheet h2{margin:0;font-size:24px;font-weight:900}
-.hm-sheet p{margin:0;font-size:15px;opacity:.85;line-height:1.35}
-.hm-btn{min-height:56px;width:100%;border:0;border-radius:14px;font:inherit;font-size:19px;font-weight:800;color:#fff;
-  background:#3a5a40;touch-action:manipulation;cursor:pointer;-webkit-tap-highlight-color:transparent}
-.hm-btn:active{filter:brightness(1.25)}
-.hm-btn.hm-primary{background:#2f9e44}
-.hm-btn.hm-danger{background:#c92a2a}
+  box-sizing:border-box;border-radius:26px 26px 0 0;border-bottom:0;display:flex;flex-direction:column;gap:12px;
+  padding:0 max(16px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));
+  animation:hm-up 150ms cubic-bezier(.3,1.4,.6,1) both}
+@keyframes hm-up{0%{transform:translateY(24px);opacity:.5}100%{transform:none;opacity:1}}
+.hm-sheet h2{margin:-4px -20px 4px;padding:14px 20px 16px;font-size:26px;font-weight:700;color:${UI.cream};text-shadow:${outlineShadow(2.2)};
+  background:${WOOD_BG};border:4px solid ${UI.ink};border-radius:26px 26px 16px 16px;box-shadow:inset 0 3px 0 rgba(255,225,180,.3),0 4px 0 ${UI.ink}}
+.hm-sheet p{margin:0;font-size:16px;font-weight:600;line-height:1.35;color:#5a4330}
+.hm-sheet .tb-btn{margin-bottom:6px}
 .hm-btn[hidden],.hm-sheet [hidden]{display:none}
 .hm-step{display:flex;flex-direction:column;gap:12px}
 .hm-row{display:flex;gap:10px}
-.hm-row .hm-btn{flex:1}
-.hm-text{width:100%;min-height:96px;box-sizing:border-box;border:2px solid #3a5a40;border-radius:12px;padding:10px;
-  font:13px ui-monospace,Menlo,Consolas,monospace;color:#fff;background:#14231a;resize:vertical;
+.hm-row .tb-btn{flex:1}
+.hm-text{width:100%;min-height:96px;box-sizing:border-box;border:3px solid ${UI.ink};border-radius:14px;padding:10px;
+  font:13px ui-monospace,Menlo,Consolas,monospace;color:${UI.ink};background:#fffdf6;box-shadow:inset 0 3px 0 rgba(0,0,0,.08);resize:vertical;
   -webkit-user-select:text;user-select:text;touch-action:auto}
-.hm-sheet .hm-q{font-size:18px;font-weight:700;opacity:1}
-.hm-err{color:#ff8787;font-weight:700;font-size:15px}
-.hm-ok{color:#8ce99a;font-weight:700;font-size:15px}
+.hm-sheet .hm-q{font-size:18px;font-weight:700;color:${UI.ink}}
+.hm-err{color:#b3261e!important;font-weight:700}
+.hm-ok{color:#2b7a34!important;font-weight:700}
 .hm-file{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
 `;
 
@@ -44,6 +43,7 @@ let stylesInjected = false;
 function injectStyles(): void {
   if (stylesInjected) return;
   stylesInjected = true;
+  injectUiTheme();
   const style = document.createElement('style');
   style.textContent = CSS;
   document.head.appendChild(style);
@@ -57,7 +57,8 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: s
 }
 
 function button(text: string, cls = ''): HTMLButtonElement {
-  const b = el('button', `hm-btn ${cls}`.trim(), text);
+  const variant = cls === 'hm-primary' ? 'tb-yellow' : cls === 'hm-danger' ? 'tb-red' : 'tb-small';
+  const b = el('button', `hm-btn tb-btn ${variant}`, text);
   b.type = 'button';
   return b;
 }
@@ -72,10 +73,10 @@ export function createSaveSheet(
 ): SaveSheet {
   injectStyles();
 
-  const bg = el('div', 'hm-sheet-bg');
+  const bg = el('div', 'hm-sheet-bg tb-backdrop');
   bg.setAttribute('role', 'dialog');
   bg.setAttribute('aria-label', 'Save data');
-  const sheet = el('div', 'hm-sheet');
+  const sheet = el('div', 'hm-sheet tb-card');
 
   // ----- Main step: export + import inputs -----
   const main = el('div', 'hm-step');

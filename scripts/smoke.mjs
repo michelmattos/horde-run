@@ -1,17 +1,115 @@
 // Smoke test against the production build: serves dist/ with `vite preview`, opens it
 // in a phone-sized headless Chromium (SwiftShader GL). First it checks the world title
 // card (smoke-title.png), taps it away and taps through the menus (world map → level
-// 1-1 card → Play), saving smoke-map.png; then it reloads with ?level=1-1 (which skips
+// 1-1 card → Play), saving smoke-map.png and smoke-card.png; then it reloads with ?level=1-1 (which skips
 // the menus) and plays ~8 s with a held touch drag, then pushes the crowd past 1000
 // player units, samples fps and checks the camera zoomed out with the crowd. Last it
-// jumps to the boss (1-10) and plays a few seconds. Screenshots go to smoke-play.png,
-// smoke-crowd.png and smoke-boss.png; a JSON summary is printed. Any console error or
+// jumps to the boss (1-10), plays a few seconds, then drops the boss's HP to end the
+// battle and saves the result card. Screenshots go to smoke-play.png, smoke-crowd.png,
+// smoke-boss.png and smoke-result.png; render stats (draw calls, indices) are reported; a JSON summary is printed. Any console error or
 // page error fails the run. Low fps is reported, never failed (software rendering);
-// fps above the 60 cap fails.
+// fps above the 60 cap fails. The battle screenshots (play, crowd, boss) must show the 3D
+// scene: their pixels are decoded and a flat, featureless frame (a grey void with only the
+// HUD) fails the run, as do too few draw calls and any shader compile error.
+// The preview server takes PORT from the environment, else a free port, so parallel runs
+// never collide.
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:net';
+import { readFileSync } from 'node:fs';
+import { inflateSync } from 'node:zlib';
 import { chromium } from 'playwright-core';
 
-const PORT = 4173;
+async function freePort() {
+  return new Promise((resolve, reject) => {
+    const srv = createServer();
+    srv.unref();
+    srv.on('error', reject);
+    srv.listen(0, '127.0.0.1', () => {
+      const { port } = srv.address();
+      srv.close(() => resolve(port));
+    });
+  });
+}
+
+// Minimal PNG reader (8-bit RGB / RGBA, non-interlaced: what Chromium writes).
+function decodePng(buf) {
+  let p = 8;
+  let w = 0,
+    h = 0,
+    ch = 0;
+  const idat = [];
+  while (p < buf.length) {
+    const len = buf.readUInt32BE(p);
+    const type = buf.toString('ascii', p + 4, p + 8);
+    const data = buf.subarray(p + 8, p + 8 + len);
+    if (type === 'IHDR') {
+      w = data.readUInt32BE(0);
+      h = data.readUInt32BE(4);
+      if (data[8] !== 8 || data[12] !== 0) throw new Error('unsupported PNG');
+      ch = data[9] === 6 ? 4 : data[9] === 2 ? 3 : 0;
+      if (!ch) throw new Error(`unsupported PNG colour type ${data[9]}`);
+    } else if (type === 'IDAT') idat.push(data);
+    else if (type === 'IEND') break;
+    p += 12 + len;
+  }
+  const raw = inflateSync(Buffer.concat(idat));
+  const stride = w * ch;
+  const out = Buffer.alloc(h * stride);
+  for (let y = 0; y < h; y++) {
+    const f = raw[y * (stride + 1)];
+    const src = y * (stride + 1) + 1;
+    for (let x = 0; x < stride; x++) {
+      const a = x >= ch ? out[y * stride + x - ch] : 0;
+      const b = y > 0 ? out[(y - 1) * stride + x] : 0;
+      const c = x >= ch && y > 0 ? out[(y - 1) * stride + x - ch] : 0;
+      let v = raw[src + x];
+      if (f === 1) v += a;
+      else if (f === 2) v += b;
+      else if (f === 3) v += (a + b) >> 1;
+      else if (f === 4) {
+        const pp = a + b - c;
+        const pa = Math.abs(pp - a),
+          pb = Math.abs(pp - b),
+          pc = Math.abs(pp - c);
+        v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+      }
+      out[y * stride + x] = v & 255;
+    }
+  }
+  return { w, h, ch, data: out };
+}
+
+// Detail in the middle of the frame (between the HUD bands): luminance spread and the
+// number of distinct coarse colours. A frame where the 3D scene failed to draw is a flat
+// clear colour there.
+function sceneContent(path) {
+  const { w, h, ch, data } = decodePng(readFileSync(path));
+  const colours = new Set();
+  let n = 0,
+    sum = 0,
+    sum2 = 0;
+  for (let y = Math.floor(h * 0.22); y < h * 0.78; y += 3) {
+    for (let x = Math.floor(w * 0.08); x < w * 0.92; x += 3) {
+      const i = (y * w + x) * ch;
+      const r = data[i],
+        g = data[i + 1],
+        b = data[i + 2];
+      const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      sum += l;
+      sum2 += l * l;
+      n++;
+      colours.add(((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4));
+    }
+  }
+  const mean = sum / n;
+  return { lumaStd: +Math.sqrt(Math.max(0, sum2 / n - mean * mean)).toFixed(1), colours: colours.size };
+}
+
+const MIN_LUMA_STD = 14;
+const MIN_COLOURS = 60;
+const MIN_DRAW_CALLS = 20;
+
+const PORT = Number(process.env.PORT) || (await freePort());
 const ROOT = `http://localhost:${PORT}/horde-run/`;
 const URL = `${ROOT}?level=1-1`;
 const W = 390;
@@ -77,16 +175,25 @@ try {
   await page.goto(ROOT, { waitUntil: 'load' });
   await page.waitForFunction(() => !!window.__horde, null, { timeout: 15000 });
   const card = page.locator('[data-title-card]');
-  await card.waitFor({ state: 'visible', timeout: 10000 });
-  const titleText = (await card.innerText()).split('\n')[0];
+  await card.waitFor({ state: 'attached', timeout: 10000 });
+  // The card dismisses itself after a couple of seconds; on a slow software-GL boot it can
+  // be gone already, so fall back to its accessible name (the same title line).
+  const titleText = (await card.isVisible())
+    ? (await card.innerText()).split('\n')[0]
+    : await card.getAttribute('aria-label');
   await page.screenshot({ path: 'smoke-title.png' });
-  await card.tap();
+  // The card also dismisses itself after a couple of seconds; tap it only if it is still up.
+  if (await card.isVisible()) await card.tap({ timeout: 3000 }).catch(() => {});
   await card.waitFor({ state: 'hidden', timeout: 5000 });
   await page.waitForSelector('[data-level="1-1"]', { state: 'visible', timeout: 10000 });
   await sleep(300);
   await page.screenshot({ path: 'smoke-map.png' });
   await page.tap('[data-level="1-1"]');
-  await page.getByRole('button', { name: 'Play', exact: true }).tap({ timeout: 5000 });
+  const play = page.getByRole('button', { name: 'Play', exact: true });
+  await play.waitFor({ state: 'visible', timeout: 5000 });
+  await sleep(500); // let the card's pop-in settle
+  await page.screenshot({ path: 'smoke-card.png' });
+  await play.tap({ timeout: 5000 });
   await page.waitForFunction(() => window.__horde.level() === '1-1' && window.__horde.state().time > 0.5, null, {
     timeout: 15000,
   });
@@ -148,24 +255,56 @@ try {
     level: window.__horde.level(),
     zoom: window.__horde.zoom(),
   }));
+  const crowdRender = await page.evaluate(() => window.__horde.render());
 
   // Boss level: jump straight in and fire for a few seconds.
   await page.evaluate(() => window.__horde.goto('1-10'));
   await sleep(500);
   await touch('touchStart', W / 2, y);
   const bossStart = Date.now();
-  while (Date.now() - bossStart < 5000) {
+  // At least 5 s of play, and until the boss battle clock passes 2.5 s (software GL
+  // compiles the boss's new shaders slowly), within a minute.
+  while (Date.now() - bossStart < 60000) {
+    if (Date.now() - bossStart > 5000 && (await page.evaluate(() => window.__horde.state().time)) > 2.5) break;
     const t = (Date.now() - bossStart) / 1000;
     await touch('touchMove', Math.round(W / 2 + Math.sin(t * 1.1) * W * 0.2), y);
     await sleep(50);
   }
   await page.screenshot({ path: 'smoke-boss.png' });
   await touch('touchEnd', 0, 0);
-  const boss = await page.evaluate(() => ({ level: window.__horde.level(), state: { ...window.__horde.state() } }));
+  const boss = await page.evaluate(() => ({
+    level: window.__horde.level(),
+    state: { ...window.__horde.state() },
+    render: window.__horde.render(),
+  }));
+
+  // Result screen: knock the boss's base down to its last hit point; the next base hit
+  // (or the base's own HP check) ends the battle and the result card follows.
+  await page.evaluate(() => {
+    window.__horde.state().enemyBaseHp = 0;
+  });
+  await page.getByRole('button', { name: /retry/i }).first().waitFor({ state: 'visible', timeout: 30000 });
+  await sleep(1500); // stars pop in one by one
+  await page.screenshot({ path: 'smoke-result.png' });
+  const result = await page.evaluate(() => window.__horde.state().outcome);
 
   const fpsMin = Math.min(...fpsSamples);
   const fpsAvg = fpsSamples.reduce((a, b) => a + b, 0) / fpsSamples.length;
+  const content = {};
+  for (const shot of ['smoke-play.png', 'smoke-crowd.png', 'smoke-boss.png']) {
+    const c = sceneContent(shot);
+    content[shot] = c;
+    if (c.lumaStd < MIN_LUMA_STD || c.colours < MIN_COLOURS)
+      errors.push(`${shot} shows no 3D scene (luma std ${c.lumaStd}, ${c.colours} colours)`);
+  }
+  if (crowdRender.drawCalls < MIN_DRAW_CALLS) errors.push(`crowd frame drew only ${crowdRender.drawCalls} calls`);
+  if (boss.render.drawCalls < MIN_DRAW_CALLS) errors.push(`boss frame drew only ${boss.render.drawCalls} calls`);
+  if (errors.some((e) => /Unable to compile effect|SHADER ERROR/i.test(e)))
+    errors.push('shader compile errors (see above)');
+
   const summary = {
+    port: PORT,
+    content,
     level: final.level,
     renderer: 'swiftshader (software)',
     afterPlay: {
@@ -191,7 +330,17 @@ try {
       bossPhase: boss.state.bossPhase,
       enemyBaseX: +(boss.state.enemyBaseX ?? 0).toFixed(2),
     },
-    screenshots: ['smoke-title.png', 'smoke-map.png', 'smoke-play.png', 'smoke-crowd.png', 'smoke-boss.png'],
+    render: { crowd: crowdRender, boss: boss.render },
+    result,
+    screenshots: [
+      'smoke-title.png',
+      'smoke-map.png',
+      'smoke-card.png',
+      'smoke-play.png',
+      'smoke-crowd.png',
+      'smoke-boss.png',
+      'smoke-result.png',
+    ],
     errors,
   };
   console.log(JSON.stringify(summary, null, 2));
@@ -204,6 +353,7 @@ try {
     errors.push(`camera did not zoom out with the crowd (${afterPlay.zoom} -> ${final.zoom})`);
   if (fpsAvg > 62) errors.push(`fps ${fpsAvg.toFixed(1)} is above the 60 fps cap`);
   if (boss.level !== '1-10' || !(boss.state.time > 2)) errors.push('boss level did not run');
+  if (result !== 'victory') errors.push(`expected a victory result screen, got ${result}`);
   if (errors.length) {
     console.error(`smoke FAILED:\n  ${errors.join('\n  ')}`);
     exitCode = 1;

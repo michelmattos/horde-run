@@ -1,13 +1,18 @@
-// Level card, pause and result screens as plain HTML over the canvas. Everything
-// is built once and toggled; the only animation is the result stars' CSS pop,
-// which never blocks input, so a tap on Play, Retry or Next acts on the very
-// first frame. Nothing here moves the screen. Styles are injected once with
-// hr- scoped classes.
+// Level card, pause and result screens as plain HTML over the canvas, in the
+// toy-box sticker style (docs/art-direction.md section 7): cream die-cut cards with an
+// ink outline and a thick cardboard edge, a wooden header plank, and plastic sticker
+// buttons that sink onto their extrusion when pressed. Everything is built once and
+// toggled; the only animations are the card's quick springy pop-in and the result
+// stars popping in one by one (scale only), and neither blocks input, so a tap on
+// Play, Retry or Next acts on the very first frame. Nothing here moves the screen.
+// Styles are injected once with hr- scoped classes on top of the shared theme.
 import { clampSensitivity, saveSettings } from '../core/settings.ts';
 import type { Settings } from '../core/settings.ts';
 import { isLandscapeTouch } from '../core/lifecycle.ts';
 import { formatTime, resultActions, starPopDelays, STAR_POP } from './uiLogic.ts';
 import type { ResultAction } from './uiLogic.ts';
+import { UI, WOOD_BG, injectUiTheme, outlineShadow } from './theme.ts';
+import { crossIcon, mapIcon, nextIcon, playIcon, retryIcon, starIcon, tickIcon } from './icons.ts';
 
 export interface LevelIntroOptions {
   code: string; // '1-4'
@@ -50,55 +55,102 @@ export interface Overlays {
 
 const CSS = `
 .hr-ov{position:fixed;inset:0;z-index:10;display:none;align-items:center;justify-content:center;overflow-y:auto;
-  padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));
-  background:rgba(10,14,22,0.72);font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#fff;
+  padding:max(28px,calc(env(safe-area-inset-top) + 20px)) max(16px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));
+  font-family:var(--tb-font);font-variant-numeric:tabular-nums;color:${UI.ink};
   -webkit-user-select:none;user-select:none;touch-action:manipulation;box-sizing:border-box}
 .hr-ov.hr-on{display:flex}
-.hr-card{width:100%;max-width:360px;margin:auto;display:flex;flex-direction:column;gap:12px;text-align:center}
-.hr-h{margin:0 0 4px;font-size:44px;font-weight:900;letter-spacing:.02em;line-height:1.1}
-.hr-victory .hr-h{color:#8ee08f}
-.hr-defeat .hr-h{color:#ff7a7a}
-.hr-sub{margin:0 0 12px;font-size:16px;opacity:.8}
-.hr-btn{min-height:56px;width:100%;border:0;border-radius:14px;font:inherit;font-size:20px;font-weight:800;
-  color:#fff;background:#38455c;touch-action:manipulation;cursor:pointer;-webkit-tap-highlight-color:transparent}
-.hr-btn:active{filter:brightness(1.2)}
-.hr-btn.hr-primary{background:#2f9e44}
+.hr-ov.hr-on .hr-card{animation:hr-in 150ms cubic-bezier(.3,1.5,.6,1) both}
+@keyframes hr-in{0%{transform:scale(.94);opacity:.4}100%{transform:scale(1);opacity:1}}
+.hr-card{width:100%;max-width:360px;margin:auto;display:flex;flex-direction:column;gap:12px;text-align:center;padding:0 18px 22px}
 .hr-ov [hidden]{display:none!important}
-.hr-stack{display:flex;flex-direction:column;gap:12px}
-.hr-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;font-size:17px;font-weight:600;text-align:left}
-.hr-toggle{min-width:96px;min-height:48px;border:0;border-radius:24px;font:inherit;font-weight:800;color:#fff;background:#38455c;touch-action:manipulation;cursor:pointer}
-.hr-toggle[aria-pressed=true]{background:#1f9d55}
-.hr-range{flex:1;min-height:48px;accent-color:#2f9e44;touch-action:manipulation}
-.hr-val{min-width:44px;text-align:right;font-variant-numeric:tabular-nums}
+
+/* Wooden header plank across the top of the card. */
+.hr-banner{position:relative;margin:-4px -22px 4px;padding:14px 18px 16px;border:4px solid ${UI.ink};border-radius:26px 26px 18px 18px;
+  background:${WOOD_BG};box-shadow:inset 0 3px 0 rgba(255,225,180,.3),inset 0 -4px 0 rgba(0,0,0,.25),0 5px 0 ${UI.ink};
+  display:flex;flex-direction:column;align-items:center;gap:6px}
+.hr-banner::before,.hr-banner::after{content:'';position:absolute;top:50%;width:9px;height:9px;margin-top:-4px;border-radius:50%;
+  background:radial-gradient(circle at 35% 35%,#f4e2b8,#a8834a 60%,#5e4220);box-shadow:0 0 0 2px ${UI.ink}}
+.hr-banner::before{left:12px}
+.hr-banner::after{right:12px}
+.hr-h,.hr-name{margin:0;color:${UI.cream};text-shadow:${outlineShadow(2.6)};font-weight:700;line-height:1.08;letter-spacing:.01em}
+.hr-h{font-size:42px}
+.hr-name{font-size:31px;padding:0 10px}
+.hr-victory .hr-h{color:${UI.yellow}}
+.hr-defeat .hr-h{color:#ffb4a8}
+.hr-code{align-self:center;padding:5px 14px 6px;border-radius:999px;border:3px solid ${UI.ink};background:linear-gradient(#ffd862,${UI.yellow});
+  box-shadow:0 3px 0 ${UI.ink};font-size:15px;font-weight:700;letter-spacing:.08em;color:${UI.ink}}
+.hr-sub{margin:0;font-size:16px;font-weight:600;color:#6b5440}
+.hr-banner .hr-sub{color:#f6e3bf;text-shadow:${outlineShadow(1.6)}}
+.hr-banner .hr-chip{text-shadow:none}
+.hr-chip{display:inline-flex;align-items:center;gap:6px;margin-left:4px;padding:2px 10px;border-radius:999px;background:#f0dfbd;border:2px solid #d2b98a;
+  font-weight:700;color:${UI.ink}}
+
+/* Buttons: theme .tb-btn; rows of secondary buttons share the width. */
+.hr-stack{display:flex;flex-direction:column;gap:12px;margin-top:4px}
 .hr-pair{display:flex;gap:12px}
-.hr-pair>.hr-btn{flex:1}
-.hr-code{align-self:center;padding:4px 14px;border-radius:999px;background:#38455c;font-size:15px;font-weight:800;letter-spacing:.06em}
-.hr-name{margin:0;font-size:32px;font-weight:900;line-height:1.15}
-.hr-boss{margin:0;font-size:17px;font-weight:900;letter-spacing:.08em;color:#ff7a7a}
-.hr-new{margin:0;padding:12px 14px;border-radius:12px;background:rgba(255,211,77,.14);border:2px solid #ffd34d;
-  font-size:16px;font-weight:600;line-height:1.35;text-align:left}
-.hr-new b{color:#ffd34d}
-.hr-goals{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;text-align:left}
-.hr-goal{display:flex;align-items:center;gap:10px;min-height:32px;font-size:17px;font-weight:600}
-.hr-goal .hr-mark{flex:none;width:28px;text-align:center;font-size:22px;line-height:1}
-.hr-mark.hr-gold{color:#ffd34d}
-.hr-mark.hr-off{color:#6b7380}
-.hr-mark.hr-ok{color:#4ade80;font-weight:900}
-.hr-mark.hr-no{color:#ff7a7a;font-weight:900}
-.hr-goal.hr-dim{opacity:.6}
-.hr-stars{display:flex;justify-content:center;gap:10px;margin:0 0 4px;font-size:56px;line-height:1}
-.hr-bigstar{display:inline-block;color:#3a4352}
-.hr-bigstar.hr-earned{color:#ffd34d;animation:hr-pop ${STAR_POP.durationMs}ms ease-out both}
-@keyframes hr-pop{0%{color:#3a4352;transform:scale(1)}55%{color:#ffd34d;transform:scale(1.35)}100%{color:#ffd34d;transform:scale(1)}}
-@media (prefers-reduced-motion: reduce){.hr-bigstar.hr-earned{animation:none}}
-.hr-best{margin:0;font-size:17px;font-weight:800;color:#ffd34d}
+.hr-pair>.tb-btn{flex:1;min-width:0}
+
+/* Boss sticker and the yellow sticky note for something new. */
+.hr-boss{align-self:center;margin:2px 0 0;padding:6px 14px;border-radius:12px;border:3px solid ${UI.ink};background:linear-gradient(#f26a5f,${UI.red});
+  color:#fff;text-shadow:${outlineShadow(1.6)};font-size:16px;font-weight:700;letter-spacing:.08em;box-shadow:0 3px 0 ${UI.ink};transform:rotate(-2deg)}
+.hr-new{margin:2px 4px;padding:12px 14px 13px;border-radius:6px 6px 14px 6px;background:linear-gradient(170deg,#fff3a8,#ffe36e);
+  border:2.5px solid rgba(43,29,18,.85);box-shadow:0 4px 0 rgba(43,29,18,.85);font-size:16px;font-weight:600;line-height:1.35;text-align:left;
+  transform:rotate(-1deg)}
+.hr-new b{font-weight:700;color:#a0420f}
+
+/* Goal list: star (or tick / cross) sticker + label on a paper strip. */
+.hr-goals{list-style:none;margin:0;padding:8px 10px;display:flex;flex-direction:column;gap:4px;text-align:left;border-radius:16px;
+  background:rgba(214,186,138,.22);border:2.5px dashed rgba(122,79,46,.35)}
+.hr-goal{display:flex;align-items:center;gap:10px;min-height:36px;font-size:17px;font-weight:600;color:${UI.ink};line-height:1.2}
+.hr-goal .hr-mark{flex:none;width:30px;height:30px;display:flex;align-items:center;justify-content:center}
+.hr-goal .hr-mark svg{width:30px;height:30px}
+.hr-goal.hr-dim{color:#8b7560}
+
+/* Result stars: hollow slots with the earned star popping in over each. */
+.hr-stars{position:relative;display:flex;justify-content:center;align-items:flex-end;gap:2px;margin:2px 0 0;height:96px}
+.hr-stars::before{content:'';position:absolute;left:50%;top:50%;width:210px;height:210px;margin:-112px 0 0 -105px;border-radius:50%;
+  background:repeating-conic-gradient(from 0deg,rgba(255,197,49,.22) 0 12deg,transparent 12deg 24deg);
+  -webkit-mask:radial-gradient(closest-side,#000 40%,transparent);mask:radial-gradient(closest-side,#000 40%,transparent);opacity:0;pointer-events:none}
+.hr-victory .hr-stars::before{opacity:1}
+.hr-slot{position:relative;width:76px;height:76px}
+.hr-slot.hr-mid{width:96px;height:96px;margin-bottom:12px}
+.hr-slot svg{position:absolute;inset:0;width:100%;height:100%}
+.hr-slot .hr-on-star{opacity:0;transform:scale(.55)}
+.hr-slot.hr-earned .hr-on-star{animation:hr-pop ${STAR_POP.durationMs}ms cubic-bezier(.2,.9,.3,1) both}
+@keyframes hr-pop{0%{opacity:0;transform:scale(.55)}70%{opacity:1;transform:scale(1.08)}100%{opacity:1;transform:scale(1)}}
+@media (prefers-reduced-motion: reduce){.hr-slot.hr-earned .hr-on-star{animation:none;opacity:1;transform:none}.hr-ov.hr-on .hr-card{animation:none}}
+.hr-best{align-self:center;margin:0;padding:5px 16px;border-radius:999px;border:3px solid ${UI.ink};background:linear-gradient(#ffd862,${UI.yellow});
+  box-shadow:0 3px 0 ${UI.ink};font-size:16px;font-weight:700;color:${UI.ink};transform:rotate(-2deg)}
+
+/* Pause settings on an inset paper panel. */
+.hr-settings{display:flex;flex-direction:column;gap:2px;margin-top:6px;padding:6px 14px;border-radius:16px;background:rgba(214,186,138,.22);
+  border:2.5px dashed rgba(122,79,46,.35)}
+.hr-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:52px;font-size:17px;font-weight:600;text-align:left}
+.hr-toggle{position:relative;flex:none;width:84px;height:44px;margin:4px 0 6px;border:3px solid ${UI.ink};border-radius:22px;padding:0;
+  background:#cdbb9a;box-shadow:inset 0 3px 0 rgba(0,0,0,.15),0 3px 0 ${UI.ink};font:inherit;font-size:14px;font-weight:700;
+  color:${UI.ink};cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:background 120ms}
+.hr-toggle::before{content:'';position:absolute;top:3px;left:3px;width:32px;height:32px;border-radius:50%;border:3px solid ${UI.ink};box-sizing:border-box;
+  background:radial-gradient(70% 60% at 35% 28%,#fff,${UI.cream} 60%,#e2cfa6);transition:transform 120ms cubic-bezier(.3,1.5,.6,1)}
+.hr-toggle .hr-tlabel{position:absolute;top:0;bottom:0;right:10px;display:flex;align-items:center}
+.hr-toggle[aria-pressed=true]{background:linear-gradient(#5cbf5f,${UI.green})}
+.hr-toggle[aria-pressed=true]::before{transform:translateX(40px)}
+.hr-toggle[aria-pressed=true] .hr-tlabel{right:auto;left:10px;color:#fff;text-shadow:${outlineShadow(1.5)}}
+.hr-range{flex:1;min-width:0;height:48px;margin:0;background:none;-webkit-appearance:none;appearance:none;touch-action:manipulation}
+.hr-range::-webkit-slider-runnable-track{height:14px;border-radius:7px;border:3px solid ${UI.ink};background:${WOOD_BG}}
+.hr-range::-moz-range-track{height:10px;border-radius:7px;border:3px solid ${UI.ink};background:${UI.woodLight}}
+.hr-range::-webkit-slider-thumb{-webkit-appearance:none;width:30px;height:30px;margin-top:-11px;border-radius:50%;border:3px solid ${UI.ink};
+  background:radial-gradient(70% 60% at 35% 28%,#fff1b8,${UI.yellow} 60%,#d39a00);box-shadow:0 3px 0 ${UI.ink}}
+.hr-range::-moz-range-thumb{width:26px;height:26px;border-radius:50%;border:3px solid ${UI.ink};background:${UI.yellow}}
+.hr-val{min-width:48px;text-align:right;font-weight:700}
 `;
 
 let stylesInjected = false;
 function injectStyles(): void {
   if (stylesInjected) return;
   stylesInjected = true;
+  injectUiTheme();
   const style = document.createElement('style');
+  style.dataset.tb = 'overlays';
   style.textContent = CSS;
   document.head.appendChild(style);
 }
@@ -110,76 +162,104 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: s
   return e;
 }
 
-function button(text: string): HTMLButtonElement {
-  const b = el('button', 'hr-btn', text);
+// Sticker button: an optional decorative icon then the label (the accessible name is the label alone).
+function button(text: string, variant = '', icon = ''): HTMLButtonElement {
+  const b = el('button', `tb-btn ${variant}`.trim());
   b.type = 'button';
+  setLabel(b, text, icon);
   return b;
 }
 
-const STAR = '\u2605';
+function setLabel(b: HTMLButtonElement, text: string, icon = ''): void {
+  b.innerHTML = icon;
+  b.append(el('span', '', text));
+}
 
-// One goal line: a leading mark (star, tick or cross) and its label.
-function goalLine(mark: string, markCls: string, text: string, dim = false): HTMLLIElement {
+// One goal line: a leading mark (star, tick or cross sticker) and its label.
+function goalLine(markSvg: string, text: string, dim = false): HTMLLIElement {
   const li = el('li', dim ? 'hr-goal hr-dim' : 'hr-goal');
-  li.append(el('span', `hr-mark ${markCls}`, mark), el('span', '', text));
+  const mark = el('span', 'hr-mark');
+  mark.innerHTML = markSvg;
+  li.append(mark, el('span', '', text));
   return li;
+}
+
+function banner(...children: HTMLElement[]): HTMLDivElement {
+  const b = el('div', 'hr-banner');
+  b.append(...children);
+  return b;
+}
+
+function overlay(): HTMLDivElement {
+  const o = el('div', 'hr-ov tb-backdrop');
+  o.setAttribute('role', 'dialog');
+  o.setAttribute('aria-modal', 'true');
+  return o;
 }
 
 export function createOverlays(root: HTMLElement, settings: Settings): Overlays {
   injectStyles();
 
   // ----- Level card -----
-  const intro = el('div', 'hr-ov');
-  intro.setAttribute('role', 'dialog');
-  const iCard = el('div', 'hr-card');
+  const intro = overlay();
+  const iCard = el('div', 'hr-card tb-card');
   const iCode = el('div', 'hr-code');
   const iName = el('h1', 'hr-name');
   const iBoss = el('p', 'hr-boss');
   const iNew = el('p', 'hr-new');
   const iGoals = el('ul', 'hr-goals');
-  const playBtn = button('Play');
-  playBtn.classList.add('hr-primary');
-  const iMapBtn = button('Map');
-  iCard.append(iCode, iName, iBoss, iNew, iGoals, playBtn, iMapBtn);
+  const playBtn = button('Play', 'tb-yellow tb-big', playIcon(26));
+  const iMapBtn = button('Map', 'tb-small', mapIcon(22));
+  const iStack = el('div', 'hr-stack');
+  iStack.append(playBtn, iMapBtn);
+  iCard.append(banner(iCode, iName), iBoss, iNew, iGoals, iStack);
   intro.append(iCard);
   root.appendChild(intro);
 
   // ----- Result screen -----
-  const result = el('div', 'hr-ov');
-  result.setAttribute('role', 'dialog');
-  const rCard = el('div', 'hr-card');
+  const result = overlay();
+  const rCard = el('div', 'hr-card tb-card');
   const rHead = el('h1', 'hr-h');
   const rSub = el('p', 'hr-sub');
   const rStars = el('div', 'hr-stars');
   rStars.setAttribute('role', 'img');
-  const bigStars = [0, 1, 2].map(() => el('span', 'hr-bigstar', STAR));
-  rStars.append(...bigStars);
-  const rBest = el('p', 'hr-best', 'New best time');
+  const slots = [0, 1, 2].map((i) => {
+    const s = el('span', i === 1 ? 'hr-slot hr-mid' : 'hr-slot');
+    s.innerHTML = starIcon('100%', 'tb-off') + starIcon('100%', 'hr-on-star');
+    return s;
+  });
+  rStars.append(...slots);
+  const rBest = el('p', 'hr-best', 'New best time!');
   const rGoals = el('ul', 'hr-goals');
   const rButtons = el('div', 'hr-stack');
   const rSecondary = el('div', 'hr-pair');
-  const retryBtn = button('Retry');
-  const nextBtn = button('Next level');
-  const rMapBtn = button('Map');
+  const retryBtn = button('Retry', '', retryIcon(22));
+  const nextBtn = button('Next level', '', nextIcon(22));
+  const rMapBtn = button('Map', '', mapIcon(22));
   const resultBtn: Record<ResultAction, HTMLButtonElement> = { next: nextBtn, retry: retryBtn, map: rMapBtn };
-  rCard.append(rHead, rSub, rStars, rBest, rGoals, rButtons);
+  const resultIcon: Record<ResultAction, (s: number) => string> = { next: nextIcon, retry: retryIcon, map: mapIcon };
+  rCard.append(banner(rHead, rSub), rStars, rBest, rGoals, rButtons);
   result.append(rCard);
   root.appendChild(result);
 
   // ----- Pause screen -----
-  const pause = el('div', 'hr-ov');
-  pause.setAttribute('role', 'dialog');
-  const pCard = el('div', 'hr-card');
+  const pause = overlay();
+  const pCard = el('div', 'hr-card tb-card');
   const pHead = el('h1', 'hr-h', 'Paused');
   const pSub = el('p', 'hr-sub');
-  const resumeBtn = button('Resume');
-  resumeBtn.classList.add('hr-primary');
-  const restartBtn = button('Restart');
-  const pMapBtn = button('World map');
+  const resumeBtn = button('Resume', 'tb-yellow tb-big', playIcon(26));
+  const restartBtn = button('Restart', '', retryIcon(22));
+  const pMapBtn = button('World map', '', mapIcon(22));
+  const pStack = el('div', 'hr-stack');
+  pStack.append(resumeBtn, restartBtn, pMapBtn);
 
   const hapticsRow = el('div', 'hr-row');
   const hapticsToggle = el('button', 'hr-toggle');
   hapticsToggle.type = 'button';
+  hapticsToggle.setAttribute('aria-label', 'Haptics');
+  const hapticsLabel = el('span', 'hr-tlabel');
+  hapticsLabel.setAttribute('aria-hidden', 'true');
+  hapticsToggle.append(hapticsLabel);
   hapticsRow.append(el('span', '', 'Haptics'), hapticsToggle);
 
   const sensRow = el('label', 'hr-row');
@@ -190,13 +270,15 @@ export function createOverlays(root: HTMLElement, settings: Settings): Overlays 
   sensRange.step = '0.05';
   const sensVal = el('span', 'hr-val');
   sensRow.append(el('span', '', 'Sensitivity'), sensRange, sensVal);
+  const pSettings = el('div', 'hr-settings');
+  pSettings.append(hapticsRow, sensRow);
 
-  pCard.append(pHead, pSub, resumeBtn, restartBtn, pMapBtn, hapticsRow, sensRow);
+  pCard.append(banner(pHead, pSub), pStack, pSettings);
   pause.append(pCard);
   root.appendChild(pause);
 
   const syncSettings = (): void => {
-    hapticsToggle.textContent = settings.haptics ? 'On' : 'Off';
+    hapticsLabel.textContent = settings.haptics ? 'ON' : 'OFF';
     hapticsToggle.setAttribute('aria-pressed', String(settings.haptics));
     sensRange.value = String(settings.sensitivity);
     sensVal.textContent = `${settings.sensitivity.toFixed(2)}x`;
@@ -243,6 +325,7 @@ export function createOverlays(root: HTMLElement, settings: Settings): Overlays 
       resumeBtn.hidden = false;
       pHead.textContent = 'Paused';
       pSub.textContent = '';
+      pSub.hidden = true;
     }
   };
   landscapeMq.addEventListener('change', onOrientation);
@@ -262,50 +345,55 @@ export function createOverlays(root: HTMLElement, settings: Settings): Overlays 
 
   return {
     showLevelIntro(o) {
-      iCode.textContent = o.code;
+      iCode.textContent = `LEVEL ${o.code}`;
       iName.textContent = o.levelName;
-      iBoss.textContent = o.boss ? `Boss: ${o.boss.toUpperCase()}` : '';
+      iBoss.textContent = o.boss ? `BOSS: ${o.boss.toUpperCase()}` : '';
       iBoss.hidden = !o.boss;
       iNew.replaceChildren();
       if (o.intro) iNew.append(el('b', '', 'New: '), o.intro);
       iNew.hidden = !o.intro;
       iGoals.replaceChildren(
-        ...o.goals.map((g, i) => (o.earned[i] ? goalLine(STAR, 'hr-gold', g) : goalLine('\u2606', 'hr-off', g))),
+        ...o.goals.map((g, i) => goalLine(starIcon(30, o.earned[i] ? '' : 'tb-off'), g, !o.earned[i])),
       );
       actions = { play: o.onPlay, map: o.onMap };
       show(intro);
     },
     showResult(outcome, o) {
       const win = outcome === 'victory';
-      result.className = `hr-ov ${win ? 'hr-victory' : 'hr-defeat'}`;
+      result.className = `hr-ov tb-backdrop ${win ? 'hr-victory' : 'hr-defeat'}`;
       rHead.textContent = win ? 'Victory!' : 'Defeat';
-      rSub.textContent = `${o.levelName} · ${formatTime(o.timeSeconds)}`;
+      rSub.replaceChildren(o.levelName);
+      const chip = el('span', 'hr-chip', formatTime(o.timeSeconds));
+      rSub.append(chip);
 
       // Stars fill in left to right; restart the CSS pop by re-adding the class after a reflow.
       const stars = o.stars;
       rStars.hidden = !stars;
       if (stars) {
         const delays = starPopDelays(3);
-        bigStars.forEach((s, i) => {
+        slots.forEach((s, i) => {
           s.classList.remove('hr-earned');
-          s.style.animationDelay = `${delays[i]}ms`;
+          (s.lastElementChild as SVGElement).style.animationDelay = `${delays[i]}ms`;
         });
         void rStars.offsetWidth;
-        bigStars.forEach((s, i) => s.classList.toggle('hr-earned', !!stars[i]));
+        slots.forEach((s, i) => s.classList.toggle('hr-earned', !!stars[i]));
         rStars.setAttribute('aria-label', `${stars.filter(Boolean).length} of 3 stars`);
       }
       rBest.hidden = !(win && o.newBest);
       const goals = stars && o.goals ? o.goals : [];
       rGoals.hidden = goals.length === 0;
       rGoals.replaceChildren(
-        ...goals.map((g, i) => (stars?.[i] ? goalLine('\u2713', 'hr-ok', g) : goalLine('\u2717', 'hr-no', g, true))),
+        ...goals.map((g, i) => (stars?.[i] ? goalLine(tickIcon(28), g) : goalLine(crossIcon(28), g, true))),
       );
 
-      // Primary action full width first, where the thumb lands; the rest share a row.
+      // Primary action (yellow, big) first, where the thumb lands; the rest share a row.
       const plan = resultActions(win, o.hasNext, !!o.onMap);
-      for (const b of Object.values(resultBtn)) b.classList.remove('hr-primary');
+      for (const [k, b] of Object.entries(resultBtn) as [ResultAction, HTMLButtonElement][]) {
+        const primary = k === plan.primary;
+        b.className = primary ? 'tb-btn tb-yellow tb-big' : 'tb-btn tb-small';
+        setLabel(b, k === 'next' ? 'Next level' : k === 'retry' ? 'Retry' : 'Map', resultIcon[k](primary ? 26 : 22));
+      }
       const primary = resultBtn[plan.primary];
-      primary.classList.add('hr-primary');
       rSecondary.replaceChildren(...plan.secondary.map((a) => resultBtn[a]));
       rButtons.replaceChildren(primary, rSecondary);
       rSecondary.hidden = plan.secondary.length === 0;
@@ -316,6 +404,7 @@ export function createOverlays(root: HTMLElement, settings: Settings): Overlays 
       const rotate = o.reason === 'orientation' && isLandscapeTouch();
       pHead.textContent = rotate ? 'Rotate to portrait' : 'Paused';
       pSub.textContent = rotate ? 'Horde Run plays in portrait.' : '';
+      pSub.hidden = !rotate;
       resumeBtn.hidden = rotate;
       pMapBtn.hidden = !o.onMap;
       syncSettings();

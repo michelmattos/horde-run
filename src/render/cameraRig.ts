@@ -8,7 +8,7 @@ import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import type { LevelDef } from '../contracts.ts';
 import { LAYOUT } from '../contracts.ts';
-import { computeFraming, easeZoom, zoomedFov } from './framing.ts';
+import { FAR_NDC_Y, computeFramingClear, easeZoom, zoomedFov } from './framing.ts';
 import type { Framing } from './framing.ts';
 
 const LANE_MARGIN = 0.6;
@@ -31,8 +31,16 @@ export class CameraRig {
 
   // Recompute framing for the current render aspect (call on resize and level load).
   // `rows` optionally moves the cannon row and the enemy base's far edge (NDC y) inward.
-  reframe(level: LevelDef, aspect: number, rows?: { near: number; far: number }): void {
-    this.framing = computeFraming({
+  // `top` (the enemy fort's flag tip / the boss's plume) is kept at or under NDC row
+  // `topLimit` (default: the far row).
+  reframe(
+    level: LevelDef,
+    aspect: number,
+    rows?: { near: number; far: number },
+    top?: { y: number; z: number },
+    topLimit?: number,
+  ): void {
+    const input = {
       aspect,
       nearNdcY: rows?.near,
       farNdcY: rows?.far,
@@ -40,7 +48,8 @@ export class CameraRig {
       nearZ: LAYOUT.cannonZ,
       farZ: level.lane.length + LAYOUT.enemyBaseDepth,
       margin: LANE_MARGIN,
-    });
+    };
+    this.framing = computeFramingClear(input, top ?? { y: 0, z: input.farZ }, topLimit ?? rows?.far ?? FAR_NDC_Y);
     this.camera.rotation.set(this.framing.pitch, 0, 0);
     this.camera.position.set(0, this.framing.y, this.framing.z);
     this.apply();
