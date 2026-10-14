@@ -47,7 +47,7 @@ let exitCode = 0;
 
 function stopServer() {
   try {
-    process.kill(-server.pid, 'SIGTERM');
+    if (server.pid) process.kill(-server.pid, 'SIGTERM');
   } catch {
     // already gone
   }
@@ -112,7 +112,11 @@ try {
     await sleep(50);
   }
   await page.screenshot({ path: 'smoke-play.png' });
-  const afterPlay = await page.evaluate(() => ({ state: { ...window.__horde.state() }, units: window.__horde.units(), zoom: window.__horde.zoom() }));
+  const afterPlay = await page.evaluate(() => ({
+    state: { ...window.__horde.state() },
+    units: window.__horde.units(),
+    zoom: window.__horde.zoom(),
+  }));
   await touch('touchEnd', 0, 0);
 
   // Push the crowd past 1000 player units, topping up while enemies cancel them.
@@ -139,7 +143,11 @@ try {
     peakUnits = Math.max(peakUnits, s.units);
   }
   await page.screenshot({ path: 'smoke-crowd.png' });
-  const final = await page.evaluate(() => ({ state: { ...window.__horde.state() }, level: window.__horde.level(), zoom: window.__horde.zoom() }));
+  const final = await page.evaluate(() => ({
+    state: { ...window.__horde.state() },
+    level: window.__horde.level(),
+    zoom: window.__horde.zoom(),
+  }));
 
   // Boss level: jump straight in and fire for a few seconds.
   await page.evaluate(() => window.__horde.goto('1-10'));
@@ -177,7 +185,12 @@ try {
     titleCard: titleText,
     outcome: final.state.outcome,
     finalTime: +final.state.time.toFixed(2),
-    boss: { level: boss.level, time: +boss.state.time.toFixed(2), bossPhase: boss.state.bossPhase, enemyBaseX: +(boss.state.enemyBaseX ?? 0).toFixed(2) },
+    boss: {
+      level: boss.level,
+      time: +boss.state.time.toFixed(2),
+      bossPhase: boss.state.bossPhase,
+      enemyBaseX: +(boss.state.enemyBaseX ?? 0).toFixed(2),
+    },
     screenshots: ['smoke-title.png', 'smoke-map.png', 'smoke-play.png', 'smoke-crowd.png', 'smoke-boss.png'],
     errors,
   };
@@ -187,7 +200,8 @@ try {
   if (afterPlay.state.time <= 1) errors.push('battle clock did not advance');
   if (peakPlayer < 1000) errors.push(`player units peaked at ${peakPlayer}, expected 1000+`);
   if (!/World 1 \u00b7 Bedroom Floor/.test(titleText)) errors.push(`title card read "${titleText}"`);
-  if (!(final.zoom >= 0.08 && final.zoom > afterPlay.zoom)) errors.push(`camera did not zoom out with the crowd (${afterPlay.zoom} -> ${final.zoom})`);
+  if (!(final.zoom >= 0.08 && final.zoom > afterPlay.zoom))
+    errors.push(`camera did not zoom out with the crowd (${afterPlay.zoom} -> ${final.zoom})`);
   if (fpsAvg > 62) errors.push(`fps ${fpsAvg.toFixed(1)} is above the 60 fps cap`);
   if (boss.level !== '1-10' || !(boss.state.time > 2)) errors.push('boss level did not run');
   if (errors.length) {

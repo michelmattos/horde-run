@@ -26,7 +26,16 @@
 // champion 1.5-2.5 s after the meter fills. `skill` is ignored by the human profile;
 // `attempt` still shifts its noise in time.
 
-import type { BattleState, DefenderDef, DefenderView, GateDef, InputState, LevelDef, SimEvent, SimView } from '../contracts.ts';
+import type {
+  BattleState,
+  DefenderDef,
+  DefenderView,
+  GateDef,
+  InputState,
+  LevelDef,
+  SimEvent,
+  SimView,
+} from '../contracts.ts';
 import { DEFENDER_DEFAULTS, LAYOUT, Team, gateX } from '../contracts.ts';
 
 const MOB_SPEED = 7; // matches the sim's player mob speed; used to lead moving gates and the boss
@@ -273,7 +282,8 @@ export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autopla
     if (ready && readySince < 0) {
       readySince = time;
       championWait = human
-        ? HUMAN.championDelayMin + (HUMAN.championDelayMax - HUMAN.championDelayMin) * (0.5 + 0.5 * wobble(time + noiseShift + 5.1))
+        ? HUMAN.championDelayMin +
+          (HUMAN.championDelayMax - HUMAN.championDelayMin) * (0.5 + 0.5 * wobble(time + noiseShift + 5.1))
         : 0;
     }
     if (!ready) readySince = -1;
@@ -301,7 +311,8 @@ export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autopla
       // Act on what was wanted `reaction` seconds ago.
       seenT.push(time);
       seenX.push(target);
-      const reaction = HUMAN.reactionMin + (HUMAN.reactionMax - HUMAN.reactionMin) * (0.5 + 0.5 * wobble(0.5 * nt + 3.7));
+      const reaction =
+        HUMAN.reactionMin + (HUMAN.reactionMax - HUMAN.reactionMin) * (0.5 + 0.5 * wobble(0.5 * nt + 3.7));
       let k = 0;
       while (k + 1 < seenT.length && seenT[k + 1] <= time - reaction) k++;
       if (k > 0) {
@@ -324,8 +335,10 @@ export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autopla
     const maxStep = aimSpeed * dt;
     aim += Math.min(maxStep, Math.max(-maxStep, target - aim));
 
-    const onTarget = Number.isNaN(champTarget) || Math.abs(aim - Math.min(lim, Math.max(-lim, champTarget))) <= champTol;
-    const championPressed = ready && time - readySince >= championWait && (onTarget || time - readySince >= championPatience);
+    const onTarget =
+      Number.isNaN(champTarget) || Math.abs(aim - Math.min(lim, Math.max(-lim, champTarget))) <= champTol;
+    const championPressed =
+      ready && time - readySince >= championWait && (onTarget || time - readySince >= championPatience);
 
     return { aimX: aim, firing, championPressed, paused: false };
   };

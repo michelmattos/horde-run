@@ -79,7 +79,18 @@ class InstanceBatch {
   }
 
   // Uniform scale s, then pitch (about X), roll (about Z) and yaw (about Y), then translate.
-  write(x: number, y: number, z: number, s: number, pitch: number, roll: number, yaw: number, r: number, g: number, b: number): void {
+  write(
+    x: number,
+    y: number,
+    z: number,
+    s: number,
+    pitch: number,
+    roll: number,
+    yaw: number,
+    r: number,
+    g: number,
+    b: number,
+  ): void {
     const m = this.matrices;
     const o = this.count * 16;
     const cp = Math.cos(pitch);

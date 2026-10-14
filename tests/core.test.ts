@@ -40,7 +40,10 @@ test('rng mean is roughly uniform', () => {
 test('fixed step: 1/30 s at 60 Hz runs exactly 2 steps of SIM_DT', () => {
   const loop = createFixedStep();
   const dts: number[] = [];
-  assert.equal(loop.advance(1 / 30, (dt) => dts.push(dt)), 2);
+  assert.equal(
+    loop.advance(1 / 30, (dt) => dts.push(dt)),
+    2,
+  );
   assert.deepEqual(dts, [SIM_DT, SIM_DT]);
 });
 

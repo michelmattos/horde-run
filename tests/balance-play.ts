@@ -98,6 +98,8 @@ export function runLine(id: string, runs: readonly PlayResult[]): string {
   const wins = runs.filter((r) => r.outcome === 'victory');
   return (
     `  ${id.padEnd(5)} human: ${wins.length}/${runs.length} wins, median win ${median(wins.map((r) => r.seconds)).toFixed(0)} s | ` +
-    runs.map((r) => `${r.outcome[0]} ${r.seconds.toFixed(0)}s ${(r.playerBase * 100).toFixed(0)}% ${starText(r.stars)}`).join(' | ')
+    runs
+      .map((r) => `${r.outcome[0]} ${r.seconds.toFixed(0)}s ${(r.playerBase * 100).toFixed(0)}% ${starText(r.stars)}`)
+      .join(' | ')
   );
 }

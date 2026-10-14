@@ -115,10 +115,17 @@ export class Effects {
       const a = this.rand() * Math.PI * 2;
       const sp = 2 + this.rand() * 3;
       this.particles.spawn(
-        x + (this.rand() * 2 - 1) * spread, 0.6 + this.rand() * 1.2, z + (this.rand() - 0.5) * 0.6,
-        Math.cos(a) * sp, 4 + this.rand() * 4, Math.sin(a) * sp,
-        0.7 + this.rand() * 0.3, 0.22 + this.rand() * 0.18,
-        dark ? d.r : e.r, dark ? d.g : e.g, dark ? d.b : e.b,
+        x + (this.rand() * 2 - 1) * spread,
+        0.6 + this.rand() * 1.2,
+        z + (this.rand() - 0.5) * 0.6,
+        Math.cos(a) * sp,
+        4 + this.rand() * 4,
+        Math.sin(a) * sp,
+        0.7 + this.rand() * 0.3,
+        0.22 + this.rand() * 0.18,
+        dark ? d.r : e.r,
+        dark ? d.g : e.g,
+        dark ? d.b : e.b,
         GRAVITY,
       );
     }
@@ -134,7 +141,20 @@ export class Effects {
     const c = good ? PALETTE.gateGood : PALETTE.gateBad;
     for (let i = 0; i < 10; i++) {
       const px = x + (this.rand() * 2 - 1) * width * 0.5;
-      this.particles.spawn(px, 0.4 + this.rand() * 1.2, z, (px - x) * 1.5, 2 + this.rand() * 3, (this.rand() - 0.3) * 2, 0.5, 0.16, c.r, c.g, c.b, GRAVITY);
+      this.particles.spawn(
+        px,
+        0.4 + this.rand() * 1.2,
+        z,
+        (px - x) * 1.5,
+        2 + this.rand() * 3,
+        (this.rand() - 0.3) * 2,
+        0.5,
+        0.16,
+        c.r,
+        c.g,
+        c.b,
+        GRAVITY,
+      );
     }
   }
 
@@ -146,16 +166,35 @@ export class Effects {
       const a = (i / n) * Math.PI * 2;
       const gold = i % 2 === 0;
       this.particles.spawn(
-        x + Math.cos(a) * r, 1.6, z + Math.sin(a) * r * 0.6,
-        Math.cos(a) * 7, 3, Math.sin(a) * 4,
-        0.6, 0.3,
-        gold ? 2.2 : 2.0, gold ? 1.7 : 0.5, 0.4, // colours above 1 overdrive the flat shading so sparks glow
+        x + Math.cos(a) * r,
+        1.6,
+        z + Math.sin(a) * r * 0.6,
+        Math.cos(a) * 7,
+        3,
+        Math.sin(a) * 4,
+        0.6,
+        0.3,
+        gold ? 2.2 : 2.0,
+        gold ? 1.7 : 0.5,
+        0.4, // colours above 1 overdrive the flat shading so sparks glow
         6,
       );
     }
   }
 
-  private burst(x: number, z: number, n: number, speed: number, up: number, life: number, size: number, r: number, g: number, b: number, y: number): void {
+  private burst(
+    x: number,
+    z: number,
+    n: number,
+    speed: number,
+    up: number,
+    life: number,
+    size: number,
+    r: number,
+    g: number,
+    b: number,
+    y: number,
+  ): void {
     for (let i = 0; i < n; i++) {
       const a = this.rand() * Math.PI * 2;
       this.particles.spawn(x, y, z, Math.cos(a) * speed, up * this.rand(), Math.sin(a) * speed, life, size, r, g, b, 0);
@@ -178,7 +217,8 @@ export class Effects {
     const t = this.tracers;
     t.step(dt);
     const e = PALETTE.enemy;
-    for (let i = 0; i < t.endedCount; i++) this.burst(t.endedX[i], t.endedZ[i], 4, 1.2, 1.5, 0.25, 0.14, e.r * 1.2, e.g, e.b, 0.4);
+    for (let i = 0; i < t.endedCount; i++)
+      this.burst(t.endedX[i], t.endedZ[i], 4, 1.2, 1.5, 0.25, 0.14, e.r * 1.2, e.g, e.b, 0.4);
     this.dartBatch.begin();
     for (let i = 0; i < t.capacity; i++) {
       if (!t.isLive(i)) continue;

@@ -80,7 +80,18 @@ export class BedroomScenery {
       // Cover: a full-size box; pages: a slightly taller, inset block whose spine side is hidden.
       this.boxes.write(p.x, y0 + h / 2, p.z, w, h, d, yaw, col.r, col.g, col.b);
       const off = 0.07 * s; // pages sit toward the open edge (+x local)
-      this.boxes.write(p.x + c * off, y0 + h / 2, p.z - sn * off, w - 0.06 * s, h * 0.72, d + 0.02 * s, yaw, PAGES.r, PAGES.g, PAGES.b);
+      this.boxes.write(
+        p.x + c * off,
+        y0 + h / 2,
+        p.z - sn * off,
+        w - 0.06 * s,
+        h * 0.72,
+        d + 0.02 * s,
+        yaw,
+        PAGES.r,
+        PAGES.g,
+        PAGES.b,
+      );
     }
   }
 
@@ -97,7 +108,18 @@ export class BedroomScenery {
     // Wrapper: a slightly fatter, darker band over the back two thirds.
     const wrapLen = len * 0.6;
     const back = -(len - wrapLen) / 2;
-    this.rods.write(p.x + fx * back, y, p.z + fz * back, dia * 1.06, dia * 1.06, wrapLen, p.yaw, col.r * 0.7, col.g * 0.7, col.b * 0.7);
+    this.rods.write(
+      p.x + fx * back,
+      y,
+      p.z + fz * back,
+      dia * 1.06,
+      dia * 1.06,
+      wrapLen,
+      p.yaw,
+      col.r * 0.7,
+      col.g * 0.7,
+      col.b * 0.7,
+    );
     const tip = len / 2 + (TIP_LEN * s) / 2;
     this.tips.write(p.x + fx * tip, y, p.z + fz * tip, dia, dia, TIP_LEN * s, p.yaw, col.r, col.g, col.b);
   }

@@ -26,7 +26,11 @@ export class Cannon {
     this.materials = [bodyMat, darkMat];
     for (const m of this.materials) m.freeze();
 
-    const base = CreateCylinder('cannonBase', { height: 0.5, diameterTop: 1.0, diameterBottom: 1.3, tessellation: 12 }, scene);
+    const base = CreateCylinder(
+      'cannonBase',
+      { height: 0.5, diameterTop: 1.0, diameterBottom: 1.3, tessellation: 12 },
+      scene,
+    );
     base.position.y = 0.25;
     base.material = darkMat;
     const turret = CreateCylinder('cannonTurret', { height: 0.45, diameter: 0.9, tessellation: 12 }, scene);

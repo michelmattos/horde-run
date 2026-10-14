@@ -131,7 +131,9 @@ class CrowdSim implements Sim {
     }
     const defDefs = level.defenders ?? [];
     if (defDefs.length > MAX_DEFENDERS) {
-      throw new Error(`Level "${level.id}" has ${defDefs.length} defenders; the sim supports at most ${MAX_DEFENDERS}.`);
+      throw new Error(
+        `Level "${level.id}" has ${defDefs.length} defenders; the sim supports at most ${MAX_DEFENDERS}.`,
+      );
     }
     this.level = level;
     this.baseX = level.enemyBase.x;

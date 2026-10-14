@@ -256,7 +256,8 @@ export function createOverlays(root: HTMLElement, settings: Settings): Overlays 
     if (current) current.classList.remove('hr-on');
     current = null;
     // Drop focus so Space/keys go back to the game.
-    if (document.activeElement instanceof HTMLElement && root.contains(document.activeElement)) document.activeElement.blur();
+    if (document.activeElement instanceof HTMLElement && root.contains(document.activeElement))
+      document.activeElement.blur();
   }
 
   return {

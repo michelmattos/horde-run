@@ -130,7 +130,18 @@ export class DefenderVisuals {
     // The rifleman: legs/torso and a head, in the army's tan.
     const h = SOLDIER_H * sc;
     const top = b * 2;
-    this.boxes.write(s.x, top + h * 0.35, s.z, 0.34 * sc, h * 0.7, 0.24 * sc, 0, e.r * 0.92 * glow, e.g * 0.92 * glow, e.b * 0.92 * glow);
+    this.boxes.write(
+      s.x,
+      top + h * 0.35,
+      s.z,
+      0.34 * sc,
+      h * 0.7,
+      0.24 * sc,
+      0,
+      e.r * 0.92 * glow,
+      e.g * 0.92 * glow,
+      e.b * 0.92 * glow,
+    );
     this.boxes.write(s.x, top + h * 0.85, s.z, 0.24 * sc, h * 0.3, 0.24 * sc, 0, e.r * glow, e.g * glow, e.b * glow);
     return top + h;
   }

@@ -3,7 +3,16 @@
 // instead of producing a silently broken battle. Worlds (src/data/worlds) list their
 // level ids in play order and are checked against the shipped levels the same way.
 
-import type { BossDef, DefenderDef, DefenderKind, EnemyWaveDef, GateDef, GateOp, LevelDef, WorldDef } from '../contracts.ts';
+import type {
+  BossDef,
+  DefenderDef,
+  DefenderKind,
+  EnemyWaveDef,
+  GateDef,
+  GateOp,
+  LevelDef,
+  WorldDef,
+} from '../contracts.ts';
 import { DEFENDER_DEFAULTS, LAYOUT } from '../contracts.ts';
 import l01 from '../data/levels/1-01.json' with { type: 'json' };
 import l02 from '../data/levels/1-02.json' with { type: 'json' };
@@ -41,7 +50,8 @@ function str(o: Obj, key: string, source: string, path: string): string {
 
 function num(o: Obj, key: string, source: string, path: string): number {
   const v = o[key];
-  if (typeof v !== 'number' || !Number.isFinite(v)) fail(source, `${path}${key}`, `must be a finite number (got ${JSON.stringify(v)})`);
+  if (typeof v !== 'number' || !Number.isFinite(v))
+    fail(source, `${path}${key}`, `must be a finite number (got ${JSON.stringify(v)})`);
   return v;
 }
 
@@ -74,7 +84,8 @@ function validateGate(raw: unknown, i: number, lane: LevelDef['lane'], source: s
   const o = obj(raw, source, `gates[${i}]`);
   const id = str(o, 'id', source, p);
   const op = o.op as GateOp;
-  if (!GATE_OPS.includes(op)) fail(source, `${p}op`, `must be one of ${GATE_OPS.join('/')} (got ${JSON.stringify(o.op)})`);
+  if (!GATE_OPS.includes(op))
+    fail(source, `${p}op`, `must be one of ${GATE_OPS.join('/')} (got ${JSON.stringify(o.op)})`);
   const value = num(o, 'value', source, p);
   if (value < 1) fail(source, `${p}value`, `must be >= 1 (got ${value})`);
   const x = num(o, 'x', source, p);
@@ -95,7 +106,11 @@ function validateGate(raw: unknown, i: number, lane: LevelDef['lane'], source: s
   }
   const hw = lane.width / 2;
   if (Math.abs(x) + reach + width / 2 > hw + 1e-9) {
-    fail(source, `${p}x`, `puts the gate (width ${width}${reach ? `, swing ${reach}` : ''}) outside the lane of width ${lane.width}`);
+    fail(
+      source,
+      `${p}x`,
+      `puts the gate (width ${width}${reach ? `, swing ${reach}` : ''}) outside the lane of width ${lane.width}`,
+    );
   }
   return gate;
 }
@@ -105,8 +120,15 @@ function validateDefender(raw: unknown, i: number, lane: LevelDef['lane'], sourc
   const o = obj(raw, source, `defenders[${i}]`);
   const id = str(o, 'id', source, p);
   const kind = o.kind as DefenderKind;
-  if (!DEFENDER_KINDS.includes(kind)) fail(source, `${p}kind`, `must be one of ${DEFENDER_KINDS.join('/')} (got ${JSON.stringify(o.kind)})`);
-  const d: DefenderDef = { id, kind, x: num(o, 'x', source, p), z: num(o, 'z', source, p), hp: pos(o, 'hp', source, p) };
+  if (!DEFENDER_KINDS.includes(kind))
+    fail(source, `${p}kind`, `must be one of ${DEFENDER_KINDS.join('/')} (got ${JSON.stringify(o.kind)})`);
+  const d: DefenderDef = {
+    id,
+    kind,
+    x: num(o, 'x', source, p),
+    z: num(o, 'z', source, p),
+    hp: pos(o, 'hp', source, p),
+  };
   if (o.width !== undefined) d.width = pos(o, 'width', source, p);
   for (const key of ['range', 'fireRate', 'damage'] as const) {
     if (o[key] === undefined) continue;
@@ -115,10 +137,12 @@ function validateDefender(raw: unknown, i: number, lane: LevelDef['lane'], sourc
   }
   const width = d.width ?? (kind === 'tower' ? DEFENDER_DEFAULTS.towerWidth : DEFENDER_DEFAULTS.wallWidth);
   const depth = kind === 'tower' ? width : DEFENDER_DEFAULTS.wallDepth;
-  if (Math.abs(d.x) + width / 2 > lane.width / 2 + 1e-9) fail(source, `${p}x`, `puts the ${kind} (width ${width}) outside the lane of width ${lane.width}`);
+  if (Math.abs(d.x) + width / 2 > lane.width / 2 + 1e-9)
+    fail(source, `${p}x`, `puts the ${kind} (width ${width}) outside the lane of width ${lane.width}`);
   const zMin = LAYOUT.cannonZ + 2;
   const zMax = lane.length - LAYOUT.enemySpawnInset;
-  if (d.z - depth / 2 < zMin || d.z + depth / 2 > zMax) fail(source, `${p}z`, `must keep the ${kind} inside [${zMin}, ${zMax}] (got ${d.z})`);
+  if (d.z - depth / 2 < zMin || d.z + depth / 2 > zMax)
+    fail(source, `${p}z`, `must keep the ${kind} inside [${zMin}, ${zMax}] (got ${d.z})`);
   return d;
 }
 
@@ -134,7 +158,10 @@ function validateBoss(raw: unknown, source: string): BossDef {
     const st = obj(ph.strafe, source, `${p}strafe`);
     const phase: BossDef['phases'][number] = {
       belowHp,
-      strafe: { amplitude: nonNeg(st, 'amplitude', source, `${p}strafe.`), period: pos(st, 'period', source, `${p}strafe.`) },
+      strafe: {
+        amplitude: nonNeg(st, 'amplitude', source, `${p}strafe.`),
+        period: pos(st, 'period', source, `${p}strafe.`),
+      },
     };
     if (ph.trickle !== undefined) phase.trickle = pos(ph, 'trickle', source, p);
     if (ph.summon !== undefined) phase.summon = posInt(ph, 'summon', source, p);
@@ -142,7 +169,8 @@ function validateBoss(raw: unknown, source: string): BossDef {
   });
   if (phases[0].belowHp !== 1) fail(source, 'boss.phases[0].belowHp', `must be 1 (got ${phases[0].belowHp})`);
   for (let i = 1; i < phases.length; i++) {
-    if (!(phases[i].belowHp < phases[i - 1].belowHp)) fail(source, `boss.phases[${i}].belowHp`, 'must be strictly below the previous phase');
+    if (!(phases[i].belowHp < phases[i - 1].belowHp))
+      fail(source, `boss.phases[${i}].belowHp`, 'must be strictly below the previous phase');
   }
   return { name, phases };
 }
@@ -168,7 +196,8 @@ export function validateLevel(raw: unknown, source: string): LevelDef {
 
   const laneO = obj(o.lane, source, 'lane');
   const lane = { width: pos(laneO, 'width', source, 'lane.'), length: pos(laneO, 'length', source, 'lane.') };
-  if (lane.length <= LAYOUT.cannonZ + LAYOUT.enemySpawnInset) fail(source, 'lane.length', `is too short (got ${lane.length})`);
+  if (lane.length <= LAYOUT.cannonZ + LAYOUT.enemySpawnInset)
+    fail(source, 'lane.length', `is too short (got ${lane.length})`);
 
   const c = obj(o.cannon, source, 'cannon');
   const cannon = {
@@ -177,7 +206,8 @@ export function validateLevel(raw: unknown, source: string): LevelDef {
     aimLimit: pos(c, 'aimLimit', source, 'cannon.'),
   };
   if (!Number.isInteger(cannon.unitsPerShot)) fail(source, 'cannon.unitsPerShot', 'must be an integer');
-  if (cannon.aimLimit > lane.width / 2) fail(source, 'cannon.aimLimit', `must be <= half the lane width (${lane.width / 2})`);
+  if (cannon.aimLimit > lane.width / 2)
+    fail(source, 'cannon.aimLimit', `must be <= half the lane width (${lane.width / 2})`);
 
   const pb = obj(o.playerBase, source, 'playerBase');
   const playerBase = { hp: pos(pb, 'hp', source, 'playerBase.') };
@@ -187,10 +217,12 @@ export function validateLevel(raw: unknown, source: string): LevelDef {
     x: num(eb, 'x', source, 'enemyBase.'),
     width: pos(eb, 'width', source, 'enemyBase.'),
   };
-  if (Math.abs(enemyBase.x) + enemyBase.width / 2 > lane.width / 2 + 1e-9) fail(source, 'enemyBase.width', 'puts the base outside the lane');
+  if (Math.abs(enemyBase.x) + enemyBase.width / 2 > lane.width / 2 + 1e-9)
+    fail(source, 'enemyBase.width', 'puts the base outside the lane');
 
   const gatesRaw = arr(o, 'gates', source);
-  if (gatesRaw.length > MAX_GATES) fail(source, 'gates', `has ${gatesRaw.length} entries; at most ${MAX_GATES} allowed`);
+  if (gatesRaw.length > MAX_GATES)
+    fail(source, 'gates', `has ${gatesRaw.length} entries; at most ${MAX_GATES} allowed`);
   const gates = gatesRaw.map((g, i) => validateGate(g, i, lane, source));
   const seen = new Set<string>();
   for (let i = 0; i < gates.length; i++) {
@@ -210,12 +242,16 @@ export function validateLevel(raw: unknown, source: string): LevelDef {
   const level: LevelDef = { id, name, lane, cannon, playerBase, enemyBase, gates, enemyWaves, champion };
   if (o.enemySpawnRate !== undefined) {
     const r = obj(o.enemySpawnRate, source, 'enemySpawnRate');
-    level.enemySpawnRate = { perSecond: pos(r, 'perSecond', source, 'enemySpawnRate.'), startAt: nonNeg(r, 'startAt', source, 'enemySpawnRate.') };
+    level.enemySpawnRate = {
+      perSecond: pos(r, 'perSecond', source, 'enemySpawnRate.'),
+      startAt: nonNeg(r, 'startAt', source, 'enemySpawnRate.'),
+    };
   }
 
   if (o.defenders !== undefined) {
     const raw = arr(o, 'defenders', source);
-    if (raw.length > MAX_DEFENDERS) fail(source, 'defenders', `has ${raw.length} entries; at most ${MAX_DEFENDERS} allowed`);
+    if (raw.length > MAX_DEFENDERS)
+      fail(source, 'defenders', `has ${raw.length} entries; at most ${MAX_DEFENDERS} allowed`);
     const defenders = raw.map((d, i) => validateDefender(d, i, lane, source));
     const ids = new Set<string>();
     defenders.forEach((d, i) => {
@@ -229,12 +265,17 @@ export function validateLevel(raw: unknown, source: string): LevelDef {
     const boss = validateBoss(o.boss, source);
     const maxAmp = Math.max(...boss.phases.map((ph) => ph.strafe.amplitude));
     if (Math.abs(enemyBase.x) + maxAmp + enemyBase.width / 2 > lane.width / 2 + 1e-9) {
-      fail(source, 'boss.phases', `strafe amplitude ${maxAmp} swings the base (width ${enemyBase.width}) outside the lane of width ${lane.width}`);
+      fail(
+        source,
+        'boss.phases',
+        `strafe amplitude ${maxAmp} swings the base (width ${enemyBase.width}) outside the lane of width ${lane.width}`,
+      );
     }
     level.boss = boss;
   }
 
-  if (o.goals !== undefined) fail(source, 'goals', 'is no longer supported: every level uses the same three stars; set targetTime instead');
+  if (o.goals !== undefined)
+    fail(source, 'goals', 'is no longer supported: every level uses the same three stars; set targetTime instead');
   if (o.targetTime !== undefined) level.targetTime = pos(o, 'targetTime', source, '');
   if (o.intro !== undefined) level.intro = str(o, 'intro', source, '');
   return level;

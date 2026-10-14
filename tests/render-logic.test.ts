@@ -2,7 +2,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ResolutionScaler } from '../src/render/resolution.ts';
-import { FAR_NDC_Y, NEAR_NDC_Y, ZOOM_MAX, computeFraming, crowdZoomTarget, easeZoom, screenRows, zoomedFov } from '../src/render/framing.ts';
+import {
+  FAR_NDC_Y,
+  NEAR_NDC_Y,
+  ZOOM_MAX,
+  computeFraming,
+  crowdZoomTarget,
+  easeZoom,
+  screenRows,
+  zoomedFov,
+} from '../src/render/framing.ts';
 
 function feed(s: ResolutionScaler, dt: number, seconds: number): void {
   for (let t = 0; t < seconds; t += dt) s.sample(dt);
@@ -42,7 +51,7 @@ test('screen rows keep defaults on a plain screen and move inward for the HUD an
   assert.deepEqual(screenRows(844, 70, 150), { near: NEAR_NDC_Y, far: FAR_NDC_Y });
   const notched = screenRows(844, 47 + 70, 34 + 190);
   assert.ok(notched.far < FAR_NDC_Y && notched.near > NEAR_NDC_Y);
-  assert.ok(Math.abs((1 - notched.far) / 2 * 844 - 117) < 1e-6, 'far row sits at the HUD bottom');
+  assert.ok(Math.abs(((1 - notched.far) / 2) * 844 - 117) < 1e-6, 'far row sits at the HUD bottom');
   const tiny = screenRows(200, 120, 120);
   assert.ok(tiny.far - tiny.near >= 0.6 - 1e-9);
 });
