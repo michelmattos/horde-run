@@ -19,6 +19,7 @@ import type { Battle } from './game/battle.ts';
 import { getLevel, getLevelById, getWorld } from './game/levels.ts';
 import { evaluateStars, goalStatus } from './game/stars.ts';
 import { createRenderer } from './render/index.ts';
+import type { RenderStats } from './render/index.ts';
 import { createRng } from './core/rng.ts';
 import { createFixedStep, createFrameCap } from './core/loop.ts';
 import { loadSettings } from './core/settings.ts';
@@ -42,9 +43,10 @@ declare global {
       fps(): number; // frames actually drawn per second (capped at 60)
       zoom(): number; // current crowd zoom-out of the camera (0 = none)
       level(): string;
-      spawn(n: number): void;
+      spawn(n: number, champion?: boolean): void; // debug: player units at the cannon
       units(): number; // live sim units (stacked units count once)
       goto(levelId: string): boolean; // start a battle on that level, skipping menus
+      render(): RenderStats; // last frame's draw calls, active meshes/indices, quality tier
     };
   }
 }
@@ -208,12 +210,13 @@ function simStep(): void {
 }
 
 let looping = false;
+let contextLost = false; // the WebGL context is gone: draw nothing until it is restored
 let woke = false; // the next frame is the first after a restart; its delta spans the menu time
 let drawnFps = 0; // smoothed rate of frames actually drawn (rAF may tick faster than the cap)
 
 // (Re)starts the render loop; a no-op while running or while no battlefield is on screen.
 function wake(): void {
-  if (looping || !inBattle) return;
+  if (looping || !inBattle || contextLost) return;
   looping = true;
   woke = true;
   loop.reset();
@@ -270,6 +273,22 @@ watchInterruptions((r) => pause(r));
 // A resize clears the canvas; redraw once even when the loop is stopped behind a menu.
 engine.onResizeObservable.add(() => wake());
 
+// GPU context loss (iOS drops WebGL contexts under memory pressure or after a long time
+// in the background). Babylon keeps the data to rebuild buffers, raw/dynamic textures,
+// render targets and effects; the game pauses (the sim must not run blind), stops
+// drawing into a dead context, and once the context is back the renderer recompiles
+// and refits before the battlefield is drawn again under the pause card.
+engine.onContextLostObservable.add(() => {
+  contextLost = true;
+  pause('hidden');
+  stopLoop();
+});
+engine.onContextRestoredObservable.add(() => {
+  contextLost = false;
+  renderer.contextRestored();
+  wake();
+});
+
 // Boot: ?level=<id> goes straight into that battle, otherwise the world map.
 const startId = params.get('level');
 if (startId && getLevelById(startId)) startLevel(startId);
@@ -280,10 +299,21 @@ window.__horde = {
   fps: () => drawnFps,
   zoom: () => renderer.cameraZoom,
   level: () => (inBattle ? level.id : 'map'),
-  spawn: (n: number) => {
+  spawn: (n: number, champion = false) => {
     const count = Math.max(0, Math.floor(n));
     if (count > 0 && sim && battle) {
-      sim.spawn(Team.Player, UnitKind.Mob, battle.cannonX, LAYOUT.cannonZ + 2, count, { spread: level.lane.width / 2 - 0.6 });
+      const kind = champion ? UnitKind.Champion : UnitKind.Mob;
+      // Spread over rows up the lane like a cannon stream (all on one z, separation
+      // squeezes a big spawn into a single solid band across the rug).
+      const spread = level.lane.width / 2 - 0.6;
+      const perRow = Math.max(1, Math.floor(spread * 2.2));
+      const rows = Math.ceil(count / perRow);
+      const depth = Math.min(22, rows * 0.9);
+      for (let r = 0, left = count; r < rows && left > 0; r++) {
+        const k = r === rows - 1 ? left : Math.min(left, perRow);
+        sim.spawn(Team.Player, kind, battle.cannonX, LAYOUT.cannonZ + 2 + (rows > 1 ? (r / (rows - 1)) * depth : 0), k, { spread });
+        left -= k;
+      }
     }
   },
   units: () => (sim ? sim.view.count : 0),
@@ -292,6 +322,10 @@ window.__horde = {
     startLevel(id);
     return true;
   },
+  render: () => renderer.stats(),
 };
+
+// ?debug exposes the Babylon scene for console inspection (draw-call and mesh audits).
+if (params.has('debug')) (window as unknown as { __scene?: unknown }).__scene = renderer.scene;
 
 if (import.meta.env.PROD) registerServiceWorker();

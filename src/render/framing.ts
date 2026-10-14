@@ -11,7 +11,7 @@
 // two rows inward (screenRows) so the bases stay clear of the HUD and safe-area insets.
 
 export const DESIGN_ASPECT = 0.5; // widest aspect that is framed by lane width
-export const NEAR_NDC_Y = -0.52; // default cannon row: ~76% down the screen
+export const NEAR_NDC_Y = -0.6; // default cannon row: 80% down the screen (the fort's courtyard sits under the bottom HUD)
 export const FAR_NDC_Y = 0.8; // default far edge of the enemy base: ~10% from the top
 const MIN_ROW_GAP = 0.6; // NDC; the rows never squeeze closer than this
 const PITCH_MAX = (60 * Math.PI) / 180;
@@ -122,6 +122,38 @@ function pullBack(pitch: number, t: number, at: Solved, want: number, aspect: nu
     y: at.y + extra * Math.sin(pitch),
     z: at.z - extra * Math.cos(pitch),
   };
+}
+
+// NDC y of the point (0, y, z) seen by a framing's camera.
+export function projectNdcY(f: Framing, y: number, z: number): number {
+  const dy = y - f.y;
+  const dz = z - f.z;
+  const fwd = dz * Math.cos(f.pitch) - dy * Math.sin(f.pitch);
+  const up = dy * Math.cos(f.pitch) + dz * Math.sin(f.pitch);
+  return fwd > 1e-6 ? up / fwd / Math.tan(f.fov / 2) : Infinity;
+}
+
+// Frames like computeFraming, then lowers the far row until the point `top` (the enemy
+// fort's flag tip or the boss's plume) projects no higher than `limitNdcY`, so tall
+// models at the far end never poke into the HUD.
+export function computeFramingClear(input: FramingInput, top: { y: number; z: number }, limitNdcY: number): Framing {
+  const farRow = input.farNdcY ?? FAR_NDC_Y;
+  const nearRow = input.nearNdcY ?? NEAR_NDC_Y;
+  const f = computeFraming(input);
+  if (!(projectNdcY(f, top.y, top.z) > limitNdcY)) return f;
+  // Bisect the far row: the highest one that keeps `top` under the limit.
+  let lo = nearRow + MIN_ROW_GAP;
+  let hi = farRow;
+  let best = computeFraming({ ...input, farNdcY: lo });
+  for (let i = 0; i < 18; i++) {
+    const mid = (lo + hi) / 2;
+    const m = computeFraming({ ...input, farNdcY: mid });
+    if (projectNdcY(m, top.y, top.z) <= limitNdcY) {
+      lo = mid;
+      best = m;
+    } else hi = mid;
+  }
+  return best;
 }
 
 // ---------- Crowd zoom-out ----------

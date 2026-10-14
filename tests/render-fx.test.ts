@@ -14,6 +14,13 @@ import {
   PROP_RADIUS,
   showHpBar,
   usesLeftText,
+  KeyedThrottle,
+  dartHeight,
+  dartPitch,
+  fxEnvelope,
+  writeBillboard,
+  writeStreak,
+  writeTRS,
 } from '../src/render/fxLogic.ts';
 
 test('hp fraction clamps and the bar hides at full and zero HP', () => {
@@ -107,4 +114,119 @@ test('scenery stays outside the lane and is deterministic', () => {
   }
   assert.ok(a.some((p) => p.x < 0) && a.some((p) => p.x > 0), 'both sides of the lane');
   for (const kind of ['block', 'book', 'crayon'] as const) assert.ok(a.some((p) => p.kind === kind), `some ${kind}s`);
+});
+
+test('scattered props never overlap each other', () => {
+  const a = scatterScenery(11, 10, -8, 72, 90, 10);
+  assert.ok(a.length > 40, `placed ${a.length}`);
+  for (let i = 0; i < a.length; i++) {
+    for (let j = i + 1; j < a.length; j++) {
+      const p = a[i];
+      const q = a[j];
+      const d = Math.hypot(p.x - q.x, p.z - q.z);
+      assert.ok(d >= PROP_RADIUS[p.kind] * p.scale + PROP_RADIUS[q.kind] * q.scale - 1e-9, `${p.kind} and ${q.kind} overlap`);
+    }
+  }
+});
+
+test('pools with restitution bounce, then settle on their ground height', () => {
+  const p = new ParticlePool(1, { bounce: 0.4, groundY: 0 });
+  p.spawn(0, 1, 0, 0, 0, 0, 10, 1, 1, 1, 1, 16);
+  let bounced = false;
+  for (let i = 0; i < 240; i++) {
+    p.step(1 / 60);
+    if (p.vy[0] > 0) bounced = true;
+  }
+  assert.ok(bounced, 'bounces off the floor');
+  assert.equal(p.py[0], 0);
+  assert.ok(p.grounded(0));
+  // Default pools keep the old behaviour: stop at 0.05, never bounce.
+  const q = new ParticlePool(1);
+  q.spawn(0, 1, 0, 0, 0, 0, 10, 1, 1, 1, 1, 16);
+  for (let i = 0; i < 120; i++) {
+    q.step(1 / 60);
+    assert.ok(q.vy[0] <= 0);
+  }
+  assert.ok(Math.abs(q.py[0] - 0.05) < 1e-6);
+});
+
+test('drag gives confetti a slow terminal fall', () => {
+  const p = new ParticlePool(1, { drag: 2.4, groundY: -100 });
+  p.spawn(0, 0, 0, 0, 0, 0, 10, 1, 1, 1, 1, 9);
+  for (let i = 0; i < 300; i++) p.step(1 / 60);
+  assert.ok(p.vy[0] < 0 && p.vy[0] > -4.5, `terminal speed ${p.vy[0]}`);
+});
+
+test('fx envelope rises, holds and falls to zero', () => {
+  assert.equal(fxEnvelope(1, 0.1, 0.5), 0);
+  assert.equal(fxEnvelope(0.7, 0.1, 0.5), 1);
+  assert.ok(Math.abs(fxEnvelope(0.25, 0.1, 0.5) - 0.5) < 1e-9);
+  assert.equal(fxEnvelope(0, 0.1, 0.5), 0);
+  assert.equal(fxEnvelope(-1, 0, 0), 0);
+});
+
+test('dart lob starts and ends at the right heights and pitches nose-down at the end', () => {
+  assert.equal(dartHeight(0, 2.6, 0.5, 0.35), 2.6);
+  assert.equal(dartHeight(1, 2.6, 0.5, 0.35), 0.5);
+  assert.ok(dartHeight(0.5, 2.6, 0.5, 0.35) > (2.6 + 0.5) / 2, 'lifted mid-flight');
+  assert.ok(dartPitch(1, 2.6, 0.5, 0.35, 5) > dartPitch(0, 2.6, 0.5, 0.35, 5));
+  assert.ok(dartPitch(1, 2.6, 0.5, 0.35, 5) > 0);
+});
+
+test('writeTRS matches the yaw-only layout and pitches +Z down', () => {
+  const m = new Float32Array(16);
+  writeTRS(m, 0, 1, 2, 3, 1, 1, 1, Math.PI / 2, 0, 0);
+  // local +Z (row 2) points along +X after a quarter yaw; translation in 12..14.
+  assert.ok(Math.abs(m[8] - 1) < 1e-6 && Math.abs(m[10]) < 1e-6);
+  assert.deepEqual([m[12], m[13], m[14], m[15]], [1, 2, 3, 1]);
+  writeTRS(m, 0, 0, 0, 0, 2, 2, 2, 0, Math.PI / 2, 0);
+  assert.ok(Math.abs(m[9] + 2) < 1e-6, 'positive pitch tips +Z down (scaled by 2)');
+  // Rows stay orthogonal under a mixed rotation.
+  writeTRS(m, 0, 0, 0, 0, 1, 1, 1, 0.7, -0.4, 1.9);
+  const dot = (a: number, b: number) => m[a] * m[b] + m[a + 1] * m[b + 1] + m[a + 2] * m[b + 2];
+  assert.ok(Math.abs(dot(0, 4)) < 1e-6 && Math.abs(dot(0, 8)) < 1e-6 && Math.abs(dot(4, 8)) < 1e-6);
+  assert.ok(Math.abs(dot(0, 0) - 1) < 1e-6);
+});
+
+test('billboards and streaks span the camera axes', () => {
+  const m = new Float32Array(16);
+  writeBillboard(m, 0, 5, 1, 2, 0.5, 0.5, 0, 1, 0, 0, 0, 0.6, 0.8);
+  assert.deepEqual([m[0], m[1], m[2]], [0.5, 0, 0]);
+  assert.ok(Math.abs(m[5] - 0.3) < 1e-6 && Math.abs(m[6] - 0.4) < 1e-6);
+  writeStreak(m, 0, 0, 0, 0, 0, 3, 0, 0.1, 0.8, 0, 0, 1);
+  assert.ok(Math.abs(m[5] - 0.8) < 1e-6, 'length along the velocity');
+  assert.ok(Math.abs(Math.hypot(m[0], m[1], m[2]) - 0.1) < 1e-6, 'width across it');
+  writeStreak(m, 0, 0, 0, 0, 0, 0, 0, 0.1, 0.2, 0, 0, 1);
+  assert.ok(Number.isFinite(m[0]) && Number.isFinite(m[4]), 'at rest it still writes a valid quad');
+});
+
+test('keyed throttle limits each key separately and evicts the stalest', () => {
+  const t = new KeyedThrottle(2, 0.4);
+  assert.ok(t.allow(1));
+  assert.ok(!t.allow(1));
+  assert.ok(t.allow(2));
+  t.tick(0.5);
+  assert.ok(t.allow(1));
+  assert.ok(t.allow(3), 'a third key evicts key 2 (fired longest ago)');
+  assert.ok(t.allow(2), 'key 2 was forgotten, so it fires again');
+  t.clear();
+  assert.ok(t.allow(1));
+});
+
+test('tracers report the slot of each landed dart', () => {
+  const t = new TracerPool(3);
+  t.spawn(1, 2, 3, 4, 0.1);
+  t.spawn(5, 6, 7, 8, 0.3);
+  t.step(0.2);
+  assert.equal(t.endedCount, 1);
+  assert.equal(t.endedSlot[0], 0);
+  assert.equal(t.x0[t.endedSlot[0]], 1);
+});
+
+test('effects pools stay within the 400-particle budget', async () => {
+  const src = await import('node:fs').then((fs) => fs.readFileSync(new URL('../src/render/effects.ts', import.meta.url), 'utf8'));
+  const num = (name: string) => Number(new RegExp(`const ${name} = (\\d+)`).exec(src)![1]);
+  const total = ['TRACERS', 'FALLEN', 'SOLIDS', 'CONFETTI', 'PUFFS', 'SPARKS', 'RINGS'].reduce((a, k) => a + num(k), 0);
+  assert.ok(total <= 400, `pooled ${total}`);
+  assert.ok(!/camera\.(position|rotation|target|alpha|beta|radius|fov)\s*[=+\-*]/.test(src), 'effects never move the camera');
 });

@@ -1,0 +1,174 @@
+// Inline SVG icons for the sticker UI, returned as markup strings (decorative:
+// every icon is aria-hidden; buttons carry their own text or aria-label).
+// Figures are drawn as two passes of the same strokes: a wider ink pass for the
+// die-cut outline, then the fill colour, so they read as chunky toy stickers.
+import { HEX } from '../render/look/palette.ts';
+
+const INK = HEX.uiInk;
+
+interface Stroke {
+  d: string;
+  w: number; // stroke width of the fill pass (shapes are filled too)
+}
+
+function figure(parts: readonly Stroke[], color: string, outline: number, extra = ''): string {
+  const pass = (c: string, grow: number): string =>
+    parts
+      .map((p) => `<path d="${p.d}" fill="${c}" stroke="${c}" stroke-width="${p.w + grow}" stroke-linecap="round" stroke-linejoin="round"/>`)
+      .join('');
+  return pass(INK, outline * 2) + pass(color, 0) + extra;
+}
+
+function svg(viewBox: string, body: string, size: number | string, cls = ''): string {
+  const s = typeof size === 'number' ? `${size}` : size;
+  return `<svg class="${cls}" viewBox="${viewBox}" width="${s}" height="${s}" aria-hidden="true" focusable="false">${body}</svg>`;
+}
+
+// Kneeling bazooka soldier, facing right (the champion).
+const CHAMPION: Stroke[] = [
+  { d: 'M5 23 L57 18', w: 8 }, // launcher tube on the shoulder
+  { d: 'M53 12.5 L61 11.5 L62 23 L54.5 23.5 Z', w: 2 }, // flared muzzle
+  { d: 'M3 18.5 L8 18 L8.8 27.5 L3.8 28 Z', w: 1.5 }, // rear end
+  { d: 'M18 24 C17.5 12 37 11 37.5 22.5 Z', w: 2 }, // helmet
+  { d: 'M28.5 26 L28.6 27', w: 9 }, // head
+  { d: 'M27.5 31 L24 43', w: 12 }, // torso
+  { d: 'M29 31 L39 33.5 L42.5 25', w: 5 }, // arm to the grip
+  { d: 'M25 44 L38.5 43.5 L39.5 55.5 L46 55.5', w: 7.5 }, // front leg, knee up
+  { d: 'M23 44 L20.5 55.5 L8 55.5', w: 7.5 }, // back leg kneeling
+];
+
+// Standing rifleman, facing right (army count, enemy badge).
+const RIFLEMAN: Stroke[] = [
+  { d: 'M21.5 15 C21 4 41 4 40.5 15 Z', w: 2 }, // helmet
+  { d: 'M18.5 15 L43.5 15', w: 3.5 }, // brim
+  { d: 'M31 20 L31 21', w: 9 }, // head
+  { d: 'M31 26 L31 39', w: 12.5 }, // torso
+  { d: 'M29 40 L25.5 56 L20.5 56.5', w: 7 }, // back leg
+  { d: 'M33.5 40 L38 56 L43 56', w: 7 }, // front leg
+  { d: 'M17 45 L49 15', w: 4.5 }, // rifle
+  { d: 'M27 27 L27 34 L38 30', w: 5 }, // arms
+];
+
+// A little fort (the player's base).
+const FORT: Stroke[] = [
+  { d: 'M9 56 L9 27 L17 27 L17 32 L24 32 L24 27 L32 27 L32 32 L39 32 L39 27 L47 27 L47 32 L55 32 L55 56 Z', w: 2 },
+  { d: 'M32 27 L32 8', w: 3 },
+  { d: 'M32 8 L46 12.5 L32 17 Z', w: 2 },
+];
+
+export function championIcon(size: number | string, color: string = HEX.uiCream): string {
+  return svg('0 0 64 64', figure(CHAMPION, color, 2.6), size, 'tb-ico');
+}
+
+export function soldierIcon(size: number | string, color: string = HEX.uiCream): string {
+  return svg('0 0 64 64', figure(RIFLEMAN, color, 2.6), size, 'tb-ico');
+}
+
+export function fortIcon(size: number | string, color: string = HEX.uiCream, flag: string = HEX.uiYellow): string {
+  const body = figure(FORT.slice(0, 2), color, 2.6) + figure(FORT.slice(2), flag, 2.6) +
+    `<path d="M27 56 L27 46 C27 41 37 41 37 46 L37 56 Z" fill="${INK}" opacity=".55"/>`;
+  return svg('0 0 64 64', body, size, 'tb-ico');
+}
+
+// Five-point star with an ink outline and a glint; colour classes in theme.ts (.tb-off, .tb-grey).
+const STAR_D = (() => {
+  const cx = 24;
+  const cy = 25.5;
+  const pts: string[] = [];
+  for (let i = 0; i < 10; i++) {
+    const r = i % 2 === 0 ? 20.5 : 9.8;
+    const a = -Math.PI / 2 + (i * Math.PI) / 5;
+    pts.push(`${(cx + Math.cos(a) * r).toFixed(2)} ${(cy + Math.sin(a) * r).toFixed(2)}`);
+  }
+  return `M${pts.join(' L')} Z`;
+})();
+
+export function starIcon(size: number | string, cls = ''): string {
+  const body =
+    `<path d="${STAR_D}" fill="${INK}" stroke="${INK}" stroke-width="7" stroke-linejoin="round" transform="translate(0 1.6)"/>` +
+    `<path class="tb-star-body" d="${STAR_D}" stroke="${INK}" stroke-width="3.6" stroke-linejoin="round"/>` +
+    `<path class="tb-star-shine" d="M17.5 17.2 C19.5 14.2 22 11.2 23.2 9.6 C23.6 13 22 17.5 19.4 19.6 Z" opacity=".9"/>`;
+  return svg('-2 -2 52 54', body, size, `tb-star ${cls}`.trim());
+}
+
+export function pauseIcon(size: number): string {
+  const bar = (x: number): string =>
+    `<rect x="${x}" y="14" width="10" height="36" rx="4" fill="${INK}"/><rect x="${x + 2}" y="15.5" width="6" height="30" rx="3" fill="${HEX.uiCream}"/>`;
+  return svg('0 0 64 64', bar(17) + bar(37), size, 'tb-ico');
+}
+
+export function playIcon(size: number, color: string = HEX.uiInk): string {
+  return svg('0 0 32 32', `<path d="M10 6.5 L25 16 L10 25.5 Z" fill="${color}" stroke="${color}" stroke-width="4" stroke-linejoin="round"/>`, size, 'tb-ico');
+}
+
+export function retryIcon(size: number, color: string = HEX.uiInk): string {
+  return svg(
+    '0 0 32 32',
+    `<path d="M25 17.5 A9 9 0 1 1 20.5 9.2" fill="none" stroke="${color}" stroke-width="4.2" stroke-linecap="round"/>` +
+      `<path d="M17.5 3.8 L25 8.6 L18 13.4 Z" fill="${color}" stroke="${color}" stroke-width="2.4" stroke-linejoin="round"/>`,
+    size,
+    'tb-ico',
+  );
+}
+
+export function nextIcon(size: number, color: string = HEX.uiInk): string {
+  return svg(
+    '0 0 32 32',
+    `<path d="M6 16 L22 16" stroke="${color}" stroke-width="4.6" stroke-linecap="round"/>` +
+      `<path d="M16 8.5 L25 16 L16 23.5" fill="none" stroke="${color}" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/>`,
+    size,
+    'tb-ico',
+  );
+}
+
+export function mapIcon(size: number, color: string = HEX.uiInk): string {
+  return svg(
+    '0 0 32 32',
+    `<path d="M4 8 L11 5 L21 8 L28 5 L28 24 L21 27 L11 24 L4 27 Z" fill="none" stroke="${color}" stroke-width="3" stroke-linejoin="round"/>` +
+      `<path d="M11 5 L11 24 M21 8 L21 27" stroke="${color}" stroke-width="2.6"/>`,
+    size,
+    'tb-ico',
+  );
+}
+
+export function lockIcon(size: number, color: string = HEX.uiCream): string {
+  return svg(
+    '0 0 32 32',
+    `<path d="M10 15 V11 a6 6 0 0 1 12 0 V15" fill="none" stroke="${INK}" stroke-width="7"/>` +
+      `<path d="M10 15 V11 a6 6 0 0 1 12 0 V15" fill="none" stroke="${color}" stroke-width="3"/>` +
+      `<rect x="5" y="14" width="22" height="15" rx="4" fill="${color}" stroke="${INK}" stroke-width="3"/>` +
+      `<circle cx="16" cy="21" r="2.4" fill="${INK}"/>`,
+    size,
+    'tb-ico',
+  );
+}
+
+export function tickIcon(size: number): string {
+  return svg(
+    '0 0 32 32',
+    `<circle cx="16" cy="16" r="13" fill="${HEX.uiGreen}" stroke="${INK}" stroke-width="3"/>` +
+      `<path d="M9.5 16.5 L14 21 L22.5 11.5" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>`,
+    size,
+    'tb-ico',
+  );
+}
+
+export function crossIcon(size: number): string {
+  return svg(
+    '0 0 32 32',
+    `<circle cx="16" cy="16" r="13" fill="${HEX.uiRed}" stroke="${INK}" stroke-width="3"/>` +
+      `<path d="M11 11 L21 21 M21 11 L11 21" stroke="#fff" stroke-width="4" stroke-linecap="round"/>`,
+    size,
+    'tb-ico',
+  );
+}
+
+export function gearIcon(size: number, color: string = HEX.uiInk): string {
+  return svg(
+    '0 0 32 32',
+    `<circle cx="16" cy="16" r="9" fill="none" stroke="${color}" stroke-width="5" stroke-dasharray="4.2 2.9"/>` +
+      `<circle cx="16" cy="16" r="6.5" fill="none" stroke="${color}" stroke-width="3"/>`,
+    size,
+    'tb-ico',
+  );
+}
