@@ -43,7 +43,7 @@
 //   - Materials are shared through look.material('env-...'), so rebuilding per level reuses
 //     them and their textures; env.dispose() disposes only meshes.
 import type { Scene } from '@babylonjs/core/scene';
-import { Mesh } from '@babylonjs/core/Meshes/mesh';
+import type { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import '@babylonjs/core/Meshes/thinInstanceMesh';

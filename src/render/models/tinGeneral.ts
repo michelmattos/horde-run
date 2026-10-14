@@ -1512,7 +1512,7 @@ export function createTinGeneral(scene: Scene, look: Look, opts: TinGeneralOptio
     vd.positions = pos;
     vd.normals = nrm;
     vd.indices = idx;
-    vd.uvs = new Array((pos.length / 3) * 2).fill(0);
+    vd.uvs = Array.from({ length: (pos.length / 3) * 2 }, () => 0);
     return swatch(fixWinding(vd), R.paint, C.white);
   };
   for (const back of [false, true]) {

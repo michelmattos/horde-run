@@ -259,9 +259,7 @@ export function place(vd: VertexData, t: Placement): VertexData {
 // Sets a solid vertex colour (linear rgb, for PBR) over the whole part.
 export function paint(vd: VertexData, c: Color3 | readonly [number, number, number], alpha = 1): VertexData {
   const n = (vd.positions?.length ?? 0) / 3;
-  const r = Array.isArray(c) ? c[0] : (c as Color3).r;
-  const g = Array.isArray(c) ? c[1] : (c as Color3).g;
-  const b = Array.isArray(c) ? c[2] : (c as Color3).b;
+  const [r, g, b] = 'r' in c ? [c.r, c.g, c.b] : c;
   const colors = new Float32Array(n * 4);
   for (let i = 0; i < n; i++) {
     colors[i * 4] = r;
@@ -358,8 +356,8 @@ export function bakeVertexAO(vd: VertexData, o: AoOptions = {}): VertexData {
     // Tangent frame around the normal.
     const tx0 = Math.abs(nx) < 0.9 ? 1 : 0;
     const ty0 = tx0 ? 0 : 1;
-    let tx = ty0 * nz - 0 * ny,
-      ty = 0 * nx - tx0 * nz,
+    let tx = ty0 * nz,
+      ty = -tx0 * nz,
       tz = tx0 * ny - ty0 * nx;
     const tl = Math.hypot(tx, ty, tz) || 1;
     tx /= tl;

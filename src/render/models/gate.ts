@@ -581,7 +581,7 @@ function drawCard(tex: DynamicTexture, cw: number, texH: number, good: boolean, 
   ctx.restore();
 
   // The uses count is drawn on its own big token (usesBadge), not as a pill on the card.
-  const hasUses = false && usesLeft >= 0;
+  const hasUses: boolean = false;
   // Layout box for the number: inside the panel, minus padding, above the pill.
   const padX = PAD_X * W;
   const padY = 0.035 * H;

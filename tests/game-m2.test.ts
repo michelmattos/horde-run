@@ -8,8 +8,8 @@ import { LEVELS, validateLevel } from '../src/game/levels.ts';
 import { evaluateStars, goalStatus } from '../src/game/stars.ts';
 import { createAutoplay } from '../src/game/autoplay.ts';
 import { createSim } from '../src/sim/index.ts';
-import { LAYOUT, SIM_DT, SIM_HZ, Team, UnitKind } from '../src/contracts.ts';
-import type { BattleState, BossDef, InputState, LevelDef, SimEvent, SimView } from '../src/contracts.ts';
+import { LAYOUT, SIM_DT, SIM_HZ, Team } from '../src/contracts.ts';
+import type { BattleState, BossDef, InputState, LevelDef, SimEvent, SimView, UnitKind } from '../src/contracts.ts';
 
 const emptyView: SimView = {
   count: 0,

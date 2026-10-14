@@ -12,7 +12,7 @@
 //   node scripts/preview.mjs effects 5212
 import type { Scene } from '@babylonjs/core/scene';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
-import { Mesh } from '@babylonjs/core/Meshes/mesh';
+import type { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { CreateBox } from '@babylonjs/core/Meshes/Builders/boxBuilder';
 import type { Look } from '../look/index.ts';
 import type { ModelInfo, PreviewOptions, PreviewResult } from '../look/model.ts';

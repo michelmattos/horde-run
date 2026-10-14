@@ -173,7 +173,7 @@ function star(outer: number, inner: number, thick: number): VertexData {
   vd.positions = positions;
   vd.normals = normals;
   vd.indices = indices;
-  vd.uvs = new Array((positions.length / 3) * 2).fill(0);
+  vd.uvs = Array.from({ length: (positions.length / 3) * 2 }, () => 0);
   return fixWinding(vd);
 }
 

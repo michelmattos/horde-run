@@ -50,7 +50,7 @@ server.stdout.on('data', (d) => (serverLog += d));
 server.stderr.on('data', (d) => (serverLog += d));
 const stopServer = () => {
   try {
-    process.kill(-server.pid, 'SIGTERM');
+    if (server.pid) process.kill(-server.pid, 'SIGTERM');
   } catch {
     // already gone
   }

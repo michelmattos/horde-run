@@ -1,9 +1,10 @@
 name: Deploy to GitHub Pages
 
+# Deploys main. Pull requests are checked by ci.yml.
+
 on:
   push:
     branches: [main]
-  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -25,10 +26,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm test
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
-        if: github.ref == 'refs/heads/main'
         with:
           path: dist
 

@@ -35,7 +35,7 @@
 // bakeBlockAO (stacking/contact AO in vertex colours, for upright blocks). Edge radius = 8%
 // of the side.
 import type { Scene } from '@babylonjs/core/scene';
-import { Mesh } from '@babylonjs/core/Meshes/mesh';
+import type { Mesh } from '@babylonjs/core/Meshes/mesh';
 import type { InstancedMesh } from '@babylonjs/core/Meshes/instancedMesh';
 import '@babylonjs/core/Meshes/instancedMesh';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
@@ -637,7 +637,7 @@ export function createWallKit(scene: Scene, look: Look): WallKit {
     root: kitRoot,
     create,
     dispose(): void {
-      for (const w of [...walls]) w.dispose();
+      for (const w of Array.from(walls)) w.dispose();
       kitRoot.dispose();
     },
   };

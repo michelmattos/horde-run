@@ -43,7 +43,7 @@ import type { Mesh } from '@babylonjs/core/Meshes/mesh';
 import type { InstancedMesh } from '@babylonjs/core/Meshes/instancedMesh';
 import '@babylonjs/core/Meshes/instancedMesh';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
-import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData';
+import type { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData';
 import { VertexBuffer } from '@babylonjs/core/Buffers/buffer';
 import { CreateBoxVertexData } from '@babylonjs/core/Meshes/Builders/boxBuilder';
 import { Matrix, Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector';
@@ -509,7 +509,7 @@ export function createTowerKit(scene: Scene, look: Look): TowerKit {
     trianglesPerTower,
     meshes: sources,
     dispose() {
-      for (const t of [...towers]) t.dispose();
+      for (const t of Array.from(towers)) t.dispose();
       for (const m of sources) m.dispose();
     },
   };

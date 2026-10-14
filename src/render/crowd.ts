@@ -169,7 +169,10 @@ export class CrowdRenderer {
     this.blobs = new InstanceBatch(blob, false);
 
     void createSoldierMesh(scene, look).then((m) => {
-      if (this.disposed) return void m.dispose();
+      if (this.disposed) {
+        m.dispose();
+        return;
+      }
       look.receiveShadows(m);
       this.mob.setMesh(m);
     });
