@@ -17,6 +17,9 @@ for (const id of BOSS) {
     assert.ok(wins.length <= 6, `${id}: ${wins.length}/${runs.length} human attempts won (no retry needed)`);
     const t = median(wins.map((r) => r.seconds));
     assert.ok(t >= 60 && t <= 130, `${id}: median win took ${t.toFixed(0)} s`);
-    assert.ok(wins.some((r) => r.stars[2]), `${id}: no winning run beat the ${level.targetTime} s target`);
+    assert.ok(
+      wins.some((r) => r.stars[2]),
+      `${id}: no winning run beat the ${level.targetTime} s target`,
+    );
   });
 }

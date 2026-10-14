@@ -46,7 +46,9 @@ test('a gate burst spreads clones across the gate instead of stacking them', () 
 });
 
 test('over the unit budget a x2 gate still doubles every fired mob exactly once', () => {
-  const sim = createSim({ ...base, gates: [{ id: 'g', op: 'mul', value: 2, x: 0, z: 3, width: 8 }] }, lcg(3), { unitBudget: 50 });
+  const sim = createSim({ ...base, gates: [{ id: 'g', op: 'mul', value: 2, x: 0, z: 3, width: 8 }] }, lcg(3), {
+    unitBudget: 50,
+  });
   const ev: SimEvent[] = [];
   let fired = 0;
   for (let s = 0; s < 180; s++) {

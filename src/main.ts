@@ -61,7 +61,12 @@ const engine = new Engine(
   false, // the renderer owns hardware scaling (automatic resolution scaling)
 );
 
-const world: WorldDef = getWorld('w1') ?? { id: 'w1', name: 'Bedroom Floor', faction: 'Tan Army', levels: [getLevel(0).id] };
+const world: WorldDef = getWorld('w1') ?? {
+  id: 'w1',
+  name: 'Bedroom Floor',
+  faction: 'Tan Army',
+  levels: [getLevel(0).id],
+};
 const levelDef = (id: string): LevelDef => getLevelById(id) ?? getLevel(0);
 
 const settings = loadSettings();
@@ -95,7 +100,6 @@ let inBattle = false; // a battle is on screen (playing, paused or showing its r
 let outcomeAt = -1; // sim time the outcome was reached, -1 while playing
 let resultShown = false;
 const events: SimEvent[] = []; // sim and battle events since the last rendered frame
-
 
 function nextLevelId(id: string): string | undefined {
   const i = world.levels.indexOf(id);
@@ -283,7 +287,9 @@ window.__horde = {
   spawn: (n: number) => {
     const count = Math.max(0, Math.floor(n));
     if (count > 0 && sim && battle) {
-      sim.spawn(Team.Player, UnitKind.Mob, battle.cannonX, LAYOUT.cannonZ + 2, count, { spread: level.lane.width / 2 - 0.6 });
+      sim.spawn(Team.Player, UnitKind.Mob, battle.cannonX, LAYOUT.cannonZ + 2, count, {
+        spread: level.lane.width / 2 - 0.6,
+      });
     }
   },
   units: () => (sim ? sim.view.count : 0),

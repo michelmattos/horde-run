@@ -26,7 +26,13 @@ export function unlitMaterial(scene: Scene, name: string, color: Color3): Standa
 // Wooden floorboards for the Bedroom Floor ground: a small canvas texture (four planks
 // with seams, staggered end joints and a little grain) tiled across the ground plane.
 // Drawn once per level; the caller disposes it with its material.
-export function woodFloorMaterial(scene: Scene, name: string, plankWidth: number, groundW: number, groundH: number): StandardMaterial {
+export function woodFloorMaterial(
+  scene: Scene,
+  name: string,
+  plankWidth: number,
+  groundW: number,
+  groundH: number,
+): StandardMaterial {
   const size = 256;
   const planks = 4;
   const tex = new DynamicTexture(`${name}Tex`, { width: size, height: size }, scene, true);
@@ -48,7 +54,7 @@ export function woodFloorMaterial(scene: Scene, name: string, plankWidth: number
     // Seam down the plank edge and one end joint, staggered per plank.
     ctx.fillStyle = 'rgba(55,30,12,0.75)';
     ctx.fillRect(i * pw, 0, 2, size);
-    ctx.fillRect(i * pw, ((i * 97 + 40) % size), pw, 2);
+    ctx.fillRect(i * pw, (i * 97 + 40) % size, pw, 2);
   }
   tex.update();
   tex.wrapU = DynamicTexture.WRAP_ADDRESSMODE;

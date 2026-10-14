@@ -50,7 +50,15 @@ export type PointerKind = 'mouse' | 'touch' | 'pen';
 export interface InputCore {
   configure(laneWidth: number, aimLimit: number): void;
   /** Returns true if this pointer became the aim pointer (caller should capture it). */
-  down(id: number, clientX: number, clientY: number, width: number, height: number, kind: PointerKind, blocked: boolean): boolean;
+  down(
+    id: number,
+    clientX: number,
+    clientY: number,
+    width: number,
+    height: number,
+    kind: PointerKind,
+    blocked: boolean,
+  ): boolean;
   move(id: number, clientX: number, width: number): void;
   up(id: number): void;
   pressChampion(): void;

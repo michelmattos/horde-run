@@ -37,7 +37,13 @@ function part(vd: VertexData, x: number, y: number, z: number, c: Color3, tiltZ 
 function box(w: number, h: number, d: number): VertexData {
   return CreateBoxVertexData({ width: w, height: h, depth: d });
 }
-function cyl(diameter: number, length: number, axis: Axis = 'y', diameterTop = diameter, tessellation = 12): VertexData {
+function cyl(
+  diameter: number,
+  length: number,
+  axis: Axis = 'y',
+  diameterTop = diameter,
+  tessellation = 12,
+): VertexData {
   const vd = CreateCylinderVertexData({ height: length, diameterBottom: diameter, diameterTop, tessellation });
   if (axis === 'x') vd.transform(Matrix.RotationZ(Math.PI / 2));
   else if (axis === 'z') vd.transform(Matrix.RotationX(Math.PI / 2));
@@ -150,7 +156,11 @@ export class TinGeneral {
 
     const sc = popScale(this.pop / PHASE_FLASH_TIME, 0.35);
     this.general.scaling.set(sc, sc, sc);
-    this.general.position.set(x, this.turretTop - 0.15 + Math.abs(Math.sin(time * BOB_SPEED)) * BOB_HEIGHT, zCenter + TURRET_Z);
+    this.general.position.set(
+      x,
+      this.turretTop - 0.15 + Math.abs(Math.sin(time * BOB_SPEED)) * BOB_HEIGHT,
+      zCenter + TURRET_Z,
+    );
     this.general.rotation.y = Math.sin(time * 1.3) * 0.15; // looks around a little
     this.general.material = this.flash > 0 ? this.flashMaterial : this.material;
 

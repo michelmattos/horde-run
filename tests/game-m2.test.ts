@@ -8,8 +8,8 @@ import { LEVELS, validateLevel } from '../src/game/levels.ts';
 import { evaluateStars, goalStatus } from '../src/game/stars.ts';
 import { createAutoplay } from '../src/game/autoplay.ts';
 import { createSim } from '../src/sim/index.ts';
-import { LAYOUT, SIM_DT, SIM_HZ, Team, UnitKind } from '../src/contracts.ts';
-import type { BattleState, BossDef, InputState, LevelDef, SimEvent, SimView } from '../src/contracts.ts';
+import { LAYOUT, SIM_DT, SIM_HZ, Team } from '../src/contracts.ts';
+import type { BattleState, BossDef, InputState, LevelDef, SimEvent, SimView, UnitKind } from '../src/contracts.ts';
 
 const emptyView: SimView = {
   count: 0,
@@ -84,7 +84,13 @@ function level(over: Partial<LevelDef> = {}): LevelDef {
 }
 
 const rand = () => 0.5;
-const input = (over: Partial<InputState> = {}): InputState => ({ aimX: 0, firing: false, championPressed: false, paused: false, ...over });
+const input = (over: Partial<InputState> = {}): InputState => ({
+  aimX: 0,
+  firing: false,
+  championPressed: false,
+  paused: false,
+  ...over,
+});
 const hit = (damage: number): SimEvent => ({ type: 'baseHit', team: Team.Enemy, damage, x: 0, z: 60 });
 
 // ---------- Validation ----------
@@ -94,7 +100,11 @@ test('validateLevel rejects bad M2 fields with the file and field named', () => 
   const bad = (mutate: (l: any) => void, pattern: RegExp, base = good) => {
     const l = base();
     mutate(l);
-    assert.throws(() => validateLevel(l, 'bad.json'), (e: Error) => /bad\.json/.test(e.message) && pattern.test(e.message), String(pattern));
+    assert.throws(
+      () => validateLevel(l, 'bad.json'),
+      (e: Error) => /bad\.json/.test(e.message) && pattern.test(e.message),
+      String(pattern),
+    );
   };
   bad((l) => (l.defenders[1].id = l.defenders[0].id), /defenders\[1\]\.id.*not unique/);
   bad((l) => (l.defenders[0].kind = 'moat'), /defenders\[0\]\.kind/);
@@ -106,7 +116,10 @@ test('validateLevel rejects bad M2 fields with the file and field named', () => 
   bad((l) => (l.defenders[1].range = 0), /defenders\[1\]\.range/);
   bad((l) => (l.defenders[1].damage = 'lots'), /defenders\[1\]\.damage/);
   bad((l) => (l.defenders[0].range = 5), /defenders\[0\]\.range.*only allowed on towers/);
-  bad((l) => (l.defenders = Array.from({ length: 17 }, (_, i) => ({ id: `d${i}`, kind: 'wall', x: 0, z: 20, hp: 5 }))), /defenders.*at most 16/);
+  bad(
+    (l) => (l.defenders = Array.from({ length: 17 }, (_, i) => ({ id: `d${i}`, kind: 'wall', x: 0, z: 20, hp: 5 }))),
+    /defenders.*at most 16/,
+  );
   bad((l) => (l.gates[0].uses = 0), /gates\[0\]\.uses/);
   bad((l) => (l.gates[0].uses = 2.5), /gates\[0\]\.uses.*integer/);
   bad((l) => (l.targetTime = 0), /targetTime/);
@@ -158,7 +171,10 @@ test('boss phases switch by base HP, emit bossPhase once each and summon at the 
   b.step(input(), events);
   assert.equal(b.state.bossPhase, 2);
   phaseEv = events.filter((e) => e.type === 'bossPhase');
-  assert.deepEqual(phaseEv.map((e) => e.type === 'bossPhase' && e.phase), [1, 2]);
+  assert.deepEqual(
+    phaseEv.map((e) => e.type === 'bossPhase' && e.phase),
+    [1, 2],
+  );
   assert.equal(f.spawns.filter((s) => s.team === Team.Enemy).length, 12);
   f.push(hit(10));
   b.step(input(), events);
@@ -171,7 +187,10 @@ test('a big hit can skip phases; each skipped phase still fires its event', () =
   const events: SimEvent[] = [];
   f.push(hit(800));
   b.step(input(), events);
-  assert.deepEqual(events.filter((e) => e.type === 'bossPhase').map((e) => e.type === 'bossPhase' && e.phase), [1, 2]);
+  assert.deepEqual(
+    events.filter((e) => e.type === 'bossPhase').map((e) => e.type === 'bossPhase' && e.phase),
+    [1, 2],
+  );
 });
 
 test('the killing blow does not start a new phase', () => {
@@ -290,9 +309,21 @@ test('evaluateStars: win, base above half health, target time; only on a victory
   const lv = level({ targetTime: 60 });
   assert.deepEqual(evaluateStars(lv, st(), stats()), [true, true, true]);
   assert.deepEqual(evaluateStars(lv, st({ time: 61 }), stats()), [true, true, false]);
-  assert.deepEqual(evaluateStars(lv, st({ time: 60 }), stats()), [true, true, false], 'the target must be beaten, not matched');
-  assert.deepEqual(evaluateStars(lv, st({ time: 61 }), stats({ endTime: 59 })), [true, true, true], 'the victory time counts, not the settle time');
-  assert.deepEqual(evaluateStars(lv, st({ playerBaseHp: 50 }), stats()), [true, false, true], 'exactly half is not above half');
+  assert.deepEqual(
+    evaluateStars(lv, st({ time: 60 }), stats()),
+    [true, true, false],
+    'the target must be beaten, not matched',
+  );
+  assert.deepEqual(
+    evaluateStars(lv, st({ time: 61 }), stats({ endTime: 59 })),
+    [true, true, true],
+    'the victory time counts, not the settle time',
+  );
+  assert.deepEqual(
+    evaluateStars(lv, st({ playerBaseHp: 50 }), stats()),
+    [true, false, true],
+    'exactly half is not above half',
+  );
   assert.deepEqual(evaluateStars(lv, st({ playerBaseHp: 51 }), stats()), [true, true, true]);
   assert.deepEqual(evaluateStars(lv, st({ outcome: 'defeat' }), stats()), [false, false, false]);
   assert.deepEqual(evaluateStars(lv, st({ outcome: 'playing' }), stats()), [false, false, false]);
@@ -318,7 +349,12 @@ test('goalStatus is live: pending until decided, failing the moment a star is lo
 
 // ---------- Autoplay ----------
 
-function botTrace(lv: LevelDef, steps: number, view: { readonly view: SimView; readonly defenders?: any }, events?: (s: number) => SimEvent[]) {
+function botTrace(
+  lv: LevelDef,
+  steps: number,
+  view: { readonly view: SimView; readonly defenders?: any },
+  events?: (s: number) => SimEvent[],
+) {
   const state = createBattle(lv, fakeSim().sim, rand).state;
   const bot = createAutoplay(lv, { skill: 1 });
   const out: InputState[] = [];
@@ -333,7 +369,9 @@ test('autoplay drops a one-use gate once it breaks', () => {
       { id: 'solid', op: 'mul', value: 2, x: 2.5, z: 20, width: 3 },
     ],
   });
-  const trace = botTrace(lv, 8 * SIM_HZ, { view: emptyView }, (s) => (s === 4 * SIM_HZ ? [{ type: 'gateBroken', gateId: 'brittle', x: -2.5, z: 20 }] : []));
+  const trace = botTrace(lv, 8 * SIM_HZ, { view: emptyView }, (s) =>
+    s === 4 * SIM_HZ ? [{ type: 'gateBroken', gateId: 'brittle', x: -2.5, z: 20 }] : [],
+  );
   assert.ok(trace[4 * SIM_HZ - 1].aimX <= -1.4, 'aims at the x3 while it stands');
   assert.ok(trace[trace.length - 1].aimX >= 1.4, 'switches to the x2 after it breaks');
 });

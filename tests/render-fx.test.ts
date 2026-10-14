@@ -102,9 +102,16 @@ test('scenery stays outside the lane and is deterministic', () => {
   const b = scatterScenery(7, laneWidth, -6, 70, 80);
   assert.deepEqual(a, b);
   for (const p of a) {
-    assert.ok(Math.abs(p.x) - PROP_RADIUS[p.kind] * p.scale >= laneWidth / 2 + SCENERY_CLEARANCE - 1e-9, `${p.kind} at x=${p.x} intrudes on the lane`);
+    assert.ok(
+      Math.abs(p.x) - PROP_RADIUS[p.kind] * p.scale >= laneWidth / 2 + SCENERY_CLEARANCE - 1e-9,
+      `${p.kind} at x=${p.x} intrudes on the lane`,
+    );
     assert.ok(p.z >= -6 && p.z <= 70);
   }
   assert.ok(a.some((p) => p.x < 0) && a.some((p) => p.x > 0), 'both sides of the lane');
-  for (const kind of ['block', 'book', 'crayon'] as const) assert.ok(a.some((p) => p.kind === kind), `some ${kind}s`);
+  for (const kind of ['block', 'book', 'crayon'] as const)
+    assert.ok(
+      a.some((p) => p.kind === kind),
+      `some ${kind}s`,
+    );
 });

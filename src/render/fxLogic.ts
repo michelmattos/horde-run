@@ -90,10 +90,17 @@ export class ParticlePool {
 
   // Returns the slot used. Prefers a free slot after the cursor, else the one with the least life.
   spawn(
-    x: number, y: number, z: number,
-    vx: number, vy: number, vz: number,
-    life: number, size: number,
-    r: number, g: number, b: number,
+    x: number,
+    y: number,
+    z: number,
+    vx: number,
+    vy: number,
+    vz: number,
+    life: number,
+    size: number,
+    r: number,
+    g: number,
+    b: number,
     gravity: number,
   ): number {
     const n = this.capacity;
@@ -277,7 +284,14 @@ export const SCENERY_CLEARANCE = 1.2; // world units kept free between the lane 
 // Building blocks, books and crayons scattered on both sides of the lane, never inside
 // it (nor its border). Rows run from zMin to zMax; props reach out to `reach` units
 // beyond the lane edge so wide screens see more of the bedroom floor.
-export function scatterScenery(seed: number, laneWidth: number, zMin: number, zMax: number, count: number, reach = 22): SceneryProp[] {
+export function scatterScenery(
+  seed: number,
+  laneWidth: number,
+  zMin: number,
+  zMax: number,
+  count: number,
+  reach = 22,
+): SceneryProp[] {
   const rand = mulberry32(seed);
   const props: SceneryProp[] = [];
   const edge = laneWidth / 2 + SCENERY_CLEARANCE;

@@ -1,15 +1,21 @@
 {
   "name": "horde-run",
-  "private": true,
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host",
     "typecheck": "tsc --noEmit",
+    "lint": "oxlint --type-aware --deny-warnings",
+    "lint:fix": "oxlint --type-aware --fix",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm test",
+    "verify": "npm run check && npm run build && npm run smoke"
   },
   "dependencies": {
     "@babylonjs/core": "^9.30.0",
@@ -17,6 +23,9 @@
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
+    "oxfmt": "^0.73.0",
+    "oxlint": "^1.88.0",
+    "oxlint-tsgolint": "^7.0.2004",
     "playwright-core": "^1.64.0",
     "typescript": "~5.9.3",
     "vite": "^8.3.4"

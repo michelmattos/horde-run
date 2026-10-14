@@ -37,10 +37,19 @@ function run(sim: ReturnType<typeof createSim>, steps: number, events: SimEvent[
   return events;
 }
 
-const of = <T extends SimEvent['type']>(ev: SimEvent[], type: T) => ev.filter((e) => e.type === type) as Extract<SimEvent, { type: T }>[];
+const of = <T extends SimEvent['type']>(ev: SimEvent[], type: T) =>
+  ev.filter((e) => e.type === type) as Extract<SimEvent, { type: T }>[];
 
 test('defenders are exposed with defaults filled in, and more than 16 is rejected', () => {
-  const sim = createSim(level({ defenders: [{ id: 't', kind: 'tower', x: 1, z: 30, hp: 40 }, { id: 'w', kind: 'wall', x: 0, z: 20, hp: 80 }] }), mulberry32(1));
+  const sim = createSim(
+    level({
+      defenders: [
+        { id: 't', kind: 'tower', x: 1, z: 30, hp: 40 },
+        { id: 'w', kind: 'wall', x: 0, z: 20, hp: 80 },
+      ],
+    }),
+    mulberry32(1),
+  );
   assert.deepEqual(
     sim.defenders.map((d) => ({ ...d })),
     [
@@ -49,12 +58,21 @@ test('defenders are exposed with defaults filled in, and more than 16 is rejecte
     ],
   );
   assert.deepEqual(createSim(level(), mulberry32(1)).defenders, []);
-  const many: DefenderDef[] = Array.from({ length: 17 }, (_, i) => ({ id: `d${i}`, kind: 'wall', x: 0, z: 10 + i, hp: 5 }));
+  const many: DefenderDef[] = Array.from({ length: 17 }, (_, i) => ({
+    id: `d${i}`,
+    kind: 'wall',
+    x: 0,
+    z: 10 + i,
+    hp: 5,
+  }));
   assert.throws(() => createSim(level({ defenders: many }), mulberry32(1)), /at most 16/);
 });
 
 test('a tower shoots the nearest player unit in range and respects its fire rate', () => {
-  const sim = createSim(level({ defenders: [{ id: 't', kind: 'tower', x: 4, z: 30, hp: 50, range: 6, fireRate: 2, damage: 1 }] }), mulberry32(2));
+  const sim = createSim(
+    level({ defenders: [{ id: 't', kind: 'tower', x: 4, z: 30, hp: 50, range: 6, fireRate: 2, damage: 1 }] }),
+    mulberry32(2),
+  );
   // Parked targets: SIM_TUNING moves them, so spawn far and check the first shot only.
   sim.spawn(Team.Player, UnitKind.Mob, -4, 26, 1); // distance ~8.9: out of range
   sim.spawn(Team.Player, UnitKind.Mob, 2, 27, 1); // distance ~3.6 now, nearest
@@ -67,7 +85,10 @@ test('a tower shoots the nearest player unit in range and respects its fire rate
   assert.equal(sim.totals().player, 1);
 
   // A steady supply of targets: 2 shots/s over 3 s.
-  const s2 = createSim(level({ defenders: [{ id: 't', kind: 'tower', x: 4, z: 30, hp: 50, range: 8, fireRate: 2, damage: 1 }] }), mulberry32(3));
+  const s2 = createSim(
+    level({ defenders: [{ id: 't', kind: 'tower', x: 4, z: 30, hp: 50, range: 8, fireRate: 2, damage: 1 }] }),
+    mulberry32(3),
+  );
   const all: SimEvent[] = [];
   for (let k = 0; k < 180; k++) {
     if (k % 6 === 0) s2.spawn(Team.Player, UnitKind.Mob, 2, 24, 1);
@@ -78,7 +99,15 @@ test('a tower shoots the nearest player unit in range and respects its fire rate
 });
 
 test('tower damage reduces a stacked mob by weight', () => {
-  const sim = createSim(level({ lane: { width: 2, length: 60 }, enemyBase: { hp: 100, x: 0, width: 2 }, defenders: [{ id: 't', kind: 'tower', x: 0, z: 35, hp: 50, range: 8, fireRate: 1, damage: 3 }] }), mulberry32(4), { unitBudget: 1 });
+  const sim = createSim(
+    level({
+      lane: { width: 2, length: 60 },
+      enemyBase: { hp: 100, x: 0, width: 2 },
+      defenders: [{ id: 't', kind: 'tower', x: 0, z: 35, hp: 50, range: 8, fireRate: 1, damage: 3 }],
+    }),
+    mulberry32(4),
+    { unitBudget: 1 },
+  );
   sim.spawn(Team.Player, UnitKind.Mob, 0, 29, 10);
   assert.equal(sim.view.count, 1);
   run(sim, 1);
@@ -87,13 +116,19 @@ test('tower damage reduces a stacked mob by weight', () => {
 });
 
 test('mobs die on a wall and damage it; defenderHit is one per step and defenderDestroyed fires once', () => {
-  const sim = createSim(level({ defenders: [{ id: 'w', kind: 'wall', x: 0, z: 20, hp: 30, width: 6 }] }), mulberry32(5));
+  const sim = createSim(
+    level({ defenders: [{ id: 'w', kind: 'wall', x: 0, z: 20, hp: 30, width: 6 }] }),
+    mulberry32(5),
+  );
   sim.spawn(Team.Player, UnitKind.Mob, 0, 15, 20, { spread: 2 });
   const ev = run(sim, 120);
   assert.equal(sim.totals().player, 0);
   assert.equal(sim.defenders[0].hp, 10);
   const hits = of(ev, 'defenderHit');
-  assert.equal(hits.reduce((s, e) => s + e.damage, 0), 20);
+  assert.equal(
+    hits.reduce((s, e) => s + e.damage, 0),
+    20,
+  );
   assert.equal(of(ev, 'defenderDestroyed').length, 0);
 
   sim.spawn(Team.Player, UnitKind.Mob, 0, 15, 25, { spread: 2 });
@@ -107,7 +142,10 @@ test('mobs die on a wall and damage it; defenderHit is one per step and defender
   assert.equal(dmg, 15, '25 mobs minus the 10 hp the wall had left');
 
   // A dense crowd hitting the wall in one step still yields a single aggregated defenderHit.
-  const s3 = createSim(level({ defenders: [{ id: 'w', kind: 'wall', x: 0, z: 20, hp: 500, width: 10 }] }), mulberry32(5));
+  const s3 = createSim(
+    level({ defenders: [{ id: 'w', kind: 'wall', x: 0, z: 20, hp: 500, width: 10 }] }),
+    mulberry32(5),
+  );
   s3.spawn(Team.Player, UnitKind.Mob, 0, 15, 200, { spread: 2.5 });
   for (let k = 0; k < 300; k++) {
     const e: SimEvent[] = [];
@@ -118,15 +156,24 @@ test('mobs die on a wall and damage it; defenderHit is one per step and defender
 });
 
 test('enemy units ignore defenders', () => {
-  const sim = createSim(level({ defenders: [{ id: 'w', kind: 'wall', x: 0, z: 20, hp: 30, width: 10 }] }), mulberry32(6));
+  const sim = createSim(
+    level({ defenders: [{ id: 'w', kind: 'wall', x: 0, z: 20, hp: 30, width: 10 }] }),
+    mulberry32(6),
+  );
   sim.spawn(Team.Enemy, UnitKind.Mob, 0, 40, 5, { spread: 2 });
   const ev = run(sim, 600);
   assert.equal(sim.defenders[0].hp, 30);
-  assert.equal(of(ev, 'baseHit').reduce((s, e) => s + e.damage, 0), 5);
+  assert.equal(
+    of(ev, 'baseHit').reduce((s, e) => s + e.damage, 0),
+    5,
+  );
 });
 
 test('a champion is held by a wall, strikes every 0.5 s, then breaks it and walks on', () => {
-  const sim = createSim(level({ defenders: [{ id: 'w', kind: 'wall', x: 0, z: 20, hp: 100, width: 10 }] }), mulberry32(7));
+  const sim = createSim(
+    level({ defenders: [{ id: 'w', kind: 'wall', x: 0, z: 20, hp: 100, width: 10 }] }),
+    mulberry32(7),
+  );
   sim.spawn(Team.Player, UnitKind.Champion, 0, 10, 1, { hp: 60, damage: 20 });
   const ev = run(sim, 150); // reaches the wall at ~1.9 s, held from there
   const z = sim.view.posZ[0];
@@ -144,7 +191,10 @@ test('a champion is held by a wall, strikes every 0.5 s, then breaks it and walk
   assert.equal(base[0].damage, 20);
   // Blows are 0.5 s apart.
   const times: number[] = [];
-  const s2 = createSim(level({ defenders: [{ id: 'w', kind: 'wall', x: 0, z: 20, hp: 100, width: 10 }] }), mulberry32(7));
+  const s2 = createSim(
+    level({ defenders: [{ id: 'w', kind: 'wall', x: 0, z: 20, hp: 100, width: 10 }] }),
+    mulberry32(7),
+  );
   s2.spawn(Team.Player, UnitKind.Champion, 0, 10, 1, { hp: 60, damage: 20 });
   for (let k = 0; k < 600; k++) {
     const e: SimEvent[] = [];
@@ -157,7 +207,10 @@ test('a champion is held by a wall, strikes every 0.5 s, then breaks it and walk
 
 test('a champion held at a wall is not pushed into it by mobs streaming behind', () => {
   // Wall at z=20, depth 1: front face at 19.5. Champion radius comes from the sim view.
-  const sim = createSim(level({ defenders: [{ id: 'w', kind: 'wall', x: 0, z: 20, hp: 100000, width: 10 }] }), mulberry32(3));
+  const sim = createSim(
+    level({ defenders: [{ id: 'w', kind: 'wall', x: 0, z: 20, hp: 100000, width: 10 }] }),
+    mulberry32(3),
+  );
   sim.spawn(Team.Player, UnitKind.Champion, 0, 10, 1, { hp: 60, damage: 1 });
   const face = 20 - sim.defenders[0].depth / 2;
   let worst = -Infinity;
@@ -183,7 +236,10 @@ test('a one-use gate breaks at its budget and stops applying', () => {
   run(sim, 60, ev);
   const gateEv = of(ev, 'gate');
   assert.equal(gateEv.length, 5);
-  assert.deepEqual(gateEv.map((e) => e.usesLeft), [4, 3, 2, 1, 0]);
+  assert.deepEqual(
+    gateEv.map((e) => e.usesLeft),
+    [4, 3, 2, 1, 0],
+  );
   assert.ok(gateEv.every((e) => e.added === 1));
   const broken = of(ev, 'gateBroken');
   assert.equal(broken.length, 1);
@@ -200,10 +256,21 @@ test('a one-use gate breaks at its budget and stops applying', () => {
 });
 
 test('a one-use gate crossed by a heavy unit applies fully, then breaks', () => {
-  const sim = createSim(level({ lane: { width: 2, length: 60 }, enemyBase: { hp: 1, x: 0, width: 2 }, gates: [{ id: 'g', op: 'add', value: 3, x: 0, z: 10, width: 2, uses: 4 }] }), mulberry32(9), { unitBudget: 1, capacity: 20 });
+  const sim = createSim(
+    level({
+      lane: { width: 2, length: 60 },
+      enemyBase: { hp: 1, x: 0, width: 2 },
+      gates: [{ id: 'g', op: 'add', value: 3, x: 0, z: 10, width: 2, uses: 4 }],
+    }),
+    mulberry32(9),
+    { unitBudget: 1, capacity: 20 },
+  );
   sim.spawn(Team.Player, UnitKind.Mob, 0, 5, 6);
   const ev = run(sim, 60);
-  assert.deepEqual(of(ev, 'gate').map((e) => e.usesLeft), [0]);
+  assert.deepEqual(
+    of(ev, 'gate').map((e) => e.usesLeft),
+    [0],
+  );
   assert.equal(of(ev, 'gateBroken').length, 1);
   assert.equal(sim.totals().player, 9);
 });
@@ -275,7 +342,10 @@ test('determinism with defenders, one-use gates and a moving base', () => {
   assert.ok(a.sim.view.count > 0);
   assert.equal(a.sim.view.count, b.sim.view.count);
   assert.deepEqual(a.sim.view.posX.subarray(0, a.sim.view.count), b.sim.view.posX.subarray(0, b.sim.view.count));
-  assert.deepEqual(a.sim.defenders.map((d) => d.hp), b.sim.defenders.map((d) => d.hp));
+  assert.deepEqual(
+    a.sim.defenders.map((d) => d.hp),
+    b.sim.defenders.map((d) => d.hp),
+  );
   assert.deepEqual(a.ev, b.ev);
   assert.ok(a.ev.some((e) => e.type === 'defenderShot'));
 });

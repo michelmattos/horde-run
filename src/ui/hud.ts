@@ -184,7 +184,8 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
   champText.outlineColor = 'rgba(0,0,0,0.6)';
   champ.addControl(champText);
 
-  for (const c of [enemyBar.track, levelText, enemyText, ...stars, playerBar.track, playerText, pause, champ]) root.addControl(c);
+  for (const c of [enemyBar.track, levelText, enemyText, ...stars, playerBar.track, playerText, pause, champ])
+    root.addControl(c);
 
   // ----- Layout (CSS px) -----
   let cssW = 0;
@@ -264,7 +265,12 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
     if (!visible || disposed) return false;
     const x = clientX - rectLeft;
     const y = clientY - rectTop;
-    return x >= pauseX - HIT_SLOP && x <= pauseX + PAUSE_S + HIT_SLOP && y >= pauseY - HIT_SLOP && y <= pauseY + PAUSE_S + HIT_SLOP;
+    return (
+      x >= pauseX - HIT_SLOP &&
+      x <= pauseX + PAUSE_S + HIT_SLOP &&
+      y >= pauseY - HIT_SLOP &&
+      y <= pauseY + PAUSE_S + HIT_SLOP
+    );
   };
   input.addBlockedRegion(inChampion);
   input.addBlockedRegion(inPause);

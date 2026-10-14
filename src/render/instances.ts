@@ -41,7 +41,18 @@ export class PropBatch {
   }
 
   // Scale (sx, sy, sz), then yaw about +Y (0 = local +Z points up the lane), then translate.
-  write(x: number, y: number, z: number, sx: number, sy: number, sz: number, yaw: number, r: number, g: number, b: number): void {
+  write(
+    x: number,
+    y: number,
+    z: number,
+    sx: number,
+    sy: number,
+    sz: number,
+    yaw: number,
+    r: number,
+    g: number,
+    b: number,
+  ): void {
     if (this.count >= this.capacity) return;
     const m = this.matrices;
     const o = this.count * 16;
@@ -111,7 +122,12 @@ export function unitMesh(scene: Scene, name: string, shape: 'box' | 'cylinder' |
   if (shape === 'box') vd = CreateBoxVertexData({ size: 1 });
   else if (shape === 'cylinder') vd = CreateCylinderVertexData({ height: 1, diameter: 1, tessellation: 10 });
   else {
-    vd = CreateCylinderVertexData({ height: 1, diameterTop: shape === 'tip' ? 0 : 1, diameterBottom: 1, tessellation: 8 });
+    vd = CreateCylinderVertexData({
+      height: 1,
+      diameterTop: shape === 'tip' ? 0 : 1,
+      diameterBottom: 1,
+      tessellation: 8,
+    });
     vd.transform(Matrix.RotationX(Math.PI / 2)); // +Y axis → +Z
   }
   const mesh = new Mesh(name, scene);

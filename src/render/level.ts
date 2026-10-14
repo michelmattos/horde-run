@@ -126,11 +126,31 @@ export class LevelVisuals {
       this.addStatic(border);
     }
 
-    this.playerBase = this.buildBase(scene, 'playerBase', PALETTE.player, PALETTE.playerDark, 0, w + 0.36, zMin, LAYOUT.playerBaseZ, PALETTE.hpPlayer);
+    this.playerBase = this.buildBase(
+      scene,
+      'playerBase',
+      PALETTE.player,
+      PALETTE.playerDark,
+      0,
+      w + 0.36,
+      zMin,
+      LAYOUT.playerBaseZ,
+      PALETTE.hpPlayer,
+    );
     // On a boss level the enemy base is the Tin General's wind-up tank: a tin hull.
     const hull = level.boss ? PALETTE.tin : PALETTE.enemy;
     const trim = level.boss ? PALETTE.tinDark : PALETTE.enemyDark;
-    this.enemyBase = this.buildBase(scene, 'enemyBase', hull, trim, this.baseX, level.enemyBase.width, length, zMax, PALETTE.hpEnemy);
+    this.enemyBase = this.buildBase(
+      scene,
+      'enemyBase',
+      hull,
+      trim,
+      this.baseX,
+      level.enemyBase.width,
+      length,
+      zMax,
+      PALETTE.hpEnemy,
+    );
     this.playerBase.node.freezeWorldMatrix();
     this.boss = level.boss ? new TinGeneral(scene, level.enemyBase.width, LAYOUT.enemyBaseDepth, BASE_HEIGHT) : null;
 
@@ -195,7 +215,11 @@ export class LevelVisuals {
     const hpWidth = Math.min(width * 0.8, 6);
     const barZ = name === 'playerBase' ? 0.6 : 0.4;
     const barY = BASE_HEIGHT + 0.5;
-    const back = CreateBox(`${name}HpBack`, { width: hpWidth + 0.12, height: HP_BAR_HEIGHT + 0.12, depth: 0.08 }, scene);
+    const back = CreateBox(
+      `${name}HpBack`,
+      { width: hpWidth + 0.12, height: HP_BAR_HEIGHT + 0.12, depth: 0.08 },
+      scene,
+    );
     back.position.set(0, barY, barZ + 0.05);
     back.material = unlitTracked(this.materials, scene, `${name}HpBackMat`, PALETTE.hpBack);
     local(back);
@@ -271,7 +295,11 @@ export class LevelVisuals {
     m.specularColor = Color3.Black();
     this.materials.push(m);
 
-    const plane = CreatePlane(`gateLabel-${g.id}`, { width: LABEL_HEIGHT * (LABEL_TEX_W / LABEL_TEX_H), height: LABEL_HEIGHT }, scene);
+    const plane = CreatePlane(
+      `gateLabel-${g.id}`,
+      { width: LABEL_HEIGHT * (LABEL_TEX_W / LABEL_TEX_H), height: LABEL_HEIGHT },
+      scene,
+    );
     plane.material = m;
     plane.isPickable = false;
     return { plane, tex };

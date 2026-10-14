@@ -24,7 +24,10 @@ test('balance: the middle levels are won on a first or second try', () => {
     }
     const t = median(wins.map((r) => r.seconds));
     assert.ok(t >= 60 && t <= 120, `${id}: median win took ${t.toFixed(0)} s`);
-    assert.ok(wins.some((r) => r.stars.every(Boolean)), `${id}: no human win took all 3 stars`);
+    assert.ok(
+      wins.some((r) => r.stars.every(Boolean)),
+      `${id}: no human win took all 3 stars`,
+    );
   }
   // 75-90% intended; 8 attempts a level is noisy, so the bounds are pooled and loose.
   assert.ok(won >= 0.67 * total && won <= 0.96 * total, `middle levels: ${won}/${total} human wins`);

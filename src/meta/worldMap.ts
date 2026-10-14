@@ -106,7 +106,10 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: s
   return e;
 }
 
-function svg<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number>): SVGElementTagNameMap[K] {
+function svg<K extends keyof SVGElementTagNameMap>(
+  tag: K,
+  attrs: Record<string, string | number>,
+): SVGElementTagNameMap[K] {
   const e = document.createElementNS(SVG_NS, tag);
   for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v));
   return e;
@@ -189,7 +192,11 @@ export function createWorldMap(
   card.setAttribute('role', 'dialog');
   card.setAttribute('aria-label', worldTitle(world));
   card.dataset.titleCard = world.id;
-  card.append(el('h1', 'hm-card-title', worldTitle(world)), el('p', 'hm-card-sub', `vs the ${world.faction}`), el('p', 'hm-card-hint', 'Tap to start'));
+  card.append(
+    el('h1', 'hm-card-title', worldTitle(world)),
+    el('p', 'hm-card-sub', `vs the ${world.faction}`),
+    el('p', 'hm-card-hint', 'Tap to start'),
+  );
   root.appendChild(card);
   let cardShown = false;
   let cardTimer = 0;
@@ -261,9 +268,23 @@ export function createWorldMap(
     s.append(
       // A toy race track: kerb, grey road, dashed white centre line.
       svg('path', { d, fill: 'none', stroke: '#e03131', 'stroke-width': 36, 'stroke-linecap': 'round' }),
-      svg('path', { d, fill: 'none', stroke: '#f1f3f5', 'stroke-width': 36, 'stroke-dasharray': '14 14', 'stroke-linecap': 'butt' }),
+      svg('path', {
+        d,
+        fill: 'none',
+        stroke: '#f1f3f5',
+        'stroke-width': 36,
+        'stroke-dasharray': '14 14',
+        'stroke-linecap': 'butt',
+      }),
       svg('path', { d, fill: 'none', stroke: '#5c636e', 'stroke-width': 28, 'stroke-linecap': 'round' }),
-      svg('path', { d, fill: 'none', stroke: '#f1f3f5', 'stroke-width': 3, 'stroke-dasharray': '10 12', 'stroke-linecap': 'round' }),
+      svg('path', {
+        d,
+        fill: 'none',
+        stroke: '#f1f3f5',
+        'stroke-width': 3,
+        'stroke-dasharray': '10 12',
+        'stroke-linecap': 'round',
+      }),
     );
     track.prepend(s);
 
