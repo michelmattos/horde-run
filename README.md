@@ -6,7 +6,7 @@ The design lives in [docs/concept.md](docs/concept.md).
 
 - Play: https://michelmattos.github.io/horde-run/ (deployed from `main` by GitHub Actions)
 - Develop: `npm install`, then `npm run dev` and open the printed network URL on your phone (same Wi-Fi)
-- Check: `npm test`, `npm run build`, `npm run smoke` (headless phone-sized run with screenshots)
+- Check: `npm run check` (typecheck, lint, format, unit tests) and `npm run verify` (adds the build and `npm run smoke`, a headless phone-sized run with screenshots). CI runs both on every pull request.
 
 ## Building with the workflow
 
