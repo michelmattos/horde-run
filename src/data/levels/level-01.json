@@ -1,0 +1,27 @@
+{
+  "id": "level-01",
+  "name": "First Push",
+  "lane": {"width": 10, "length": 55},
+  "cannon": {"fireRate": 6, "unitsPerShot": 3, "aimLimit": 4},
+  "playerBase": {"hp": 300},
+  "enemyBase": {"hp": 1500, "x": 0, "width": 6},
+  "gates": [
+    {"id": "l1-x2", "op": "mul", "value": 2, "x": -1, "z": 16, "width": 4},
+    {"id": "l1-x3", "op": "mul", "value": 3, "x": 2.6, "z": 28, "width": 2.6}
+  ],
+  "enemyWaves": [
+    {"at": 8, "count": 105, "x": 0, "spread": 3.5},
+    {"at": 20, "count": 111, "x": -1.5, "spread": 3.5},
+    {"at": 32, "count": 117, "x": 1.5, "spread": 3.5},
+    {"at": 44, "count": 123, "x": 0, "spread": 3.5},
+    {"at": 56, "count": 129, "x": -1.5, "spread": 3.5},
+    {"at": 68, "count": 135, "x": 1.5, "spread": 3.5},
+    {"at": 80, "count": 141, "x": 0, "spread": 3.5},
+    {"at": 92, "count": 147, "x": -1.5, "spread": 3.5},
+    {"at": 104, "count": 153, "x": 1.5, "spread": 3.5},
+    {"at": 116, "count": 159, "x": 0, "spread": 3.5},
+    {"at": 128, "count": 165, "x": -1.5, "spread": 3.5}
+  ],
+  "enemySpawnRate": {"perSecond": 10.5, "startAt": 2},
+  "champion": {"chargeNeeded": 270, "hp": 90, "damage": 75}
+}
