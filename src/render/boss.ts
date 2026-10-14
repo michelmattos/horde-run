@@ -72,7 +72,8 @@ export class TinGeneral {
     this.tread += dx + TREAD_IDLE * dt;
     m.setTreadPhase(this.tread);
 
-    const f = this.flash > 0 ? (this.flash / (this.flashMax === 1 ? PHASE_FLASH_TIME : HIT_FLASH_TIME)) * this.flashMax : 0;
+    const f =
+      this.flash > 0 ? (this.flash / (this.flashMax === 1 ? PHASE_FLASH_TIME : HIT_FLASH_TIME)) * this.flashMax : 0;
     if (f !== this.lastFlash) {
       m.setFlash(f);
       this.lastFlash = f;

@@ -47,12 +47,18 @@ export function fixWinding(vd: VertexData): VertexData {
     const a = idx[t] * 3;
     const b = idx[t + 1] * 3;
     const c = idx[t + 2] * 3;
-    const e1x = p[b] - p[a], e1y = p[b + 1] - p[a + 1], e1z = p[b + 2] - p[a + 2];
-    const e2x = p[c] - p[a], e2y = p[c + 1] - p[a + 1], e2z = p[c + 2] - p[a + 2];
+    const e1x = p[b] - p[a],
+      e1y = p[b + 1] - p[a + 1],
+      e1z = p[b + 2] - p[a + 2];
+    const e2x = p[c] - p[a],
+      e2y = p[c + 1] - p[a + 1],
+      e2z = p[c + 2] - p[a + 2];
     const cx = e1y * e2z - e1z * e2y;
     const cy = e1z * e2x - e1x * e2z;
     const cz = e1x * e2y - e1y * e2x;
-    const nx = n[a] + n[b] + n[c], ny = n[a + 1] + n[b + 1] + n[c + 1], nz = n[a + 2] + n[b + 2] + n[c + 2];
+    const nx = n[a] + n[b] + n[c],
+      ny = n[a + 1] + n[b + 1] + n[c + 1],
+      nz = n[a + 2] + n[b + 2] + n[c + 2];
     const s = cx * nx + cy * ny + cz * nz > 0 ? 1 : -1;
     if (s !== want) {
       const tmp = idx[t + 1];
@@ -85,7 +91,12 @@ export function roundedBox(w: number, h: number, d: number, r: number, seg = 2):
   const indices: number[] = [];
   // Each face: fixed axis f at sign s, spanning axes u and v.
   const faces: [number, number, number, number][] = [
-    [0, 1, 1, 2], [0, -1, 1, 2], [1, 1, 0, 2], [1, -1, 0, 2], [2, 1, 0, 1], [2, -1, 0, 1],
+    [0, 1, 1, 2],
+    [0, -1, 1, 2],
+    [1, 1, 0, 2],
+    [1, -1, 0, 2],
+    [2, 1, 0, 1],
+    [2, -1, 0, 1],
   ];
   const p = [0, 0, 0];
   for (const [f, s, u, v] of faces) {
@@ -98,13 +109,24 @@ export function roundedBox(w: number, h: number, d: number, r: number, seg = 2):
         p[u] = cu[i];
         p[v] = cv[j];
         // Push the point out from the inner box by the radius.
-        const q = [Math.max(-inner[0], Math.min(inner[0], p[0])), Math.max(-inner[1], Math.min(inner[1], p[1])), Math.max(-inner[2], Math.min(inner[2], p[2]))];
-        let dx = p[0] - q[0], dy = p[1] - q[1], dz = p[2] - q[2];
+        const q = [
+          Math.max(-inner[0], Math.min(inner[0], p[0])),
+          Math.max(-inner[1], Math.min(inner[1], p[1])),
+          Math.max(-inner[2], Math.min(inner[2], p[2])),
+        ];
+        let dx = p[0] - q[0],
+          dy = p[1] - q[1],
+          dz = p[2] - q[2];
         let len = Math.hypot(dx, dy, dz);
         if (len < 1e-9) {
-          dx = f === 0 ? s : 0; dy = f === 1 ? s : 0; dz = f === 2 ? s : 0; len = 1;
+          dx = f === 0 ? s : 0;
+          dy = f === 1 ? s : 0;
+          dz = f === 2 ? s : 0;
+          len = 1;
         }
-        dx /= len; dy /= len; dz /= len;
+        dx /= len;
+        dy /= len;
+        dz /= len;
         positions.push(q[0] + dx * rr, q[1] + dy * rr, q[2] + dz * rr);
         normals.push(dx, dy, dz);
         uvs.push((cu[i] + half[u]) / (2 * half[u]), (cv[j] + half[v]) / (2 * half[v]));
@@ -132,9 +154,15 @@ function dropDegenerate(vd: VertexData): VertexData {
   const src = vd.indices!;
   const out: number[] = [];
   for (let t = 0; t < src.length; t += 3) {
-    const a = src[t] * 3, b = src[t + 1] * 3, c = src[t + 2] * 3;
-    const e1x = p[b] - p[a], e1y = p[b + 1] - p[a + 1], e1z = p[b + 2] - p[a + 2];
-    const e2x = p[c] - p[a], e2y = p[c + 1] - p[a + 1], e2z = p[c + 2] - p[a + 2];
+    const a = src[t] * 3,
+      b = src[t + 1] * 3,
+      c = src[t + 2] * 3;
+    const e1x = p[b] - p[a],
+      e1y = p[b + 1] - p[a + 1],
+      e1z = p[b + 2] - p[a + 2];
+    const e2x = p[c] - p[a],
+      e2y = p[c + 1] - p[a + 1],
+      e2z = p[c + 2] - p[a + 2];
     const area = Math.hypot(e1y * e2z - e1z * e2y, e1z * e2x - e1x * e2z, e1x * e2y - e1y * e2x);
     if (area > 1e-10) out.push(src[t], src[t + 1], src[t + 2]);
   }
@@ -157,12 +185,16 @@ export function lathe(profile: readonly (readonly [number, number])[], tessellat
     const a = profile[Math.max(0, i - 1)];
     const b = profile[Math.min(n - 1, i + 1)];
     // A repeated point: use the one-sided tangent toward the side it is not repeated on.
-    let pa = a, pb = b;
+    let pa = a,
+      pb = b;
     if (i > 0 && profile[i - 1][0] === profile[i][0] && profile[i - 1][1] === profile[i][1]) pa = profile[i];
     if (i < n - 1 && profile[i + 1][0] === profile[i][0] && profile[i + 1][1] === profile[i][1]) pb = profile[i];
     let dr = pb[0] - pa[0];
     let dy = pb[1] - pa[1];
-    if (Math.abs(dr) + Math.abs(dy) < 1e-9) { dr = 0; dy = 1; }
+    if (Math.abs(dr) + Math.abs(dy) < 1e-9) {
+      dr = 0;
+      dy = 1;
+    }
     const l = Math.hypot(dr, dy);
     nrm2.push([dy / l, -dr / l]);
   }
@@ -261,7 +293,12 @@ export function mergeParts(parts: VertexData[]): VertexData {
 }
 
 // Builds a static mesh from parts with one material: the usual "one draw call" model.
-export function buildMesh(scene: Scene, name: string, parts: VertexData[] | VertexData, material: Material | null): Mesh {
+export function buildMesh(
+  scene: Scene,
+  name: string,
+  parts: VertexData[] | VertexData,
+  material: Material | null,
+): Mesh {
   const vd = Array.isArray(parts) ? mergeParts(parts) : parts;
   const mesh = new Mesh(name, scene);
   vd.applyToMesh(mesh, false);
@@ -312,20 +349,36 @@ export function bakeVertexAO(vd: VertexData, o: AoOptions = {}): VertexData {
     dirs.push(r * Math.cos(a), r * Math.sin(a), Math.sqrt(1 - u));
   }
   for (let v = 0; v < nv; v++) {
-    const ox = p[v * 3], oy = p[v * 3 + 1], oz = p[v * 3 + 2];
-    const nx = nrm[v * 3], ny = nrm[v * 3 + 1], nz = nrm[v * 3 + 2];
+    const ox = p[v * 3],
+      oy = p[v * 3 + 1],
+      oz = p[v * 3 + 2];
+    const nx = nrm[v * 3],
+      ny = nrm[v * 3 + 1],
+      nz = nrm[v * 3 + 2];
     // Tangent frame around the normal.
     const tx0 = Math.abs(nx) < 0.9 ? 1 : 0;
     const ty0 = tx0 ? 0 : 1;
-    let tx = ty0 * nz - 0 * ny, ty = 0 * nx - tx0 * nz, tz = tx0 * ny - ty0 * nx;
+    let tx = ty0 * nz - 0 * ny,
+      ty = 0 * nx - tx0 * nz,
+      tz = tx0 * ny - ty0 * nx;
     const tl = Math.hypot(tx, ty, tz) || 1;
-    tx /= tl; ty /= tl; tz /= tl;
-    const bx = ny * tz - nz * ty, by = nz * tx - nx * tz, bz = nx * ty - ny * tx;
-    const sx = ox + nx * 1e-3, sy = oy + ny * 1e-3, sz = oz + nz * 1e-3;
+    tx /= tl;
+    ty /= tl;
+    tz /= tl;
+    const bx = ny * tz - nz * ty,
+      by = nz * tx - nx * tz,
+      bz = nx * ty - ny * tx;
+    const sx = ox + nx * 1e-3,
+      sy = oy + ny * 1e-3,
+      sz = oz + nz * 1e-3;
     let hit = 0;
     for (let k = 0; k < samples; k++) {
-      const a = dirs[k * 3], b = dirs[k * 3 + 1], c = dirs[k * 3 + 2];
-      const dx = tx * a + bx * b + nx * c, dy = ty * a + by * b + ny * c, dz = tz * a + bz * b + nz * c;
+      const a = dirs[k * 3],
+        b = dirs[k * 3 + 1],
+        c = dirs[k * 3 + 2];
+      const dx = tx * a + bx * b + nx * c,
+        dy = ty * a + by * b + ny * c,
+        dz = tz * a + bz * b + nz * c;
       if (ground && dy < -1e-6 && (sy - minY) / -dy < maxDist) {
         hit++;
         continue;
@@ -341,19 +394,41 @@ export function bakeVertexAO(vd: VertexData, o: AoOptions = {}): VertexData {
   return vd;
 }
 
-function rayHits(p: ArrayLike<number>, idx: ArrayLike<number>, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): boolean {
+function rayHits(
+  p: ArrayLike<number>,
+  idx: ArrayLike<number>,
+  ox: number,
+  oy: number,
+  oz: number,
+  dx: number,
+  dy: number,
+  dz: number,
+  maxT: number,
+): boolean {
   for (let t = 0; t < idx.length; t += 3) {
-    const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
-    const e1x = p[b] - p[a], e1y = p[b + 1] - p[a + 1], e1z = p[b + 2] - p[a + 2];
-    const e2x = p[c] - p[a], e2y = p[c + 1] - p[a + 1], e2z = p[c + 2] - p[a + 2];
-    const px = dy * e2z - dz * e2y, py = dz * e2x - dx * e2z, pz = dx * e2y - dy * e2x;
+    const a = idx[t] * 3,
+      b = idx[t + 1] * 3,
+      c = idx[t + 2] * 3;
+    const e1x = p[b] - p[a],
+      e1y = p[b + 1] - p[a + 1],
+      e1z = p[b + 2] - p[a + 2];
+    const e2x = p[c] - p[a],
+      e2y = p[c + 1] - p[a + 1],
+      e2z = p[c + 2] - p[a + 2];
+    const px = dy * e2z - dz * e2y,
+      py = dz * e2x - dx * e2z,
+      pz = dx * e2y - dy * e2x;
     const det = e1x * px + e1y * py + e1z * pz;
     if (det > -1e-9 && det < 1e-9) continue;
     const inv = 1 / det;
-    const sx = ox - p[a], sy = oy - p[a + 1], sz = oz - p[a + 2];
+    const sx = ox - p[a],
+      sy = oy - p[a + 1],
+      sz = oz - p[a + 2];
     const u = (sx * px + sy * py + sz * pz) * inv;
     if (u < 0 || u > 1) continue;
-    const qx = sy * e1z - sz * e1y, qy = sz * e1x - sx * e1z, qz = sx * e1y - sy * e1x;
+    const qx = sy * e1z - sz * e1y,
+      qy = sz * e1x - sx * e1z,
+      qz = sx * e1y - sy * e1x;
     const v = (dx * qx + dy * qy + dz * qz) * inv;
     if (v < 0 || u + v > 1) continue;
     const d = (e2x * qx + e2y * qy + e2z * qz) * inv;

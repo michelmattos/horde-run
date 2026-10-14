@@ -199,7 +199,17 @@ class Geo {
   col: number[] = [];
   idx: number[] = [];
 
-  vert(x: number, y: number, z: number, nx: number, ny: number, nz: number, u: number, v: number, c: Color3 | readonly number[]): number {
+  vert(
+    x: number,
+    y: number,
+    z: number,
+    nx: number,
+    ny: number,
+    nz: number,
+    u: number,
+    v: number,
+    c: Color3 | readonly number[],
+  ): number {
     const i = this.pos.length / 3;
     this.pos.push(x, y, z);
     const l = Math.hypot(nx, ny, nz) || 1;
@@ -228,13 +238,29 @@ class Geo {
     vd.colors = this.col;
     vd.indices = this.idx;
     return fixWinding(vd); // faces point along their vertex normals
-
   }
 }
 
 // ---------- procedural textures ----------
-function rawTex(scene: Scene, name: string, data: Uint8Array, w: number, h: number, gamma: boolean, wrap = true): Texture {
-  const t = RawTexture.CreateRGBATexture(data, w, h, scene, true, false, Texture.TRILINEAR_SAMPLINGMODE, Constants.TEXTURETYPE_UNSIGNED_BYTE);
+function rawTex(
+  scene: Scene,
+  name: string,
+  data: Uint8Array,
+  w: number,
+  h: number,
+  gamma: boolean,
+  wrap = true,
+): Texture {
+  const t = RawTexture.CreateRGBATexture(
+    data,
+    w,
+    h,
+    scene,
+    true,
+    false,
+    Texture.TRILINEAR_SAMPLINGMODE,
+    Constants.TEXTURETYPE_UNSIGNED_BYTE,
+  );
   t.name = name;
   t.wrapU = wrap ? Texture.WRAP_ADDRESSMODE : Texture.CLAMP_ADDRESSMODE;
   t.wrapV = wrap ? Texture.WRAP_ADDRESSMODE : Texture.CLAMP_ADDRESSMODE;
@@ -396,9 +422,14 @@ function windowTexture(scene: Scene): Texture {
       const u = (x + 0.5) / S;
       const v = (y + 0.5) / S;
       const pen = 0.05; // penumbra width (fraction)
-      const outer = smooth(0.04, 0.04 + pen, u) * smooth(0.04, 0.04 + pen, 1 - u) * smooth(0.04, 0.04 + pen * 1.4, v) * smooth(0.04, 0.04 + pen * 1.4, 1 - v);
+      const outer =
+        smooth(0.04, 0.04 + pen, u) *
+        smooth(0.04, 0.04 + pen, 1 - u) *
+        smooth(0.04, 0.04 + pen * 1.4, v) *
+        smooth(0.04, 0.04 + pen * 1.4, 1 - v);
       // Muntins: 2 vertical bars (3 columns), 1 horizontal bar (2 rows).
-      const bar = (c: number, w: number, p: number, t: number): number => 1 - (1 - smooth(w, w + p, Math.abs(t - c))) * 0.85;
+      const bar = (c: number, w: number, p: number, t: number): number =>
+        1 - (1 - smooth(w, w + p, Math.abs(t - c))) * 0.85;
       const m = bar(1 / 3, 0.012, 0.03, u) * bar(2 / 3, 0.012, 0.03, u) * bar(0.5, 0.014, 0.04, v);
       // Slightly brighter toward the window end (v = 0), fading where the light spreads.
       const fall = 0.75 + 0.25 * (1 - v);
@@ -482,7 +513,14 @@ function floorMaterial(scene: Scene, look: Look): PBRMaterial {
 function rugMaterial(scene: Scene, look: Look): PBRMaterial {
   return look.material('env-rug', () => {
     const wool = sharedWool(scene, look);
-    const m = fabricMaterial(scene, null, { name: 'env-rug', albedoTexture: wool.albedo, normalTexture: wool.normal, normalStrength: 0.75, roughness: 0.95, envIntensity: 0.7 });
+    const m = fabricMaterial(scene, null, {
+      name: 'env-rug',
+      albedoTexture: wool.albedo,
+      normalTexture: wool.normal,
+      normalStrength: 0.75,
+      roughness: 0.95,
+      envIntensity: 0.7,
+    });
     // White albedo would give a white sheen; tint it like lighter indigo wool, strong
     // enough that the far end gets a soft velvet rim at grazing angles.
     m.sheen.color = lin('#8a9fd0');
@@ -495,7 +533,14 @@ function rugMaterial(scene: Scene, look: Look): PBRMaterial {
 function borderMaterial(scene: Scene, look: Look): PBRMaterial {
   return look.material('env-rug-border', () => {
     const t = borderTextures(scene);
-    const m = fabricMaterial(scene, null, { name: 'env-rug-border', albedoTexture: t.albedo, normalTexture: t.normal, normalStrength: 0.6, roughness: 0.9, envIntensity: 0.7 });
+    const m = fabricMaterial(scene, null, {
+      name: 'env-rug-border',
+      albedoTexture: t.albedo,
+      normalTexture: t.normal,
+      normalStrength: 0.6,
+      roughness: 0.9,
+      envIntensity: 0.7,
+    });
     m.sheen.color = lin('#fff4dc');
     m.sheen.intensity = 0.2;
     return m;
@@ -504,18 +549,32 @@ function borderMaterial(scene: Scene, look: Look): PBRMaterial {
 
 function wallMaterial(scene: Scene, look: Look): PBRMaterial {
   return look.material('env-wall', () =>
-    paperMaterial(scene, null, { name: 'env-wall', albedoTexture: wallpaperTexture(scene), roughness: 0.9, normalStrength: 0, envIntensity: 0.6 }),
+    paperMaterial(scene, null, {
+      name: 'env-wall',
+      albedoTexture: wallpaperTexture(scene),
+      roughness: 0.9,
+      normalStrength: 0,
+      envIntensity: 0.6,
+    }),
   );
 }
 
 function baseboardMaterial(scene: Scene, look: Look): PBRMaterial {
-  return look.material('env-baseboard', () => plasticMaterial(scene, null, { name: 'env-baseboard', roughness: 0.38, clearcoat: 0.2, envIntensity: 0.8 }));
+  return look.material('env-baseboard', () =>
+    plasticMaterial(scene, null, { name: 'env-baseboard', roughness: 0.38, clearcoat: 0.2, envIntensity: 0.8 }),
+  );
 }
 
 function skirtMaterial(scene: Scene, look: Look): PBRMaterial {
   return look.material('env-skirt', () => {
     const wool = sharedWool(scene, look);
-    const m = fabricMaterial(scene, null, { name: 'env-skirt', albedoTexture: wool.albedo, normalTexture: wool.normal, normalStrength: 0.3, envIntensity: 0.7 });
+    const m = fabricMaterial(scene, null, {
+      name: 'env-skirt',
+      albedoTexture: wool.albedo,
+      normalTexture: wool.normal,
+      normalStrength: 0.3,
+      envIntensity: 0.7,
+    });
     m.sheen.color = lin('#f4ece6');
     m.sheen.intensity = 0.25;
     return m;
@@ -636,7 +695,10 @@ function buildFloor(scene: Scene, look: Look, L: Layout, seed: number): Mesh {
   {
     const c = Color3.Lerp(oak, calmTarget, 0.5).scale(1 / TEX_MEAN);
     const y = FLOOR_Y - 0.006; // below the board tops (no z-fight), above the underlay
-    const x0 = -L.hw - 0.2, x1 = L.hw + 0.2, za = L.rugZ0 + 0.6, zb = L.rugZ1 - 0.6;
+    const x0 = -L.hw - 0.2,
+      x1 = L.hw + 0.2,
+      za = L.rugZ0 + 0.6,
+      zb = L.rugZ1 - 0.6;
     const a = g.vert(x0, y, za, 0, 1, 0, za / GRAIN_U, 0, c);
     const b = g.vert(x1, y, za, 0, 1, 0, za / GRAIN_U, 7, c);
     const cc = g.vert(x1, y, zb, 0, 1, 0, zb / GRAIN_U, 7, c);
@@ -673,7 +735,7 @@ function buildFloor(scene: Scene, look: Look, L: Layout, seed: number): Mesh {
       const grey = (base.r + base.g + base.b) / 3;
       // The floor is the calmest thing on screen: desaturated and pulled toward mid oak.
       const calm = Color3.Lerp(Color3.Lerp(base, calmTarget, 0.25), new Color3(grey, grey, grey), 0.5).scale(0.95);
-      const tint = new Color3((calm.r * warm) / TEX_MEAN, calm.g / TEX_MEAN, (calm.b / warm) / TEX_MEAN);
+      const tint = new Color3((calm.r * warm) / TEX_MEAN, calm.g / TEX_MEAN, calm.b / warm / TEX_MEAN);
       const uOff = r() * 10;
       const vOff = r(); // any fraction: no two boards show the same strip of figure
       const flip = r() < 0.5;
@@ -689,11 +751,28 @@ function buildFloor(scene: Scene, look: Look, L: Layout, seed: number): Mesh {
   return mesh;
 }
 
-function addBoard(g: Geo, L: Layout, x0: number, x1: number, za: number, zb: number, tint: Color3, uOff: number, vOff: number, flip: boolean, uScale: number, endBevels: boolean, cuts: number[]): void {
+function addBoard(
+  g: Geo,
+  L: Layout,
+  x0: number,
+  x1: number,
+  za: number,
+  zb: number,
+  tint: Color3,
+  uOff: number,
+  vOff: number,
+  flip: boolean,
+  uScale: number,
+  endBevels: boolean,
+  cuts: number[],
+): void {
   const gap = BOARD_GAP / 2;
-  const ox0 = x0 + gap, ox1 = x1 - gap; // outer (bottom of bevel)
-  const oz0 = za + gap, oz1 = zb - gap;
-  const ix0 = ox0 + BOARD_BEVEL, ix1 = ox1 - BOARD_BEVEL; // inner (top)
+  const ox0 = x0 + gap,
+    ox1 = x1 - gap; // outer (bottom of bevel)
+  const oz0 = za + gap,
+    oz1 = zb - gap;
+  const ix0 = ox0 + BOARD_BEVEL,
+    ix1 = ox1 - BOARD_BEVEL; // inner (top)
   const iz0 = endBevels ? oz0 + BOARD_BEVEL : oz0;
   const iz1 = endBevels ? oz1 - BOARD_BEVEL : oz1;
   const yTop = FLOOR_Y;
@@ -708,7 +787,8 @@ function addBoard(g: Geo, L: Layout, x0: number, x1: number, za: number, zb: num
   for (const c of cuts) if (c > iz0 + 0.05 && c < iz1 - 0.05) zs.push(c);
   zs.sort((a, b) => a - b);
   zs.push(iz1);
-  let prevA = -1, prevB = -1;
+  let prevA = -1,
+    prevB = -1;
   for (let k = 0; k < zs.length; k++) {
     const z = zs[k];
     const [ua, va] = uvOf(ix0, z);
@@ -724,7 +804,8 @@ function addBoard(g: Geo, L: Layout, x0: number, x1: number, za: number, zb: num
   const tiltS = 0.55; // ~30 degrees: a steeper sunward bevel aliases into bright specks far away
   const sideBevel = (xi: number, xo: number, s: number): void => {
     const zz = [iz0, iz1];
-    let pi = -1, po = -1;
+    let pi = -1,
+      po = -1;
     for (const z of zz) {
       const zo = z === iz0 ? oz0 : z === iz1 ? oz1 : z;
       const [u1, v1] = uvOf(xi, z);
@@ -879,7 +960,9 @@ function buildRug(scene: Scene, look: Look, L: Layout): Mesh {
         [xb[i + 1], zb, hwb],
         [xb[i], zb, hwb],
       ];
-      const ids = p.map(([x, z, h]) => g.vert(x, RUG_Y, z, 0, 1, 0, x / WOOL_REPEAT, z / WOOL_REPEAT, color(kind, x, z, h)));
+      const ids = p.map(([x, z, h]) =>
+        g.vert(x, RUG_Y, z, 0, 1, 0, x / WOOL_REPEAT, z / WOOL_REPEAT, color(kind, x, z, h)),
+      );
       g.quad(ids[0], ids[1], ids[2], ids[3]);
     }
   }
@@ -936,7 +1019,13 @@ function buildBorder(scene: Scene, look: Look, L: Layout): Mesh {
     for (const [d, y, no, nu] of prof) {
       const shade = d < 0.03 ? 0.7 : d > BORDER_W ? 0.85 : 1;
       const u = Math.min(1, d / BORDER_W);
-      row.push(g.vert(p.x - p.nx * d, y, p.z - p.nz * d, p.nx * no, nu, p.nz * no, u, s / BORDER_REPEAT, [shade, shade, shade]));
+      row.push(
+        g.vert(p.x - p.nx * d, y, p.z - p.nz * d, p.nx * no, nu, p.nz * no, u, s / BORDER_REPEAT, [
+          shade,
+          shade,
+          shade,
+        ]),
+      );
     }
     rows.push(row);
   }
@@ -962,7 +1051,12 @@ function buildWall(scene: Scene, look: Look, L: Layout): Mesh {
     let k = 0.9 + 0.08 * Math.min(1, (y - BASEBOARD_H) / 6) + 0.04 * (noise(x / 23, y / 9, 61) - 0.5);
     if (y < BASEBOARD_H + 0.35) k *= 0.85;
     // The bed's soft shadow on the wall, low down only.
-    if (x > SKIRT_X0 - 3) k *= 1 - 0.15 * Math.min(1, (x - SKIRT_X0 + 3) / 3) * (y <= DUVET_TOP + 0.4 ? 1 : Math.exp(-(y - DUVET_TOP - 0.4) / 1.2));
+    if (x > SKIRT_X0 - 3)
+      k *=
+        1 -
+        0.15 *
+          Math.min(1, (x - SKIRT_X0 + 3) / 3) *
+          (y <= DUVET_TOP + 0.4 ? 1 : Math.exp(-(y - DUVET_TOP - 0.4) / 1.2));
     return k;
   };
   const grid: number[][] = [];
@@ -971,7 +1065,8 @@ function buildWall(scene: Scene, look: Look, L: Layout): Mesh {
     for (const x of xs) row.push(g.vert(x, y, L.wallZ, 0, 0, -1, x / 4, y / 4, wall.scale(shade(x, y))));
     grid.push(row);
   }
-  for (let j = 0; j < ys.length - 1; j++) for (let i = 0; i < xs.length - 1; i++) g.quad(grid[j][i], grid[j][i + 1], grid[j + 1][i + 1], grid[j + 1][i]);
+  for (let j = 0; j < ys.length - 1; j++)
+    for (let i = 0; i < xs.length - 1; i++) g.quad(grid[j][i], grid[j][i + 1], grid[j + 1][i + 1], grid[j + 1][i]);
   const mesh = buildMesh(scene, 'envWall', g.data(), wallMaterial(scene, look));
   look.receiveShadows(mesh);
   return mesh;
@@ -1024,7 +1119,8 @@ function buildBaseboard(scene: Scene, look: Look, L: Layout): Mesh {
     }
     rows.push(row);
   }
-  for (let k = 0; k < rows.length - 1; k++) for (let i = 0; i < n - 1; i++) g.quad(rows[k][i], rows[k + 1][i], rows[k + 1][i + 1], rows[k][i + 1]);
+  for (let k = 0; k < rows.length - 1; k++)
+    for (let i = 0; i < n - 1; i++) g.quad(rows[k][i], rows[k + 1][i], rows[k + 1][i + 1], rows[k][i + 1]);
   const mesh = buildMesh(scene, 'envBaseboard', g.data(), baseboardMaterial(scene, look));
   look.receiveShadows(mesh);
   return mesh;
@@ -1056,7 +1152,7 @@ function buildSkirt(scene: Scene, look: Look, L: Layout): Mesh {
     return d;
   };
   const cols: number[] = [];
-  for (let x = x0; x < x1; ) {
+  for (let x = x0; x < x1;) {
     cols.push(x);
     const t = ((x - x0) / PLEAT) % 1;
     x += t < 0.12 ? 0.12 : x - x0 < 20 ? 0.5 : 2;
@@ -1077,20 +1173,25 @@ function buildSkirt(scene: Scene, look: Look, L: Layout): Mesh {
       const d = depthAt(x, y);
       const e = 0.02;
       const slope = (depthAt(x + e, y) - depthAt(x - e, y)) / (2 * e);
-      row.push(g.vert(x, y, L.skirtZ - d, slope, 0.05, -1, x / WOOL_REPEAT, y / WOOL_REPEAT, skirtCol.scale(shade(x, y, d))));
+      row.push(
+        g.vert(x, y, L.skirtZ - d, slope, 0.05, -1, x / WOOL_REPEAT, y / WOOL_REPEAT, skirtCol.scale(shade(x, y, d))),
+      );
     }
     grid.push(row);
   }
-  for (let j = 0; j < ys.length - 1; j++) for (let i = 0; i < cols.length - 1; i++) g.quad(grid[j][i], grid[j][i + 1], grid[j + 1][i + 1], grid[j + 1][i]);
+  for (let j = 0; j < ys.length - 1; j++)
+    for (let i = 0; i < cols.length - 1; i++) g.quad(grid[j][i], grid[j][i + 1], grid[j + 1][i + 1], grid[j + 1][i]);
   // Return of the skirt round the bed's corner (faces -x), back to the wall.
   const zr = [L.skirtZ - depthAt(x0, 0), L.skirtZ + 0.8, L.wallZ - 0.27];
   const ret: number[][] = [];
   for (const y of ys) {
     const row: number[] = [];
-    for (const z of zr) row.push(g.vert(x0, y, z, -1, 0.05, 0, z / WOOL_REPEAT, y / WOOL_REPEAT, skirtCol.scale(shade(x0, y, 0) * 0.84)));
+    for (const z of zr)
+      row.push(g.vert(x0, y, z, -1, 0.05, 0, z / WOOL_REPEAT, y / WOOL_REPEAT, skirtCol.scale(shade(x0, y, 0) * 0.84)));
     ret.push(row);
   }
-  for (let j = 0; j < ys.length - 1; j++) for (let i = 0; i < zr.length - 1; i++) g.quad(ret[j][i], ret[j][i + 1], ret[j + 1][i + 1], ret[j + 1][i]);
+  for (let j = 0; j < ys.length - 1; j++)
+    for (let i = 0; i < zr.length - 1; i++) g.quad(ret[j][i], ret[j][i + 1], ret[j + 1][i + 1], ret[j + 1][i]);
 
   // Duvet: a soft rolled profile in (forward of skirtZ, y), extruded along x. Quilted
   // squares puff the top; the front edge droops a little between them.
@@ -1138,7 +1239,7 @@ function buildSkirt(scene: Scene, look: Look, L: Layout): Mesh {
     const q = (x - xd0) / QUILT;
     const seam = Math.pow(Math.abs(Math.cos(q * Math.PI)), 12); // quilting seams darker
     let k = 0.94 - 0.12 * seam + 0.05 * (noise(x / 3, i, 91) - 0.5);
-    if (i >= 6) k *= 0.88 - 0.1 * (i - 6) / 3; // the underside of the roll
+    if (i >= 6) k *= 0.88 - (0.1 * (i - 6)) / 3; // the underside of the roll
     k *= 0.85 + 0.15 * Math.max(0, ny);
     return k;
   };
@@ -1161,11 +1262,14 @@ function buildSkirt(scene: Scene, look: Look, L: Layout): Mesh {
     }
     drows.push(row);
   }
-  for (let k = 0; k < drows.length - 1; k++) for (let i = 0; i < prof.length - 1; i++) g.quad(drows[k][i], drows[k + 1][i], drows[k + 1][i + 1], drows[k][i + 1]);
+  for (let k = 0; k < drows.length - 1; k++)
+    for (let i = 0; i < prof.length - 1; i++)
+      g.quad(drows[k][i], drows[k + 1][i], drows[k + 1][i + 1], drows[k][i + 1]);
   // End cap (faces -x): a fan from the profile's centre.
   {
     const pts = prof.map((_p, i) => pointAt(xd0, i));
-    let cy = 0, cz = 0;
+    let cy = 0,
+      cz = 0;
     for (const p of pts) {
       cy += p[1] / pts.length;
       cz += p[2] / pts.length;
@@ -1279,10 +1383,25 @@ export function preview(scene: Scene, look: Look, opts: PreviewOptions): Preview
   const extra: Mesh[] = [];
   if (opts.variant === 'units') {
     const profile: [number, number][] = [
-      [0, 0], [0.27, 0], [0.28, 0.05], [0.16, 0.12], [0.13, 0.55], [0.2, 0.7], [0.2, 0.9], [0.14, 1.05], [0.17, 1.12], [0.12, 1.22], [0, 1.28],
+      [0, 0],
+      [0.27, 0],
+      [0.28, 0.05],
+      [0.16, 0.12],
+      [0.13, 0.55],
+      [0.2, 0.7],
+      [0.2, 0.9],
+      [0.14, 1.05],
+      [0.17, 1.12],
+      [0.12, 1.22],
+      [0, 1.28],
     ];
     const vd = bakeVertexAO(lathe(profile, 12), { samples: 12, strength: 0.5 });
-    const pawn = buildMesh(scene, 'envPreviewPawns', vd, look.material('env-preview-pawn', () => plasticMaterial(scene, null, { instanceColor: true })));
+    const pawn = buildMesh(
+      scene,
+      'envPreviewPawns',
+      vd,
+      look.material('env-preview-pawn', () => plasticMaterial(scene, null, { instanceColor: true })),
+    );
     pawn.parent = inner;
     const r = rng(5);
     const mats: number[] = [];

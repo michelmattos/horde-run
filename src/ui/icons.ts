@@ -14,7 +14,10 @@ interface Stroke {
 function figure(parts: readonly Stroke[], color: string, outline: number, extra = ''): string {
   const pass = (c: string, grow: number): string =>
     parts
-      .map((p) => `<path d="${p.d}" fill="${c}" stroke="${c}" stroke-width="${p.w + grow}" stroke-linecap="round" stroke-linejoin="round"/>`)
+      .map(
+        (p) =>
+          `<path d="${p.d}" fill="${c}" stroke="${c}" stroke-width="${p.w + grow}" stroke-linecap="round" stroke-linejoin="round"/>`,
+      )
       .join('');
   return pass(INK, outline * 2) + pass(color, 0) + extra;
 }
@@ -65,7 +68,9 @@ export function soldierIcon(size: number | string, color: string = HEX.uiCream):
 }
 
 export function fortIcon(size: number | string, color: string = HEX.uiCream, flag: string = HEX.uiYellow): string {
-  const body = figure(FORT.slice(0, 2), color, 2.6) + figure(FORT.slice(2), flag, 2.6) +
+  const body =
+    figure(FORT.slice(0, 2), color, 2.6) +
+    figure(FORT.slice(2), flag, 2.6) +
     `<path d="M27 56 L27 46 C27 41 37 41 37 46 L37 56 Z" fill="${INK}" opacity=".55"/>`;
   return svg('0 0 64 64', body, size, 'tb-ico');
 }
@@ -98,7 +103,12 @@ export function pauseIcon(size: number): string {
 }
 
 export function playIcon(size: number, color: string = HEX.uiInk): string {
-  return svg('0 0 32 32', `<path d="M10 6.5 L25 16 L10 25.5 Z" fill="${color}" stroke="${color}" stroke-width="4" stroke-linejoin="round"/>`, size, 'tb-ico');
+  return svg(
+    '0 0 32 32',
+    `<path d="M10 6.5 L25 16 L10 25.5 Z" fill="${color}" stroke="${color}" stroke-width="4" stroke-linejoin="round"/>`,
+    size,
+    'tb-ico',
+  );
 }
 
 export function retryIcon(size: number, color: string = HEX.uiInk): string {

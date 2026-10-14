@@ -80,7 +80,12 @@ export class LevelVisuals {
     this.root = new TransformNode('level', scene);
     const { width: w, length } = level.lane;
 
-    this.env = createEnvironment(scene, look, { laneWidth: w, laneLength: length, zMin: LAYOUT.playerBaseZ - LAYOUT.playerBaseDepth, zMax: length + LAYOUT.enemyBaseDepth });
+    this.env = createEnvironment(scene, look, {
+      laneWidth: w,
+      laneLength: length,
+      zMin: LAYOUT.playerBaseZ - LAYOUT.playerBaseDepth,
+      zMax: length + LAYOUT.enemyBaseDepth,
+    });
     this.env.root.parent = this.root;
     scene.clearColor.copyFrom(this.env.clearColor);
     layoutScenery(props, level);
@@ -114,7 +119,10 @@ export class LevelVisuals {
       for (const f of [0.3, 0.6, 0.9, 0]) this.enemyFort.setDamage(f);
     }
 
-    const slots = gateSlots(level.gates.map((g) => ({ x: g.x, z: g.z, width: g.width, move: g.move })), w);
+    const slots = gateSlots(
+      level.gates.map((g) => ({ x: g.x, z: g.z, width: g.width, move: g.move })),
+      w,
+    );
     level.gates.forEach((g, i) => this.buildGate(scene, look, g, slots[i]));
   }
 
@@ -145,11 +153,27 @@ export class LevelVisuals {
   private buildGate(scene: Scene, look: Look, g: GateDef, slot: { maxSpan: number; layer: number }): void {
     const good = g.op === 'mul' || g.op === 'add';
     const usesLeft = g.uses !== undefined && g.uses > 0 ? g.uses : -1;
-    const model = createGate(scene, look, { width: g.width, good, label: gateLabel(g), usesLeft, maxSpan: slot.maxSpan, layer: slot.layer });
+    const model = createGate(scene, look, {
+      width: g.width,
+      good,
+      label: gateLabel(g),
+      usesLeft,
+      maxSpan: slot.maxSpan,
+      layer: slot.layer,
+    });
     model.root.parent = this.root;
     model.root.position.set(gateX(g, 0), 0, g.z);
     model.root.rotation.y = Math.PI; // side 'neutral': the sign faces the camera
-    const visual: GateVisual = { def: g, good, model, pulse: 0, pulseStrong: false, usesLeft, breakTime: -1, hidden: false };
+    const visual: GateVisual = {
+      def: g,
+      good,
+      model,
+      pulse: 0,
+      pulseStrong: false,
+      usesLeft,
+      breakTime: -1,
+      hidden: false,
+    };
     this.gates.push(visual);
     this.gateById.set(g.id, visual);
   }

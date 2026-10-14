@@ -250,14 +250,24 @@ class LookImpl implements Look {
     const pos = center.subtract(dir.scale(100));
     this.key.position.copyFrom(pos);
     const view = Matrix.LookAtLH(pos, pos.add(dir), Vector3.Up());
-    let l = Infinity, r = -Infinity, bo = Infinity, t = -Infinity, zn = Infinity, zf = -Infinity;
+    let l = Infinity,
+      r = -Infinity,
+      bo = Infinity,
+      t = -Infinity,
+      zn = Infinity,
+      zf = -Infinity;
     const v = new Vector3();
-    for (const x of [b.minX, b.maxX]) for (const y of [0, maxY]) for (const z of [b.minZ, b.maxZ]) {
-      Vector3.TransformCoordinatesFromFloatsToRef(x, y, z, view, v);
-      l = Math.min(l, v.x); r = Math.max(r, v.x);
-      bo = Math.min(bo, v.y); t = Math.max(t, v.y);
-      zn = Math.min(zn, v.z); zf = Math.max(zf, v.z);
-    }
+    for (const x of [b.minX, b.maxX])
+      for (const y of [0, maxY])
+        for (const z of [b.minZ, b.maxZ]) {
+          Vector3.TransformCoordinatesFromFloatsToRef(x, y, z, view, v);
+          l = Math.min(l, v.x);
+          r = Math.max(r, v.x);
+          bo = Math.min(bo, v.y);
+          t = Math.max(t, v.y);
+          zn = Math.min(zn, v.z);
+          zf = Math.max(zf, v.z);
+        }
     this.key.orthoLeft = l;
     this.key.orthoRight = r;
     this.key.orthoBottom = bo;

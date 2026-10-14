@@ -45,7 +45,11 @@ export function starPopDelays(count: number): number[] {
 
 // Result buttons: the primary action first (where the thumb lands), then the rest.
 export type ResultAction = 'next' | 'retry' | 'map';
-export function resultActions(win: boolean, hasNext: boolean, hasMap: boolean): { primary: ResultAction; secondary: ResultAction[] } {
+export function resultActions(
+  win: boolean,
+  hasNext: boolean,
+  hasMap: boolean,
+): { primary: ResultAction; secondary: ResultAction[] } {
   if (win && hasNext) return { primary: 'next', secondary: hasMap ? ['retry', 'map'] : ['retry'] };
   // A won final level goes back to the map; a defeat always offers Retry first.
   if (win && hasMap) return { primary: 'map', secondary: ['retry'] };

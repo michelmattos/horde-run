@@ -43,7 +43,18 @@ import { Texture } from '@babylonjs/core/Materials/Textures/texture';
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
 import type { Look } from '../look/index.ts';
-import { HEX, buildMesh, fixWinding, lathe, lin, mergeParts, paint, place, plasticMaterial, roundedBox } from '../look/index.ts';
+import {
+  HEX,
+  buildMesh,
+  fixWinding,
+  lathe,
+  lin,
+  mergeParts,
+  paint,
+  place,
+  plasticMaterial,
+  roundedBox,
+} from '../look/index.ts';
 import type { ModelInfo, PreviewOptions, PreviewResult } from '../look/model.ts';
 import { computeFraming } from '../framing.ts';
 
@@ -134,7 +145,8 @@ export function gateSlots(gates: readonly GateSlotInput[], laneWidth = 10): { ma
 }
 
 // ---------- label measurement ----------
-const FONT = '"Arial Rounded MT Bold", ui-rounded, "SF Pro Rounded", "Nunito", "Varela Round", "Helvetica Neue", Arial, system-ui, sans-serif';
+const FONT =
+  '"Arial Rounded MT Bold", ui-rounded, "SF Pro Rounded", "Nunito", "Varela Round", "Helvetica Neue", Arial, system-ui, sans-serif';
 
 function prettyLabel(label: string): string {
   return label.replace(/^x/i, '×').replace(/^-/, '−');
@@ -213,7 +225,15 @@ function cols(good: boolean) {
 }
 
 // ---------- geometry ----------
-function box(w: number, h: number, d: number, r: number, c: Color3, at: { x?: number; y?: number; z?: number }, seg = 1): VertexData {
+function box(
+  w: number,
+  h: number,
+  d: number,
+  r: number,
+  c: Color3,
+  at: { x?: number; y?: number; z?: number },
+  seg = 1,
+): VertexData {
   return paint(place(roundedBox(w, h, d, r, seg), at), c);
 }
 
@@ -231,7 +251,12 @@ function ball(radius: number, c: Color3, x: number, y: number, z = 0, tess = 16,
 function ring(rOut: number, h: number, c: Color3, x: number, y: number, tess = 8): VertexData {
   const r0 = rOut * 0.8;
   const prof: [number, number][] = [
-    [r0, 0], [rOut - h * 0.25, 0], [rOut, h * 0.3], [rOut, h * 0.7], [rOut - h * 0.25, h], [r0, h],
+    [r0, 0],
+    [rOut - h * 0.25, 0],
+    [rOut, h * 0.3],
+    [rOut, h * 0.7],
+    [rOut - h * 0.25, h],
+    [r0, h],
   ];
   return paint(place(lathe(prof, tess), { x, y }), c);
 }
@@ -310,11 +335,45 @@ function buildFrameData(L: FrameLayout, good: boolean): VertexData {
   for (const s of [-1, 1]) parts.push(ball(0.045, dark, s * L.postX, beamY, D.beamD / 2 + 0.005, 6, 3));
   // Brass hinges that the sign card sits on.
   for (const s of [-1, 1]) {
-    parts.push(paint(place(lathe([[0, -0.11], [0.05, -0.11], [0.055, -0.1], [0.055, 0.1], [0.05, 0.11], [0, 0.11]], 6), { x: s * L.hingeX, y: top + 0.05, rz: Math.PI / 2 }), brass));
+    parts.push(
+      paint(
+        place(
+          lathe(
+            [
+              [0, -0.11],
+              [0.05, -0.11],
+              [0.055, -0.1],
+              [0.055, 0.1],
+              [0.05, 0.11],
+              [0, 0.11],
+            ],
+            6,
+          ),
+          { x: s * L.hingeX, y: top + 0.05, rz: Math.PI / 2 },
+        ),
+        brass,
+      ),
+    );
   }
   // Easel arms: short rods running back from the beam; the kickstand struts rise from their ends.
   for (const s of [-1, 1]) {
-    parts.push(paint(place(lathe([[0, 0], [0.04, 0], [0.04, STRUT_ARM.len], [0, STRUT_ARM.len]], 6), { x: s * L.strutX, y: STRUT_ARM.y, z: -D.beamD / 2 + 0.03, rx: -Math.PI / 2 }), dark));
+    parts.push(
+      paint(
+        place(
+          lathe(
+            [
+              [0, 0],
+              [0.04, 0],
+              [0.04, STRUT_ARM.len],
+              [0, STRUT_ARM.len],
+            ],
+            6,
+          ),
+          { x: s * L.strutX, y: STRUT_ARM.y, z: -D.beamD / 2 + 0.03, rx: -Math.PI / 2 },
+        ),
+        dark,
+      ),
+    );
   }
   return shadeAO(mergeParts(parts), top - D.beamH);
 }
@@ -325,7 +384,23 @@ function buildStrutData(L: FrameLayout, good: boolean): VertexData {
   const r = 0.032;
   const parts: VertexData[] = [];
   for (const s of [-1, 1]) {
-    parts.push(paint(place(lathe([[0, 0], [r, 0], [r, 1], [0, 1]], 6), { x: s * L.strutX }), dark));
+    parts.push(
+      paint(
+        place(
+          lathe(
+            [
+              [0, 0],
+              [r, 0],
+              [r, 1],
+              [0, 1],
+            ],
+            6,
+          ),
+          { x: s * L.strutX },
+        ),
+        dark,
+      ),
+    );
   }
   return mergeParts(parts);
 }
@@ -397,7 +472,15 @@ function buildFilmData(w: number, h: number, good: boolean): VertexData {
 }
 
 // ---------- sign texture ----------
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number, begin = true): void {
+function roundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+  begin = true,
+): void {
   if (begin) ctx.beginPath();
   ctx.moveTo(x + r, y);
   ctx.arcTo(x + w, y, x + w, y + h, r);
@@ -453,7 +536,7 @@ function drawCard(tex: DynamicTexture, cw: number, texH: number, good: boolean, 
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W, H);
   let seed = 7;
-  const rnd = (): number => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const rnd = (): number => (seed = (seed * 16807) % 2147483647) / 2147483647;
   ctx.fillStyle = 'rgba(120,90,50,0.07)';
   for (let i = 0; i < 260; i++) ctx.fillRect(rnd() * W, rnd() * H, 1 + rnd() * 3, 1);
 
@@ -523,7 +606,7 @@ function drawCard(tex: DynamicTexture, cw: number, texH: number, good: boolean, 
   const em = Math.max(8, Math.min(target, (boxR - boxL) / met.w, (boxB - boxT) / (met.asc + met.desc)));
   // Centre the ink box (ascent + descent incl. outline and shadow) in the layout box.
   const inkH = (met.asc + met.desc) * em;
-  const baseline = boxT + ((boxB - boxT) - inkH) / 2 + met.asc * em;
+  const baseline = boxT + (boxB - boxT - inkH) / 2 + met.asc * em;
   const tw = (met.w - OUTLINE) * em;
   const x0 = W / 2 - tw / 2;
   const symW = parts.shaped ? SYM_W * em : 0;
@@ -620,7 +703,10 @@ const BADGE_TEX = 128;
 
 function badgeData(r: number, t: number): VertexData {
   const seg = 28;
-  const pos: number[] = [], nrm: number[] = [], uv: number[] = [], idx: number[] = [];
+  const pos: number[] = [],
+    nrm: number[] = [],
+    uv: number[] = [],
+    idx: number[] = [];
   const rimUv = [0.5, 0.015]; // brass rim texels
   // Front face (+Z) and back face (-Z).
   for (const side of [1, -1]) {
@@ -632,7 +718,8 @@ function badgeData(r: number, t: number): VertexData {
     else uv.push(rimUv[0], rimUv[1]);
     for (let k = 0; k <= seg; k++) {
       const a = (k / seg) * Math.PI * 2;
-      const x = Math.cos(a) * r, y = Math.sin(a) * r;
+      const x = Math.cos(a) * r,
+        y = Math.sin(a) * r;
       pos.push(x, y, z);
       nrm.push(0, 0, side);
       if (side > 0) uv.push(0.5 - x / (2 * r), 0.5 + y / (2 * r));
@@ -647,7 +734,8 @@ function badgeData(r: number, t: number): VertexData {
   const e = pos.length / 3;
   for (let k = 0; k <= seg; k++) {
     const a = (k / seg) * Math.PI * 2;
-    const x = Math.cos(a), y = Math.sin(a);
+    const x = Math.cos(a),
+      y = Math.sin(a);
     for (const z of [t / 2, -t / 2]) {
       pos.push(x * r, y * r, z);
       nrm.push(x, y, 0);
@@ -717,7 +805,9 @@ export function createGate(scene: Scene, look: Look, opts: GateOptions): GateMod
   const L = frameLayout(width, maxSpan, cw);
   const root = new TransformNode(`gate-${good ? 'good' : 'trap'}`, scene);
 
-  const frameMat = look.material('gate-frame', () => plasticMaterial(scene, null, { name: 'gate-frame', roughness: 0.36, clearcoat: 0.4, clearcoatRoughness: 0.12 }));
+  const frameMat = look.material('gate-frame', () =>
+    plasticMaterial(scene, null, { name: 'gate-frame', roughness: 0.36, clearcoat: 0.4, clearcoatRoughness: 0.12 }),
+  );
   const frame = buildMesh(scene, 'gateFrame', buildFrameData(L, good), frameMat);
   frame.parent = root;
 
@@ -751,7 +841,13 @@ export function createGate(scene: Scene, look: Look, opts: GateOptions): GateMod
   const pivotZ = -0.02 - 0.006 * layer;
   pivot.position.set(0, pivotY, pivotZ);
   const texH = Math.round((TEX_W * ch) / cw) + STRIP;
-  const tex = new DynamicTexture('gateCardTex', { width: TEX_W, height: texH }, scene, true, Texture.TRILINEAR_SAMPLINGMODE);
+  const tex = new DynamicTexture(
+    'gateCardTex',
+    { width: TEX_W, height: texH },
+    scene,
+    true,
+    Texture.TRILINEAR_SAMPLINGMODE,
+  );
   tex.anisotropicFilteringLevel = 4;
   tex.wrapU = Texture.CLAMP_ADDRESSMODE;
   tex.wrapV = Texture.CLAMP_ADDRESSMODE;
@@ -796,7 +892,13 @@ export function createGate(scene: Scene, look: Look, opts: GateOptions): GateMod
   let badgeMat: PBRMaterial | null = null;
   let badge: Mesh | null = null;
   if (opts.usesLeft >= 0) {
-    badgeTex = new DynamicTexture('gateBadgeTex', { width: BADGE_TEX, height: BADGE_TEX }, scene, true, Texture.TRILINEAR_SAMPLINGMODE);
+    badgeTex = new DynamicTexture(
+      'gateBadgeTex',
+      { width: BADGE_TEX, height: BADGE_TEX },
+      scene,
+      true,
+      Texture.TRILINEAR_SAMPLINGMODE,
+    );
     badgeTex.wrapU = Texture.CLAMP_ADDRESSMODE;
     badgeTex.wrapV = Texture.CLAMP_ADDRESSMODE;
     badgeMat = new PBRMaterial('gate-badge', scene);
@@ -894,9 +996,19 @@ export function preview(scene: Scene, look: Look, opts: PreviewOptions): Preview
             { label: '-5', good: false, uses: -1, x: 1.8, width: 3 },
             { label: '÷2', good: false, uses: 12, x: 5.4, width: 3 },
           ];
-  const slots = gateSlots(specs.map((s) => ({ x: s.x, z: s.z ?? 0, width: s.width })), opts.variant === 'row' || !opts.variant ? 14.4 : 10);
+  const slots = gateSlots(
+    specs.map((s) => ({ x: s.x, z: s.z ?? 0, width: s.width })),
+    opts.variant === 'row' || !opts.variant ? 14.4 : 10,
+  );
   const gates = specs.map((s, i) => {
-    const g = createGate(scene, look, { width: s.width, good: s.good, label: s.label, usesLeft: s.uses, maxSpan: slots[i].maxSpan, layer: slots[i].layer });
+    const g = createGate(scene, look, {
+      width: s.width,
+      good: s.good,
+      label: s.label,
+      usesLeft: s.uses,
+      maxSpan: slots[i].maxSpan,
+      layer: slots[i].layer,
+    });
     g.root.parent = root;
     g.root.position.set(s.x, 0, s.z ?? 0);
     g.setLabelTilt(f.pitch);

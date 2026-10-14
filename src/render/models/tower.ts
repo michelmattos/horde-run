@@ -49,7 +49,19 @@ import { CreateBoxVertexData } from '@babylonjs/core/Meshes/Builders/boxBuilder'
 import { Matrix, Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Color3, Color4 } from '@babylonjs/core/Maths/math.color';
 import type { Look } from '../look/index.ts';
-import { HEX, bakeVertexAO, buildMesh, fixWinding, lathe, lin, mergeParts, paint, place, plasticMaterial, roundedBox } from '../look/index.ts';
+import {
+  HEX,
+  bakeVertexAO,
+  buildMesh,
+  fixWinding,
+  lathe,
+  lin,
+  mergeParts,
+  paint,
+  place,
+  plasticMaterial,
+  roundedBox,
+} from '../look/index.ts';
 import { BLOCK_FACES, blockVertexData, toyBlockMaterial } from './wall.ts';
 import type { ModelInfo, PreviewOptions, PreviewResult } from '../look/model.ts';
 
@@ -101,7 +113,8 @@ function alongMatrix(a: V3, b: V3): { m: Matrix; len: number } {
   const axis = Vector3.Cross(up, d);
   const dot = Vector3.Dot(up, d);
   let q: Quaternion;
-  if (axis.lengthSquared() < 1e-10) q = dot > 0 ? Quaternion.Identity() : Quaternion.RotationAxis(Vector3.Right(), Math.PI);
+  if (axis.lengthSquared() < 1e-10)
+    q = dot > 0 ? Quaternion.Identity() : Quaternion.RotationAxis(Vector3.Right(), Math.PI);
   else q = Quaternion.RotationAxis(axis.normalize(), Math.acos(Math.max(-1, Math.min(1, dot))));
   return { m: Matrix.Compose(Vector3.One(), q, new Vector3(a[0], a[1], a[2])), len };
 }
@@ -111,7 +124,15 @@ function limb(a: V3, b: V3, r0: number, r1 = r0, tess = 7): VertexData {
   const { m, len } = alongMatrix(a, b);
   const e0 = Math.min(r0 * 0.8, len * 0.3);
   const e1 = Math.min(r1 * 0.8, len * 0.3);
-  const vd = lathe([[0, -e0 * 0.5], [r0, 0.0], [r1, len], [0, len + e1 * 0.5]], tess);
+  const vd = lathe(
+    [
+      [0, -e0 * 0.5],
+      [r0, 0.0],
+      [r1, len],
+      [0, len + e1 * 0.5],
+    ],
+    tess,
+  );
   vd.transform(m);
   return vd;
 }
@@ -145,11 +166,19 @@ function figureGeometry(): VertexData {
   const tanD = lin(HEX.tanDark);
   const body: [number, number, number] = [tan.r, tan.g, tan.b];
   const shade: [number, number, number] = [tan.r * 0.93, tan.g * 0.92, tan.b * 0.9];
-  const dark: [number, number, number] = [Color3.Lerp(tan, tanD, 0.3).r, Color3.Lerp(tan, tanD, 0.3).g, Color3.Lerp(tan, tanD, 0.3).b];
+  const dark: [number, number, number] = [
+    Color3.Lerp(tan, tanD, 0.3).r,
+    Color3.Lerp(tan, tanD, 0.3).g,
+    Color3.Lerp(tan, tanD, 0.3).b,
+  ];
   // Gunmetal toy rifle-blaster (the bright blue blob read as a prop, not a soldier's gun).
   const gun = lin('#4b4540');
   const blaster: [number, number, number] = [gun.r, gun.g, gun.b];
-  const helmet: [number, number, number] = [Color3.Lerp(tan, tanD, 0.55).r, Color3.Lerp(tan, tanD, 0.55).g, Color3.Lerp(tan, tanD, 0.55).b];
+  const helmet: [number, number, number] = [
+    Color3.Lerp(tan, tanD, 0.55).r,
+    Color3.Lerp(tan, tanD, 0.55).g,
+    Color3.Lerp(tan, tanD, 0.55).b,
+  ];
   const orange = lin(HEX.toyOrange);
   const accent: [number, number, number] = [orange.r, orange.g, orange.b];
   const grey: [number, number, number] = [0.05, 0.055, 0.06];
@@ -159,7 +188,21 @@ function figureGeometry(): VertexData {
     parts.push(vd);
   };
   // Base plate (oval, thin, bevelled).
-  add(place(lathe([[0, 0], [0.16, 0], [0.155, 0.03], [0, 0.03]], 10), { sx: 1, sz: 1.15 }), shade);
+  add(
+    place(
+      lathe(
+        [
+          [0, 0],
+          [0.16, 0],
+          [0.155, 0.03],
+          [0, 0.03],
+        ],
+        10,
+      ),
+      { sx: 1, sz: 1.15 },
+    ),
+    shade,
+  );
   // Stance: left foot forward, right foot back, knees slightly bent.
   const hipY = 0.32;
   add(limb([-0.055, hipY, 0.0], [-0.07, 0.17, 0.07], 0.045, 0.04), body); // left thigh
@@ -174,16 +217,45 @@ function figureGeometry(): VertexData {
   add(place(roundedBox(0.14, 0.13, 0.065, 0.022, 1), { y: hipY + 0.15, z: -0.085, rx: 0.14 }), shade); // pack
   // Head, cheek down on the stock, helmet with a brim.
   const headY = 0.6;
-  add(place(lathe([[0, -0.06], [0.04, -0.052], [0.058, -0.02], [0.058, 0.02], [0.04, 0.05], [0, 0.06]], 7), { x: 0.02, y: headY, z: 0.04 }), body);
+  add(
+    place(
+      lathe(
+        [
+          [0, -0.06],
+          [0.04, -0.052],
+          [0.058, -0.02],
+          [0.058, 0.02],
+          [0.04, 0.05],
+          [0, 0.06],
+        ],
+        7,
+      ),
+      { x: 0.02, y: headY, z: 0.04 },
+    ),
+    body,
+  );
   // M1 helmet, oversized with a wide flat brim and moulded a shade darker, so the army
   // man silhouette reads at game distance.
   add(
-    place(lathe([[0.122, -0.012], [0.128, -0.004], [0.104, 0.012], [0.096, 0.06], [0.07, 0.108], [0, 0.124]], 12), {
-      x: 0.02,
-      y: headY + 0.0,
-      z: 0.035,
-      rx: 0.12,
-    }),
+    place(
+      lathe(
+        [
+          [0.122, -0.012],
+          [0.128, -0.004],
+          [0.104, 0.012],
+          [0.096, 0.06],
+          [0.07, 0.108],
+          [0, 0.124],
+        ],
+        12,
+      ),
+      {
+        x: 0.02,
+        y: headY + 0.0,
+        z: 0.035,
+        rx: 0.12,
+      },
+    ),
     helmet,
   );
   // Arms: right hand on the pistol grip, left hand forward on the foregrip.
@@ -195,18 +267,70 @@ function figureGeometry(): VertexData {
   add(limb([-0.09, 0.47, 0.15], [bx - 0.01, by - 0.055, 0.25], 0.034, 0.03), body); // left forearm
   // The blaster: chunky body, top rail, barrel shroud with an orange ring, grip, stock.
   add(place(roundedBox(0.085, 0.1, 0.26, 0.028, 1), { x: bx, y: by + 0.005, z: 0.13 }), blaster);
-  add(place(CreateBoxVertexData({ width: 0.04, height: 0.035, depth: 0.16 }), { x: bx, y: by + 0.07, z: 0.12 }), accent); // top rail
-  add(place(lathe([[0.0, 0], [0.047, 0], [0.047, 0.07], [0.052, 0.1], [0.0, 0.1]], 8), { x: bx, y: by, z: 0.24, rx: Math.PI / 2 }), blaster);
-  add(place(lathe([[0.052, 0], [0.057, 0.0], [0.057, 0.025], [0.052, 0.025]], 8), { x: bx, y: by, z: 0.325, rx: Math.PI / 2 }), accent); // muzzle ring
-  add(place(CreateBoxVertexData({ width: 0.05, height: 0.1, depth: 0.05 }), { x: bx, y: by - 0.08, z: 0.08, rx: 0.3 }), grey); // grip
-  add(place(CreateBoxVertexData({ width: 0.055, height: 0.08, depth: 0.1 }), { x: bx, y: by - 0.01, z: -0.02 }), blaster); // stock
+  add(
+    place(CreateBoxVertexData({ width: 0.04, height: 0.035, depth: 0.16 }), { x: bx, y: by + 0.07, z: 0.12 }),
+    accent,
+  ); // top rail
+  add(
+    place(
+      lathe(
+        [
+          [0.0, 0],
+          [0.047, 0],
+          [0.047, 0.07],
+          [0.052, 0.1],
+          [0.0, 0.1],
+        ],
+        8,
+      ),
+      { x: bx, y: by, z: 0.24, rx: Math.PI / 2 },
+    ),
+    blaster,
+  );
+  add(
+    place(
+      lathe(
+        [
+          [0.052, 0],
+          [0.057, 0.0],
+          [0.057, 0.025],
+          [0.052, 0.025],
+        ],
+        8,
+      ),
+      { x: bx, y: by, z: 0.325, rx: Math.PI / 2 },
+    ),
+    accent,
+  ); // muzzle ring
+  add(
+    place(CreateBoxVertexData({ width: 0.05, height: 0.1, depth: 0.05 }), { x: bx, y: by - 0.08, z: 0.08, rx: 0.3 }),
+    grey,
+  ); // grip
+  add(
+    place(CreateBoxVertexData({ width: 0.055, height: 0.08, depth: 0.1 }), { x: bx, y: by - 0.01, z: -0.02 }),
+    blaster,
+  ); // stock
   // Tan-army crenellated cap he stands in (ring wall + merlons) and a tan pennant at the
   // back: the tower reads as an enemy outpost, not a stack of alphabet blocks.
   const capR = 0.27;
-  add(lathe([[capR - 0.035, 0], [capR + 0.03, 0], [capR + 0.03, 0.07], [capR - 0.035, 0.07]], 16), dark);
+  add(
+    lathe(
+      [
+        [capR - 0.035, 0],
+        [capR + 0.03, 0],
+        [capR + 0.03, 0.07],
+        [capR - 0.035, 0.07],
+      ],
+      16,
+    ),
+    dark,
+  );
   for (let k = 0; k < 8; k++) {
     const a = (k / 8) * Math.PI * 2 + Math.PI / 8;
-    add(place(roundedBox(0.075, 0.07, 0.06, 0.012, 1), { x: Math.sin(a) * capR, y: 0.1, z: Math.cos(a) * capR, ry: a }), shade);
+    add(
+      place(roundedBox(0.075, 0.07, 0.06, 0.012, 1), { x: Math.sin(a) * capR, y: 0.1, z: Math.cos(a) * capR, ry: a }),
+      shade,
+    );
   }
   add(limb([-0.17, 0.02, -0.2], [-0.17, 0.95, -0.2], 0.012, 0.01), dark); // pennant pole
   add(place(roundedBox(0.008, 0.16, 0.26, 0.004, 1), { x: -0.17, y: 0.84, z: -0.33 }), dark); // pennant
@@ -220,7 +344,19 @@ function figureGeometry(): VertexData {
 function dartGeometry(): VertexData {
   const r = FIGURE.dartR;
   const L = FIGURE.dartTipZ - FIGURE.dartBackZ;
-  const vd = lathe([[0, 0], [r * 0.9, 0], [r, 0.01], [r, L - 0.035], [r * 1.12, L - 0.03], [r * 1.12, L - 0.012], [r * 0.7, L], [0, L + 0.004]], 6);
+  const vd = lathe(
+    [
+      [0, 0],
+      [r * 0.9, 0],
+      [r, 0.01],
+      [r, L - 0.035],
+      [r * 1.12, L - 0.03],
+      [r * 1.12, L - 0.012],
+      [r * 0.7, L],
+      [0, L + 0.004],
+    ],
+    6,
+  );
   // Foam body orange, rounded tip a deeper orange-red.
   const c = new Float32Array((vd.positions!.length / 3) * 4);
   const o = lin(HEX.toyOrange);
@@ -247,7 +383,9 @@ const SCRATCH = { q: new Quaternion(), a: new Matrix(), b: new Matrix(), m: new 
 
 export function createTowerKit(scene: Scene, look: Look): TowerKit {
   // One white plastic material; colours come from vertex colours x instance colours.
-  const mat = look.material('tower-plastic', () => plasticMaterial(scene, null, { instanceColor: true, roughness: 0.4, clearcoat: 0.3, name: 'towerPlastic' }));
+  const mat = look.material('tower-plastic', () =>
+    plasticMaterial(scene, null, { instanceColor: true, roughness: 0.4, clearcoat: 0.3, name: 'towerPlastic' }),
+  );
   const sources: Mesh[] = [
     buildMesh(scene, 'towerBlock', blockGeometry(), toyBlockMaterial(scene, look)),
     buildMesh(scene, 'towerFigure', figureGeometry(), mat),
@@ -397,7 +535,13 @@ export function preview(scene: Scene, look: Look, opts: PreviewOptions): Preview
   if (opts.variant === 'states') {
     towers[0].setHit(1); // +X side (left on screen in front/game views)
     towers[1].setFiring(1);
-    return { root, dispose() { kit.dispose(); root.dispose(); } };
+    return {
+      root,
+      dispose() {
+        kit.dispose();
+        root.dispose();
+      },
+    };
   }
   return {
     root,

@@ -120,7 +120,9 @@ export function bakeBlockAO(vd: VertexData, side: number): VertexData {
   const r = side * BLOCK_EDGE;
   for (let v = 0; v < nv; v++) {
     const y = p[v * 3 + 1];
-    const nx = n[v * 3], ny = n[v * 3 + 1], nz = n[v * 3 + 2];
+    const nx = n[v * 3],
+      ny = n[v * 3 + 1],
+      nz = n[v * 3 + 2];
     let ao = 1;
     if (ny < -0.9) ao = 0.6;
     else if (y < -h + r * 1.01) ao = 0.64 + 0.22 * Math.min(1, Math.max(0, (y + h) / r));
@@ -137,7 +139,12 @@ export function bakeBlockAO(vd: VertexData, side: number): VertexData {
 // an atlas cell so the glyph reads upright from outside (side faces: up = +Y; top: up = -Z;
 // bottom: up = +Z). turns[f] rotates face f's glyph by quarter turns. Stacking AO is baked
 // into the vertex colours unless ao is false. 300 triangles.
-export function blockVertexData(side: number, faces: readonly number[], turns: readonly number[] = [0, 0, 0, 0, 0, 0], ao = true): VertexData {
+export function blockVertexData(
+  side: number,
+  faces: readonly number[],
+  turns: readonly number[] = [0, 0, 0, 0, 0, 0],
+  ao = true,
+): VertexData {
   const seg = 2;
   const vd = roundedBox(side, side, side, side * BLOCK_EDGE, seg);
   const p = vd.positions!;
@@ -146,19 +153,41 @@ export function blockVertexData(side: number, faces: readonly number[], turns: r
   const h = side / 2;
   // [normal, up] per face in roundedBox order
   const frames: [number[], number[]][] = [
-    [[1, 0, 0], [0, 1, 0]],
-    [[-1, 0, 0], [0, 1, 0]],
-    [[0, 1, 0], [0, 0, -1]],
-    [[0, -1, 0], [0, 0, 1]],
-    [[0, 0, 1], [0, 1, 0]],
-    [[0, 0, -1], [0, 1, 0]],
+    [
+      [1, 0, 0],
+      [0, 1, 0],
+    ],
+    [
+      [-1, 0, 0],
+      [0, 1, 0],
+    ],
+    [
+      [0, 1, 0],
+      [0, 0, -1],
+    ],
+    [
+      [0, -1, 0],
+      [0, 0, 1],
+    ],
+    [
+      [0, 0, 1],
+      [0, 1, 0],
+    ],
+    [
+      [0, 0, -1],
+      [0, 1, 0],
+    ],
   ];
   // Inset so mip filtering never bleeds a neighbouring cell in.
   const inset = 3 / CELL;
   for (let f = 0; f < 6; f++) {
     const n = frames[f][0];
     let up = frames[f][1];
-    const cross = (a: number[], b: number[]): number[] => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    const cross = (a: number[], b: number[]): number[] => [
+      a[1] * b[2] - a[2] * b[1],
+      a[2] * b[0] - a[0] * b[2],
+      a[0] * b[1] - a[1] * b[0],
+    ];
     // right as seen from outside (roundedBox mirrors u otherwise): n x up
     let r = cross(n, up);
     for (let t = 0; t < ((turns[f] ?? 0) & 3); t++) {
@@ -170,7 +199,9 @@ export function blockVertexData(side: number, faces: readonly number[], turns: r
     const cx = cell % COLS;
     const cy = Math.floor(cell / COLS);
     for (let k = f * per; k < (f + 1) * per; k++) {
-      const x = p[k * 3], y = p[k * 3 + 1], z = p[k * 3 + 2];
+      const x = p[k * 3],
+        y = p[k * 3 + 1],
+        z = p[k * 3 + 2];
       let u = (x * r[0] + y * r[1] + z * r[2]) / (2 * h) + 0.5;
       let v = (x * up[0] + y * up[1] + z * up[2]) / (2 * h) + 0.5;
       u = inset + Math.min(1, Math.max(0, u)) * (1 - 2 * inset);
@@ -187,11 +218,13 @@ export function blockVertexData(side: number, faces: readonly number[], turns: r
 function drawGlyph(ctx: CanvasRenderingContext2D, g: Glyph, cx: number, cy: number, size: number): void {
   ctx.beginPath();
   if (g === '*') {
-    const R = size * 0.5, r = size * 0.22;
+    const R = size * 0.5,
+      r = size * 0.22;
     for (let i = 0; i < 10; i++) {
       const a = -Math.PI / 2 + (i * Math.PI) / 5;
       const rad = i % 2 ? r : R;
-      const x = cx + Math.cos(a) * rad, y = cy + Math.sin(a) * rad + size * 0.04;
+      const x = cx + Math.cos(a) * rad,
+        y = cy + Math.sin(a) * rad + size * 0.04;
       if (i) ctx.lineTo(x, y);
       else ctx.moveTo(x, y);
     }
@@ -215,11 +248,13 @@ function drawGlyph(ctx: CanvasRenderingContext2D, g: Glyph, cx: number, cy: numb
 // Draws one channel picture of the atlas: 'albedo' (block colours, letters, cavity AO) or
 // 'height' (greyscale relief: raised frame and letter, sunken field).
 function paintAtlas(ctx: CanvasRenderingContext2D, mode: 'albedo' | 'height'): void {
-  const W = CELL * COLS, H = CELL * ROWS;
+  const W = CELL * COLS,
+    H = CELL * ROWS;
   ctx.clearRect(0, 0, W, H);
   const dark = HEX.tanDark;
   CELLS.forEach((c, i) => {
-    const x0 = (i % COLS) * CELL, y0 = Math.floor(i / COLS) * CELL;
+    const x0 = (i % COLS) * CELL,
+      y0 = Math.floor(i / COLS) * CELL;
     const body = c.body === 'tan' ? HEX.tan : CREAM_BODY;
     const frame = CELL * 0.1; // raised border width
     const glyphSize = CELL * 0.62;
@@ -234,14 +269,22 @@ function paintAtlas(ctx: CanvasRenderingContext2D, mode: 'albedo' | 'height'): v
       ctx.strokeStyle = dark;
       ctx.globalAlpha = 0.55;
       ctx.lineWidth = CELL * 0.018;
-      roundRect(ctx, x0 + frame + CELL * 0.025, y0 + frame + CELL * 0.025, CELL - 2 * frame - CELL * 0.05, CELL - 2 * frame - CELL * 0.05, CELL * 0.04);
+      roundRect(
+        ctx,
+        x0 + frame + CELL * 0.025,
+        y0 + frame + CELL * 0.025,
+        CELL - 2 * frame - CELL * 0.05,
+        CELL - 2 * frame - CELL * 0.05,
+        CELL * 0.04,
+      );
       ctx.stroke();
       ctx.globalAlpha = 1;
       // the letter's shadowed foot (cheap AO under the relief)
       // (a few offset low-alpha copies instead of a canvas blur() filter, which costs
       // seconds in software rasterisers and is not cheap on phones)
       ctx.fillStyle = 'rgba(40,25,8,0.09)';
-      for (const [ox, oy] of FOOT_TAPS) drawGlyph(ctx, c.glyph, x0 + CELL / 2 + 1.5 + ox, y0 + CELL / 2 + 2.5 + oy, glyphSize);
+      for (const [ox, oy] of FOOT_TAPS)
+        drawGlyph(ctx, c.glyph, x0 + CELL / 2 + 1.5 + ox, y0 + CELL / 2 + 2.5 + oy, glyphSize);
       ctx.fillStyle = dark;
       drawGlyph(ctx, c.glyph, x0 + CELL / 2, y0 + CELL / 2, glyphSize);
     } else {
@@ -257,7 +300,13 @@ function paintAtlas(ctx: CanvasRenderingContext2D, mode: 'albedo' | 'height'): v
   });
 }
 
-const FOOT_TAPS: readonly (readonly [number, number])[] = [[0, 0], [-1.4, 0], [1.4, 0], [0, -1.4], [0, 1.4]];
+const FOOT_TAPS: readonly (readonly [number, number])[] = [
+  [0, 0],
+  [-1.4, 0],
+  [1.4, 0],
+  [0, -1.4],
+  [0, 1.4],
+];
 
 // Separable 3-tap box blur, `passes` times, in place (two passes ~ a 1.5 px Gaussian).
 function softenHeight(h: Float32Array, W: number, H: number, passes: number): void {
@@ -268,7 +317,9 @@ function softenHeight(h: Float32Array, W: number, H: number, passes: number): vo
       for (let x = 0; x < W; x++) t[r + x] = (h[r + Math.max(0, x - 1)] + h[r + x] + h[r + Math.min(W - 1, x + 1)]) / 3;
     }
     for (let y = 0; y < H; y++) {
-      const ym = Math.max(0, y - 1) * W, y0 = y * W, yp = Math.min(H - 1, y + 1) * W;
+      const ym = Math.max(0, y - 1) * W,
+        y0 = y * W,
+        yp = Math.min(H - 1, y + 1) * W;
       for (let x = 0; x < W; x++) h[y0 + x] = (t[ym + x] + t[y0 + x] + t[yp + x]) / 3;
     }
   }
@@ -289,8 +340,15 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 // flash).
 export function toyBlockMaterial(scene: Scene, look: Look): PBRMaterial {
   return look.material('toy-block-atlas', () => {
-    const W = CELL * COLS, H = CELL * ROWS;
-    const albedo = new DynamicTexture('toyBlockAlbedo', { width: W, height: H }, scene, true, Texture.TRILINEAR_SAMPLINGMODE);
+    const W = CELL * COLS,
+      H = CELL * ROWS;
+    const albedo = new DynamicTexture(
+      'toyBlockAlbedo',
+      { width: W, height: H },
+      scene,
+      true,
+      Texture.TRILINEAR_SAMPLINGMODE,
+    );
     const actx = albedo.getContext() as unknown as CanvasRenderingContext2D;
     paintAtlas(actx, 'albedo');
     albedo.update(true);
@@ -298,7 +356,13 @@ export function toyBlockMaterial(scene: Scene, look: Look): PBRMaterial {
     albedo.anisotropicFilteringLevel = 4;
 
     // Height -> soft blur -> Sobel -> normal map.
-    const normal = new DynamicTexture('toyBlockNormal', { width: W, height: H }, scene, true, Texture.TRILINEAR_SAMPLINGMODE);
+    const normal = new DynamicTexture(
+      'toyBlockNormal',
+      { width: W, height: H },
+      scene,
+      true,
+      Texture.TRILINEAR_SAMPLINGMODE,
+    );
     const nctx = normal.getContext() as unknown as CanvasRenderingContext2D;
     paintAtlas(nctx, 'height');
     const img = nctx.getImageData(0, 0, W, H);
@@ -311,14 +375,20 @@ export function toyBlockMaterial(scene: Scene, look: Look): PBRMaterial {
     const k = 5.5; // relief strength
     for (let y = 0; y < H; y++) {
       for (let x = 0; x < W; x++) {
-        const xm = Math.max(0, x - 1), xp = Math.min(W - 1, x + 1);
-        const ym = Math.max(0, y - 1), yp = Math.min(H - 1, y + 1);
+        const xm = Math.max(0, x - 1),
+          xp = Math.min(W - 1, x + 1);
+        const ym = Math.max(0, y - 1),
+          yp = Math.min(H - 1, y + 1);
         const dx = hgt[y * W + xp] - hgt[y * W + xm];
         const dy = hgt[yp * W + x] - hgt[ym * W + x];
         // canvas y runs down, texture v runs up: flip dy for the green channel
-        let nx = -dx * k, ny = dy * k, nz = 1;
+        let nx = -dx * k,
+          ny = dy * k,
+          nz = 1;
         const l = Math.hypot(nx, ny, nz);
-        nx /= l; ny /= l; nz /= l;
+        nx /= l;
+        ny /= l;
+        nz /= l;
         const o = (y * W + x) * 4;
         d[o] = (nx * 0.5 + 0.5) * 255;
         d[o + 1] = (ny * 0.5 + 0.5) * 255;
@@ -361,7 +431,8 @@ export const BLOCK_MAX_HEIGHT = 0.7;
 // stepped mound), so every intact wall is a complete two-course stack. side = width / n.
 export function planWall(width: number, maxBlocks = 14): { side: number; height: number; slots: BlockSlot[] } {
   let nb = Math.max(1, Math.round(width / BLOCK_SIDE));
-  if (nb + nb - 1 > maxBlocks) nb = Math.min(maxBlocks - 1, Math.max(Math.floor((maxBlocks + 1) / 2) + 1, Math.ceil(width / 0.85)));
+  if (nb + nb - 1 > maxBlocks)
+    nb = Math.min(maxBlocks - 1, Math.max(Math.floor((maxBlocks + 1) / 2) + 1, Math.ceil(width / 0.85)));
   const side = width / nb;
   const height = Math.min(side, BLOCK_MAX_HEIGHT);
   const slots: BlockSlot[] = [];
@@ -369,7 +440,8 @@ export function planWall(width: number, maxBlocks = 14): { side: number; height:
   const topSlots = nb - 1;
   const nt = Math.max(0, Math.min(topSlots, maxBlocks - nb));
   const first = Math.floor((topSlots - nt) / 2);
-  for (let s = first; s < first + nt; s++) slots.push({ course: 1, x: (s - (topSlots - 1) / 2) * side, cream: s % 2 === 0 });
+  for (let s = first; s < first + nt; s++)
+    slots.push({ course: 1, x: (s - (topSlots - 1) / 2) * side, cream: s % 2 === 0 });
   return { side, height, slots };
 }
 
@@ -473,7 +545,14 @@ export function createWallKit(scene: Scene, look: Look): WallKit {
       inst.rotation.copyFrom(rot);
       const tint = 0.97 + rand() * 0.06;
       inst.instancedBuffers.color = new Color4(tint, tint, tint, 1);
-      return { inst, course: sl.course, base, rot, tint, jit: new Vector3((rand() - 0.5) * 0.1, (rand() - 0.5) * 0.18, (rand() - 0.5) * 0.08) };
+      return {
+        inst,
+        course: sl.course,
+        base,
+        rot,
+        tint,
+        jit: new Vector3((rand() - 0.5) * 0.1, (rand() - 0.5) * 0.18, (rand() - 0.5) * 0.08),
+      };
     });
     // Removal order: top course first (shuffled), then the bottom course from the ends in.
     const top = blocks.filter((b) => b.course === 1);
@@ -572,7 +651,11 @@ export function preview(scene: Scene, look: Look, opts: PreviewOptions): Preview
   // the kit's sources live under its own node; parent it so the harness sees every mesh
   kit.root.parent = root;
   const crumbling = opts.variant === 'crumbling';
-  const specs: [number, number][] = [[3, -3.2], [4, 0], [6, 3.4]];
+  const specs: [number, number][] = [
+    [3, -3.2],
+    [4, 0],
+    [6, 3.4],
+  ];
   const walls = specs.map(([w, z]) => {
     const m = kit.create(w, 1);
     m.root.parent = root;

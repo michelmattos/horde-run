@@ -114,7 +114,12 @@ const C = {
 // ---------------------------------------------------------------------------------------
 // Atlas layout (canvas pixels, 512 x 512). Canvas y runs down; texture v runs up.
 const AW = 512;
-interface Rect { x: number; y: number; w: number; h: number }
+interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 const R = {
   paint: { x: 0, y: 0, w: 64, h: 48 }, // swatch: painted tin (colour from vertex colours)
   tin: { x: 64, y: 0, w: 64, h: 48 }, // swatch: bare tin
@@ -129,14 +134,20 @@ const R = {
 
 // Region-local (0..1, v up) -> atlas uv.
 function ruv(r: Rect, u: number, v: number): [number, number] {
-  const iu = 1.5 / r.w, iv = 1.5 / r.h;
+  const iu = 1.5 / r.w,
+    iv = 1.5 / r.h;
   const uu = Math.min(1 - iu, Math.max(iu, u));
   const vv = Math.min(1 - iv, Math.max(iv, v));
   return [(r.x + uu * r.w) / AW, 1 - (r.y + (1 - vv) * r.h) / AW];
 }
 
 // Material classes for the packed map: R = clearcoat, G = roughness, B = metallic.
-interface Ink { hex: string; cc: number; rough: number; metal: number }
+interface Ink {
+  hex: string;
+  cc: number;
+  rough: number;
+  metal: number;
+}
 const paintInk = (hex: string): Ink => ({ hex, cc: 0.75, rough: 0.34, metal: 0.18 });
 const INK = {
   livery: paintInk(C.livery),
@@ -174,7 +185,10 @@ class Painter {
       return true;
     }
     if (!ink) return false;
-    this.g.fillStyle = this.mode === 'albedo' ? ink.hex : `rgb(${Math.round(ink.cc * 255)},${Math.round(ink.rough * 255)},${Math.round(ink.metal * 255)})`;
+    this.g.fillStyle =
+      this.mode === 'albedo'
+        ? ink.hex
+        : `rgb(${Math.round(ink.cc * 255)},${Math.round(ink.rough * 255)},${Math.round(ink.metal * 255)})`;
     return true;
   }
   rect(x: number, y: number, w: number, h: number, ink: Ink | null, hgt?: number): void {
@@ -197,7 +211,8 @@ class Painter {
     for (let i = 0; i < 10; i++) {
       const a = -Math.PI / 2 + (i * Math.PI) / 5;
       const rr = i % 2 ? r * 0.42 : r;
-      const x = cx + Math.cos(a) * rr * sx, y = cy + Math.sin(a) * rr;
+      const x = cx + Math.cos(a) * rr * sx,
+        y = cy + Math.sin(a) * rr;
       if (i) g.lineTo(x, y);
       else g.moveTo(x, y);
     }
@@ -268,7 +283,11 @@ function paintAtlas(p: Painter): void {
     for (const s of [-1, 1]) {
       const x0 = s < 0 ? x + 70 : x + w / 2 + 58;
       const x1 = s < 0 ? x + w / 2 - 58 : x + w - 70;
-      for (const [yy, hh] of [[y + 24, 9], [y + 40, 9], [y + 56, 9]] as const) {
+      for (const [yy, hh] of [
+        [y + 24, 9],
+        [y + 40, 9],
+        [y + 56, 9],
+      ] as const) {
         p.rect(x0, yy, x1 - x0, hh, INK.cream);
       }
       p.rect(x0, y + 20, x1 - x0, 2, INK.tinPrint);
@@ -335,10 +354,14 @@ function paintAtlas(p: Painter): void {
     }
     // Eyebrows.
     for (const sgn of [-1, 1]) {
-      p.path((c) => {
-        const cx = X(64 + sgn * 21);
-        c.ellipse(cx, Y(45), 11 * s, 3.2 * s, sgn * 0.18, 0, Math.PI * 2);
-      }, INK.moustache, 0.56);
+      p.path(
+        (c) => {
+          const cx = X(64 + sgn * 21);
+          c.ellipse(cx, Y(45), 11 * s, 3.2 * s, sgn * 0.18, 0, Math.PI * 2);
+        },
+        INK.moustache,
+        0.56,
+      );
     }
     // Eyes: white, black pupil, glint.
     for (const sgn of [-1, 1]) {
@@ -348,21 +371,29 @@ function paintAtlas(p: Painter): void {
       p.circle(cx - 1.8 * s, Y(55.5), 1.7 * s, INK.eyeWhite);
     }
     // Handlebar moustache with curled tips.
-    p.path((c) => {
-      c.moveTo(X(64), Y(84));
-      c.bezierCurveTo(X(54), Y(76), X(40), Y(80), X(30), Y(84));
-      c.bezierCurveTo(X(22), Y(87), X(14), Y(82), X(16), Y(72));
-      c.bezierCurveTo(X(18), Y(80), X(24), Y(82), X(30), Y(90));
-      c.bezierCurveTo(X(40), Y(98), X(56), Y(96), X(64), Y(90));
-      c.bezierCurveTo(X(72), Y(96), X(88), Y(98), X(98), Y(90));
-      c.bezierCurveTo(X(104), Y(82), X(110), Y(80), X(112), Y(72));
-      c.bezierCurveTo(X(114), Y(82), X(106), Y(87), X(98), Y(84));
-      c.bezierCurveTo(X(88), Y(80), X(74), Y(76), X(64), Y(84));
-    }, INK.moustache, 0.62);
+    p.path(
+      (c) => {
+        c.moveTo(X(64), Y(84));
+        c.bezierCurveTo(X(54), Y(76), X(40), Y(80), X(30), Y(84));
+        c.bezierCurveTo(X(22), Y(87), X(14), Y(82), X(16), Y(72));
+        c.bezierCurveTo(X(18), Y(80), X(24), Y(82), X(30), Y(90));
+        c.bezierCurveTo(X(40), Y(98), X(56), Y(96), X(64), Y(90));
+        c.bezierCurveTo(X(72), Y(96), X(88), Y(98), X(98), Y(90));
+        c.bezierCurveTo(X(104), Y(82), X(110), Y(80), X(112), Y(72));
+        c.bezierCurveTo(X(114), Y(82), X(106), Y(87), X(98), Y(84));
+        c.bezierCurveTo(X(88), Y(80), X(74), Y(76), X(64), Y(84));
+      },
+      INK.moustache,
+      0.62,
+    );
     // Small smile under it.
-    p.path((c) => {
-      c.ellipse(X(64), Y(103), 7 * s, 2.4 * s, 0, 0, Math.PI);
-    }, INK.liveryDark, 0.48);
+    p.path(
+      (c) => {
+        c.ellipse(X(64), Y(103), 7 * s, 2.4 * s, 0, 0, Math.PI);
+      },
+      INK.liveryDark,
+      0.48,
+    );
   }
 
   // ---- Turret band (u around, front of the turret at u = 0.25) ----
@@ -374,7 +405,17 @@ function paintAtlas(p: Painter): void {
     p.rect(x, y + h - 34, w, 34, INK.navy);
     p.rect(x, y + h - 38, w, 3, INK.livery);
     for (let k = 0; k < 32; k++) p.rivet(x + 8 + k * 16, y + h - 6, 2.4);
-    for (const [u, r] of [[0.25, 13], [0.75, 11], [0.0, 11], [0.5, 11], [1.0, 11], [0.125, 7], [0.375, 7], [0.625, 7], [0.875, 7]] as const) {
+    for (const [u, r] of [
+      [0.25, 13],
+      [0.75, 11],
+      [0.0, 11],
+      [0.5, 11],
+      [1.0, 11],
+      [0.125, 7],
+      [0.375, 7],
+      [0.625, 7],
+      [0.875, 7],
+    ] as const) {
       p.star(x + u * w, y + h - 19, r, INK.gold, 0.66, sx);
     }
     // A printed number on the cream above the front star: "10" (level 1-10).
@@ -392,7 +433,11 @@ function paintAtlas(p: Painter): void {
   }
 }
 
-interface Atlas { albedo: DynamicTexture; orm: DynamicTexture; normal: DynamicTexture }
+interface Atlas {
+  albedo: DynamicTexture;
+  orm: DynamicTexture;
+  normal: DynamicTexture;
+}
 
 function makeAtlas(scene: Scene): Atlas {
   const mk = (name: string): DynamicTexture => {
@@ -423,10 +468,13 @@ function makeAtlas(scene: Scene): Atlas {
   for (let pass = 0; pass < 2; pass++) {
     for (let y = 0; y < AW; y++) {
       const r = y * AW;
-      for (let x = 0; x < AW; x++) tmp[r + x] = (hgt[r + Math.max(0, x - 1)] + hgt[r + x] + hgt[r + Math.min(AW - 1, x + 1)]) / 3;
+      for (let x = 0; x < AW; x++)
+        tmp[r + x] = (hgt[r + Math.max(0, x - 1)] + hgt[r + x] + hgt[r + Math.min(AW - 1, x + 1)]) / 3;
     }
     for (let y = 0; y < AW; y++) {
-      const ym = Math.max(0, y - 1) * AW, y0 = y * AW, yp = Math.min(AW - 1, y + 1) * AW;
+      const ym = Math.max(0, y - 1) * AW,
+        y0 = y * AW,
+        yp = Math.min(AW - 1, y + 1) * AW;
       for (let x = 0; x < AW; x++) hgt[y0 + x] = (tmp[ym + x] + tmp[y0 + x] + tmp[yp + x]) / 3;
     }
   }
@@ -436,13 +484,19 @@ function makeAtlas(scene: Scene): Atlas {
   const k = 4.5;
   for (let y = 0; y < AW; y++) {
     for (let x = 0; x < AW; x++) {
-      const xm = Math.max(0, x - 1), xp = Math.min(AW - 1, x + 1);
-      const ym = Math.max(0, y - 1), yp = Math.min(AW - 1, y + 1);
+      const xm = Math.max(0, x - 1),
+        xp = Math.min(AW - 1, x + 1);
+      const ym = Math.max(0, y - 1),
+        yp = Math.min(AW - 1, y + 1);
       const dx = hgt[y * AW + xp] - hgt[y * AW + xm];
       const dy = hgt[yp * AW + x] - hgt[ym * AW + x];
-      let nx = -dx * k, ny = dy * k, nz = 1;
+      let nx = -dx * k,
+        ny = dy * k,
+        nz = 1;
       const l = Math.hypot(nx, ny, nz);
-      nx /= l; ny /= l; nz /= l;
+      nx /= l;
+      ny /= l;
+      nz /= l;
       const o = (y * AW + x) * 4;
       d[o] = (nx * 0.5 + 0.5) * 255;
       d[o + 1] = (ny * 0.5 + 0.5) * 255;
@@ -495,17 +549,23 @@ function latheArc(profile: readonly P2[], tess: number, a0 = 0, a1 = Math.PI * 2
     let pb = profile[Math.min(n - 1, i + 1)];
     if (i > 0 && profile[i - 1][0] === profile[i][0] && profile[i - 1][1] === profile[i][1]) pa = profile[i];
     if (i < n - 1 && profile[i + 1][0] === profile[i][0] && profile[i + 1][1] === profile[i][1]) pb = profile[i];
-    let dr = pb[0] - pa[0], dy = pb[1] - pa[1];
-    if (Math.abs(dr) + Math.abs(dy) < 1e-9) { dr = 0; dy = 1; }
+    let dr = pb[0] - pa[0],
+      dy = pb[1] - pa[1];
+    if (Math.abs(dr) + Math.abs(dy) < 1e-9) {
+      dr = 0;
+      dy = 1;
+    }
     const l = Math.hypot(dr, dy);
     n2.push([dy / l, -dr / l]);
   }
   const along = [0];
-  for (let i = 1; i < n; i++) along.push(along[i - 1] + Math.hypot(profile[i][0] - profile[i - 1][0], profile[i][1] - profile[i - 1][1]));
+  for (let i = 1; i < n; i++)
+    along.push(along[i - 1] + Math.hypot(profile[i][0] - profile[i - 1][0], profile[i][1] - profile[i - 1][1]));
   const total = along[n - 1] || 1;
   for (let s = 0; s <= tess; s++) {
     const th = a0 + ((a1 - a0) * s) / tess;
-    const c = Math.cos(th), sn = Math.sin(th);
+    const c = Math.cos(th),
+      sn = Math.sin(th);
     for (let i = 0; i < n; i++) {
       const [r, y] = profile[i];
       positions.push(r * c, y, r * sn);
@@ -515,8 +575,10 @@ function latheArc(profile: readonly P2[], tess: number, a0 = 0, a1 = Math.PI * 2
   }
   for (let s = 0; s < tess; s++) {
     for (let i = 0; i < n - 1; i++) {
-      const a = s * n + i, b = (s + 1) * n + i;
-      const pa = profile[i], pb = profile[i + 1];
+      const a = s * n + i,
+        b = (s + 1) * n + i;
+      const pa = profile[i],
+        pb = profile[i + 1];
       if (pa[0] === 0 && pb[0] === 0) continue;
       if (pa[0] === pb[0] && pa[1] === pb[1]) continue;
       indices.push(a, b, b + 1, a, b + 1, a + 1);
@@ -535,10 +597,17 @@ function dropDegenerate(vd: VertexData): VertexData {
   const src = vd.indices!;
   const out: number[] = [];
   for (let t = 0; t < src.length; t += 3) {
-    const a = src[t] * 3, b = src[t + 1] * 3, c = src[t + 2] * 3;
-    const e1x = p[b] - p[a], e1y = p[b + 1] - p[a + 1], e1z = p[b + 2] - p[a + 2];
-    const e2x = p[c] - p[a], e2y = p[c + 1] - p[a + 1], e2z = p[c + 2] - p[a + 2];
-    if (Math.hypot(e1y * e2z - e1z * e2y, e1z * e2x - e1x * e2z, e1x * e2y - e1y * e2x) > 1e-10) out.push(src[t], src[t + 1], src[t + 2]);
+    const a = src[t] * 3,
+      b = src[t + 1] * 3,
+      c = src[t + 2] * 3;
+    const e1x = p[b] - p[a],
+      e1y = p[b + 1] - p[a + 1],
+      e1z = p[b + 2] - p[a + 2];
+    const e2x = p[c] - p[a],
+      e2y = p[c + 1] - p[a + 1],
+      e2z = p[c + 2] - p[a + 2];
+    if (Math.hypot(e1y * e2z - e1z * e2y, e1z * e2x - e1x * e2z, e1x * e2y - e1y * e2x) > 1e-10)
+      out.push(src[t], src[t + 1], src[t + 2]);
   }
   vd.indices = out;
   return vd;
@@ -627,7 +696,15 @@ function alongSegment(vd: VertexData, a: Vector3, b: Vector3, sx = 1, sz = 1, sp
 // A rounded limb (capsule-ish lathe) from a to b, radius r0 at a, r1 at b.
 function limb(a: Vector3, b: Vector3, r0: number, r1: number, tess = 10): VertexData {
   const L = Vector3.Distance(a, b);
-  const prof: P2[] = [[0, -r0 * 0.9], [r0 * 0.6, -r0 * 0.75], [r0, -r0 * 0.1], [r0 * 1.02, L * 0.3], [r1, L], [r1 * 0.7, L + r1 * 0.6], [0, L + r1 * 0.85]];
+  const prof: P2[] = [
+    [0, -r0 * 0.9],
+    [r0 * 0.6, -r0 * 0.75],
+    [r0, -r0 * 0.1],
+    [r0 * 1.02, L * 0.3],
+    [r1, L],
+    [r1 * 0.7, L + r1 * 0.6],
+    [0, L + r1 * 0.85],
+  ];
   return alongSegment(latheArc(prof, tess), a, b);
 }
 
@@ -654,34 +731,53 @@ function hullPrism(profile: readonly P2[], faces: readonly HullFace[], halfW: nu
   // Outward edge normals (in z, y).
   const en: P2[] = [];
   for (let i = 0; i < n; i++) {
-    const a = profile[i], b = profile[(i + 1) % n];
-    let nz = b[1] - a[1], ny = -(b[0] - a[0]);
+    const a = profile[i],
+      b = profile[(i + 1) % n];
+    let nz = b[1] - a[1],
+      ny = -(b[0] - a[0]);
     const l = Math.hypot(nz, ny);
-    nz /= l; ny /= l;
-    const mz = (a[0] + b[0]) / 2 - cz, my = (a[1] + b[1]) / 2 - cy;
-    if (nz * mz + ny * my < 0) { nz = -nz; ny = -ny; }
+    nz /= l;
+    ny /= l;
+    const mz = (a[0] + b[0]) / 2 - cz,
+      my = (a[1] + b[1]) / 2 - cy;
+    if (nz * mz + ny * my < 0) {
+      nz = -nz;
+      ny = -ny;
+    }
     en.push([nz, ny]);
   }
   // Inset cap polygon (each vertex moved in along its bisector by `bevel`).
   const inset: P2[] = profile.map((q, i) => {
-    const na = en[(i - 1 + n) % n], nb = en[i];
-    let mz = na[0] + nb[0], my = na[1] + nb[1];
+    const na = en[(i - 1 + n) % n],
+      nb = en[i];
+    let mz = na[0] + nb[0],
+      my = na[1] + nb[1];
     const l = Math.hypot(mz, my) || 1;
-    mz /= l; my /= l;
+    mz /= l;
+    my /= l;
     const d = bevel / Math.max(0.3, mz * nb[0] + my * nb[1]);
     return [q[0] - mz * d, q[1] - my * d];
   });
   const hx = halfW - bevel;
   const zs = profile.map((q) => q[0]);
   const ys = profile.map((q) => q[1]);
-  const zMin = Math.min(...zs), zMax = Math.max(...zs), yMin = Math.min(...ys), yMax = Math.max(...ys);
+  const zMin = Math.min(...zs),
+    zMax = Math.max(...zs),
+    yMin = Math.min(...ys),
+    yMax = Math.max(...ys);
   const parts: VertexData[] = [];
   const V = (x: number, q: P2): Vector3 => new Vector3(x, q[1], q[0]);
   for (let i = 0; i < n; i++) {
-    const a = profile[i], b = profile[(i + 1) % n];
+    const a = profile[i],
+      b = profile[(i + 1) % n];
     const nrm = new Vector3(0, en[i][1], en[i][0]);
     const face = faces[i];
-    const strip = quad([V(-hx, a), V(hx, a), V(hx, b), V(-hx, b)], nrm, [[0, 0], [0, 0], [0, 0], [0, 0]]);
+    const strip = quad([V(-hx, a), V(hx, a), V(hx, b), V(-hx, b)], nrm, [
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+    ]);
     // uvs: u from x (mirrored: the viewer in front sees +X on the left), v along the edge.
     const uvOf = (x: number, t: number): P2 => [0.5 - x / (2 * halfW), t];
     if (face === 'glacis') {
@@ -700,15 +796,33 @@ function hullPrism(profile: readonly P2[], faces: readonly HullFace[], halfW: nu
     parts.push(strip);
     // Bevel bands to both caps (bare tin, where the paint wears off the fold).
     for (const s of [-1, 1]) {
-      const ia = inset[i], ib = inset[(i + 1) % n];
+      const ia = inset[i],
+        ib = inset[(i + 1) % n];
       const bn = new Vector3(s, en[i][1], en[i][0]).normalize();
-      parts.push(swatch(quad([V(s * hx, a), V(s * hx, b), V(s * halfW, ib), V(s * halfW, ia)], bn, [[0, 0], [0, 0], [0, 0], [0, 0]]), R.tin, C.tin));
+      parts.push(
+        swatch(
+          quad([V(s * hx, a), V(s * hx, b), V(s * halfW, ib), V(s * halfW, ia)], bn, [
+            [0, 0],
+            [0, 0],
+            [0, 0],
+            [0, 0],
+          ]),
+          R.tin,
+          C.tin,
+        ),
+      );
     }
   }
   // Caps: printed side livery.
   for (const s of [-1, 1]) {
-    const cap = fan(inset.map((q) => V(s * halfW, q)), new Vector3(s, 0, 0));
-    regionMap(cap, R.side, (_x, y, z) => [s > 0 ? (zMax - z) / (zMax - zMin) : (z - zMin) / (zMax - zMin), (y - yMin) / (yMax - yMin)]);
+    const cap = fan(
+      inset.map((q) => V(s * halfW, q)),
+      new Vector3(s, 0, 0),
+    );
+    regionMap(cap, R.side, (_x, y, z) => [
+      s > 0 ? (zMax - z) / (zMax - zMin) : (z - zMin) / (zMax - zMin),
+      (y - yMin) / (yMax - yMin),
+    ]);
     parts.push(cap);
   }
   return parts;
@@ -718,19 +832,38 @@ function hullPrism(profile: readonly P2[], faces: readonly HullFace[], halfW: nu
 // Tread geometry: one link (convex hexagonal section across the tread), and the loop path.
 function linkVertexData(width: number, pitch: number, thick: number): VertexData {
   const a = pitch * 0.44;
-  const prof: P2[] = [[-a, 0], [a, 0], [a, thick * 0.62], [a * 0.42, thick], [-a * 0.42, thick], [-a, thick * 0.62]]; // (along, out)
+  const prof: P2[] = [
+    [-a, 0],
+    [a, 0],
+    [a, thick * 0.62],
+    [a * 0.42, thick],
+    [-a * 0.42, thick],
+    [-a, thick * 0.62],
+  ]; // (along, out)
   const hx = width / 2;
   const parts: VertexData[] = [];
   const n = prof.length;
   for (let i = 0; i < n; i++) {
-    const p = prof[i], q = prof[(i + 1) % n];
-    let nz = q[1] - p[1], ny = -(q[0] - p[0]);
+    const p = prof[i],
+      q = prof[(i + 1) % n];
+    let nz = q[1] - p[1],
+      ny = -(q[0] - p[0]);
     const l = Math.hypot(nz, ny);
-    nz /= l; ny /= l;
-    const mz = (p[0] + q[0]) / 2, my = (p[1] + q[1]) / 2 - thick / 2;
-    if (nz * mz + ny * my < 0) { nz = -nz; ny = -ny; }
+    nz /= l;
+    ny /= l;
+    const mz = (p[0] + q[0]) / 2,
+      my = (p[1] + q[1]) / 2 - thick / 2;
+    if (nz * mz + ny * my < 0) {
+      nz = -nz;
+      ny = -ny;
+    }
     const V = (x: number, r: P2): Vector3 => new Vector3(x, r[1], r[0]);
-    const vd = quad([V(-hx, p), V(hx, p), V(hx, q), V(-hx, q)], new Vector3(0, ny, nz), [[0, 0], [1, 0], [1, 1], [0, 1]]);
+    const vd = quad([V(-hx, p), V(hx, p), V(hx, q), V(-hx, q)], new Vector3(0, ny, nz), [
+      [0, 0],
+      [1, 0],
+      [1, 1],
+      [0, 1],
+    ]);
     // Inner face (towards the wheels) darker, the cleat face lighter (worn rubber).
     const shade = i === 0 ? 0.45 : i === 3 ? 1.15 : 0.9;
     vd.colors = new Float32Array(16).fill(shade);
@@ -738,7 +871,10 @@ function linkVertexData(width: number, pitch: number, thick: number): VertexData
     parts.push(vd);
   }
   for (const s of [-1, 1]) {
-    const cap = fan(prof.map((r) => new Vector3(s * hx, r[1], r[0])), new Vector3(s, 0, 0));
+    const cap = fan(
+      prof.map((r) => new Vector3(s * hx, r[1], r[0])),
+      new Vector3(s, 0, 0),
+    );
     cap.colors = new Float32Array(prof.length * 4).fill(0.8);
     parts.push(cap);
   }
@@ -759,21 +895,39 @@ function treadPath(zc: number, yc: number, r: number): TreadPath {
     length,
     at(s, o) {
       let t = ((s % length) + length) % length;
-      if (t < run) { // bottom run, front-going
-        o.z = -zc + t; o.y = yc - r; o.nz = 0; o.ny = -1; return;
+      if (t < run) {
+        // bottom run, front-going
+        o.z = -zc + t;
+        o.y = yc - r;
+        o.nz = 0;
+        o.ny = -1;
+        return;
       }
       t -= run;
-      if (t < arc) { // front arc
+      if (t < arc) {
+        // front arc
         const ph = -Math.PI / 2 + t / r;
-        o.nz = Math.cos(ph); o.ny = Math.sin(ph); o.z = zc + r * o.nz; o.y = yc + r * o.ny; return;
+        o.nz = Math.cos(ph);
+        o.ny = Math.sin(ph);
+        o.z = zc + r * o.nz;
+        o.y = yc + r * o.ny;
+        return;
       }
       t -= arc;
-      if (t < run) { // top run, rear-going
-        o.z = zc - t; o.y = yc + r; o.nz = 0; o.ny = 1; return;
+      if (t < run) {
+        // top run, rear-going
+        o.z = zc - t;
+        o.y = yc + r;
+        o.nz = 0;
+        o.ny = 1;
+        return;
       }
       t -= run;
       const ph = Math.PI / 2 + t / r; // rear arc
-      o.nz = Math.cos(ph); o.ny = Math.sin(ph); o.z = -zc + r * o.nz; o.y = yc + r * o.ny;
+      o.nz = Math.cos(ph);
+      o.ny = Math.sin(ph);
+      o.z = -zc + r * o.nz;
+      o.y = yc + r * o.ny;
     },
   };
 }
@@ -808,15 +962,35 @@ export function createTinGeneral(scene: Scene, look: Look, opts: TinGeneralOptio
   // Upper hull: side profile (z, y), counter-clockwise, with small bevel faces.
   const e = 0.05;
   const prof: P2[] = [
-    [zb + e, y0], [zf - e, y0], [zf, y0 + e], [zf, y0 + 0.12], [zf - 0.04, y0 + 0.16],
-    [zf - 0.82, H - 0.02], [zf - 0.9, H], [zb + 0.4, H], [zb + 0.33, H - 0.03], [zb, H - 0.28], [zb, y0 + e],
+    [zb + e, y0],
+    [zf - e, y0],
+    [zf, y0 + e],
+    [zf, y0 + 0.12],
+    [zf - 0.04, y0 + 0.16],
+    [zf - 0.82, H - 0.02],
+    [zf - 0.9, H],
+    [zb + 0.4, H],
+    [zb + 0.33, H - 0.03],
+    [zb, H - 0.28],
+    [zb, y0 + e],
   ];
   const faces: HullFace[] = ['under', 'edge', 'lip', 'edge', 'glacis', 'edge', 'deck', 'edge', 'rear', 'rear', 'edge'];
   for (const part of hullPrism(prof, faces, halfW, 0.045)) t.push(shadeY(part, y0 - 0.05, y0 + 0.35, 0.72));
 
   // Lower hull between the treads (dark livery red), shaded toward the floor.
   const lowerW = w - 2 * treadW - 0.12;
-  t.push(shadeY(swatch(place(roundedBox(lowerW, y0 - 0.12, 2 * zc + 0.2, 0.06, 2), { y: 0.12 + (y0 - 0.12) / 2 }), R.paint, C.liveryDark), 0.1, y0, 0.5));
+  t.push(
+    shadeY(
+      swatch(
+        place(roundedBox(lowerW, y0 - 0.12, 2 * zc + 0.2, 0.06, 2), { y: 0.12 + (y0 - 0.12) / 2 }),
+        R.paint,
+        C.liveryDark,
+      ),
+      0.1,
+      y0,
+      0.5,
+    ),
+  );
   // Lithographed radiator panel filling the lower front between the treads (it read as a
   // flat dark slot): cream-framed navy panel with pressed tin slats and a gold star badge.
   {
@@ -833,15 +1007,44 @@ export function createTinGeneral(scene: Scene, look: Look, opts: TinGeneralOptio
     }
   }
   // Front towing plate with rivets on the lower hull.
-  t.push(swatch(place(roundedBox(lowerW * 0.7, 0.26 * hs, 0.08, 0.03, 1), { y: y0 * 0.55, z: zc + 0.16 }), R.tin, C.tin));
+  t.push(
+    swatch(place(roundedBox(lowerW * 0.7, 0.26 * hs, 0.08, 0.03, 1), { y: y0 * 0.55, z: zc + 0.16 }), R.tin, C.tin),
+  );
 
   // Brass tow hooks on the lower front plate.
   for (const s of [-1, 1]) {
-    t.push(swatch(place(latheArc([[0, 0], [0.07, 0], [0.075, 0.03], [0.05, 0.05], [0.05, 0.16], [0.08, 0.18], [0.08, 0.22], [0, 0.23]], 10), { rx: Math.PI / 2, x: s * lowerW * 0.36, y: y0 * 0.55, z: zc + 0.16 }), R.brass, C.brass));
+    t.push(
+      swatch(
+        place(
+          latheArc(
+            [
+              [0, 0],
+              [0.07, 0],
+              [0.075, 0.03],
+              [0.05, 0.05],
+              [0.05, 0.16],
+              [0.08, 0.18],
+              [0.08, 0.22],
+              [0, 0.23],
+            ],
+            10,
+          ),
+          { rx: Math.PI / 2, x: s * lowerW * 0.36, y: y0 * 0.55, z: zc + 0.16 },
+        ),
+        R.brass,
+        C.brass,
+      ),
+    );
   }
 
   // Rivets on the front lip (geometry: they catch the sun).
-  const rivet: P2[] = [[0, 0], [0.04, 0], [0.036, 0.018], [0.02, 0.032], [0, 0.036]];
+  const rivet: P2[] = [
+    [0, 0],
+    [0.04, 0],
+    [0.036, 0.018],
+    [0.02, 0.032],
+    [0, 0.036],
+  ];
   const nRiv = Math.max(6, Math.round(w / 0.42));
   for (let i = 0; i < nRiv; i++) {
     const x = -halfW + 0.2 + (i * (w - 0.4)) / (nRiv - 1);
@@ -854,28 +1057,94 @@ export function createTinGeneral(scene: Scene, look: Look, opts: TinGeneralOptio
     const hz = zf - 0.32;
     const hy = y0 + 0.36;
     t.push(swatch(place(roundedBox(0.12, 0.2, 0.12, 0.03, 1), { x: hx, y: hy - 0.14, z: hz - 0.06 }), R.tin, C.tin));
-    t.push(swatch(place(latheArc([[0.06, -0.08], [0.1, -0.06], [0.15, 0.06], [0.155, 0.12], [0.14, 0.13]], 14), { rx: Math.PI / 2, x: hx, y: hy, z: hz }), R.brass, C.brass));
-    t.push(swatch(place(latheArc([[0.14, 0.12], [0.1, 0.15], [0, 0.16]], 14), { rx: Math.PI / 2, x: hx, y: hy, z: hz }), R.skin, C.lens));
+    t.push(
+      swatch(
+        place(
+          latheArc(
+            [
+              [0.06, -0.08],
+              [0.1, -0.06],
+              [0.15, 0.06],
+              [0.155, 0.12],
+              [0.14, 0.13],
+            ],
+            14,
+          ),
+          { rx: Math.PI / 2, x: hx, y: hy, z: hz },
+        ),
+        R.brass,
+        C.brass,
+      ),
+    );
+    t.push(
+      swatch(
+        place(
+          latheArc(
+            [
+              [0.14, 0.12],
+              [0.1, 0.15],
+              [0, 0.16],
+            ],
+            14,
+          ),
+          { rx: Math.PI / 2, x: hx, y: hy, z: hz },
+        ),
+        R.skin,
+        C.lens,
+      ),
+    );
   }
 
   // Exhaust pipes at the rear.
   for (const s of [-1, 1]) {
-    t.push(swatch(place(latheArc([[0, 0], [0.09, 0], [0.1, 0.03], [0.1, 0.3], [0.07, 0.31], [0.05, 0.25], [0, 0.25]], 10), { rx: -Math.PI / 2, x: s * (halfW - 0.45), y: y0 + 0.1, z: zb }), R.tin, HEX.tinDark));
+    t.push(
+      swatch(
+        place(
+          latheArc(
+            [
+              [0, 0],
+              [0.09, 0],
+              [0.1, 0.03],
+              [0.1, 0.3],
+              [0.07, 0.31],
+              [0.05, 0.25],
+              [0, 0.25],
+            ],
+            10,
+          ),
+          { rx: -Math.PI / 2, x: s * (halfW - 0.45), y: y0 + 0.1, z: zb },
+        ),
+        R.tin,
+        HEX.tinDark,
+      ),
+    );
   }
 
   // Road wheels, idler and sprocket (pressed tin with a red hub) inside each tread loop.
   const hw = treadW * 0.33;
   const wheel = (r: number): VertexData[] => {
-    const rim: P2[] = [[r * 0.75, -hw], [r, -hw + 0.03], [r, hw - 0.03], [r * 0.93, hw], [r * 0.66, hw + 0.01], [r * 0.6, hw + 0.03]];
-    const hub: P2[] = [[r * 0.6, hw + 0.03], [r * 0.42, hw + 0.05], [r * 0.3, hw + 0.08], [0, hw + 0.09]];
-    return [
-      swatch(latheArc(rim, 12), R.tin, C.tin),
-      swatch(latheArc(hub, 12), R.paint, C.coat),
+    const rim: P2[] = [
+      [r * 0.75, -hw],
+      [r, -hw + 0.03],
+      [r, hw - 0.03],
+      [r * 0.93, hw],
+      [r * 0.66, hw + 0.01],
+      [r * 0.6, hw + 0.03],
     ];
+    const hub: P2[] = [
+      [r * 0.6, hw + 0.03],
+      [r * 0.42, hw + 0.05],
+      [r * 0.3, hw + 0.08],
+      [0, hw + 0.09],
+    ];
+    return [swatch(latheArc(rim, 12), R.tin, C.tin), swatch(latheArc(hub, 12), R.paint, C.coat)];
   };
   const rRoad = 0.27 * hs;
   const nRoad = Math.max(2, Math.floor((2 * zc - 2 * rLoop + 0.1) / (2 * rRoad + 0.06)));
-  const wheelSpots: [number, number, number][] = [[zc, yc, rLoop - 0.03], [-zc, yc, rLoop - 0.03]];
+  const wheelSpots: [number, number, number][] = [
+    [zc, yc, rLoop - 0.03],
+    [-zc, yc, rLoop - 0.03],
+  ];
   for (let i = 0; i < nRoad; i++) {
     const span = 2 * zc - 2 * rLoop - 2 * rRoad + 0.1;
     const z = -span / 2 + (nRoad === 1 ? span / 2 : (i * span) / (nRoad - 1));
@@ -883,7 +1152,8 @@ export function createTinGeneral(scene: Scene, look: Look, opts: TinGeneralOptio
   }
   for (const s of [-1, 1]) {
     for (const [z, y, r] of wheelSpots) {
-      for (const part of wheel(r)) t.push(shadeY(place(part, { rz: -s * Math.PI / 2, x: s * xTread, y, z }), 0, y0, 0.7));
+      for (const part of wheel(r))
+        t.push(shadeY(place(part, { rz: (-s * Math.PI) / 2, x: s * xTread, y, z }), 0, y0, 0.7));
     }
   }
 
@@ -891,9 +1161,31 @@ export function createTinGeneral(scene: Scene, look: Look, opts: TinGeneralOptio
   const tr = turretR;
   const tz = (vd: VertexData): VertexData => place(vd, { y: H, z: zT });
   const tess = 36;
-  t.push(tz(swatch(latheArc([[tr + 0.07, -0.02], [tr + 0.07, 0.04], [tr + 0.03, 0.08]], tess), R.tin, C.tin)));
+  t.push(
+    tz(
+      swatch(
+        latheArc(
+          [
+            [tr + 0.07, -0.02],
+            [tr + 0.07, 0.04],
+            [tr + 0.03, 0.08],
+          ],
+          tess,
+        ),
+        R.tin,
+        C.tin,
+      ),
+    ),
+  );
   {
-    const band = latheArc([[tr + 0.03, 0.08], [tr + 0.01, 0.2], [tr - 0.03, 0.5]], tess);
+    const band = latheArc(
+      [
+        [tr + 0.03, 0.08],
+        [tr + 0.01, 0.2],
+        [tr - 0.03, 0.5],
+      ],
+      tess,
+    );
     const uvs = band.uvs as number[];
     const p = band.positions!;
     const out: number[] = [];
@@ -906,31 +1198,184 @@ export function createTinGeneral(scene: Scene, look: Look, opts: TinGeneralOptio
     band.colors = new Float32Array((p.length / 3) * 4).fill(1);
     t.push(tz(shadeY(band, 0.0, 0.3, 0.75)));
   }
-  t.push(tz(swatch(latheArc([[tr - 0.03, 0.5], [tr - 0.07, 0.56], [tr - 0.16, 0.6]], tess), R.tin, C.tin)));
-  t.push(tz(shadeY(swatch(latheArc([[tr - 0.16, 0.6], [0.66, 0.635]], tess), R.paint, C.cream), 0.6, 0.63, 0.9)));
-  t.push(tz(swatch(latheArc([[0.66, 0.635], [0.64, 0.7], [0.58, 0.725], [0.53, 0.7], [0.5, 0.64]], 24), R.tin, C.tin)));
-  t.push(tz(swatch(latheArc([[0.5, 0.64], [0.48, 0.2], [0, 0.2]], 20), R.paint, '#1a1416')));
+  t.push(
+    tz(
+      swatch(
+        latheArc(
+          [
+            [tr - 0.03, 0.5],
+            [tr - 0.07, 0.56],
+            [tr - 0.16, 0.6],
+          ],
+          tess,
+        ),
+        R.tin,
+        C.tin,
+      ),
+    ),
+  );
+  t.push(
+    tz(
+      shadeY(
+        swatch(
+          latheArc(
+            [
+              [tr - 0.16, 0.6],
+              [0.66, 0.635],
+            ],
+            tess,
+          ),
+          R.paint,
+          C.cream,
+        ),
+        0.6,
+        0.63,
+        0.9,
+      ),
+    ),
+  );
+  t.push(
+    tz(
+      swatch(
+        latheArc(
+          [
+            [0.66, 0.635],
+            [0.64, 0.7],
+            [0.58, 0.725],
+            [0.53, 0.7],
+            [0.5, 0.64],
+          ],
+          24,
+        ),
+        R.tin,
+        C.tin,
+      ),
+    ),
+  );
+  t.push(
+    tz(
+      swatch(
+        latheArc(
+          [
+            [0.5, 0.64],
+            [0.48, 0.2],
+            [0, 0.2],
+          ],
+          20,
+        ),
+        R.paint,
+        '#1a1416',
+      ),
+    ),
+  );
   // Open hatch lid, hinged at the back of the ring.
-  t.push(swatch(place(latheArc([[0, 0], [0.5, 0], [0.54, 0.025], [0.5, 0.06], [0.24, 0.075], [0.1, 0.11], [0, 0.115]], 20), { rx: -Math.PI / 2 - 0.28, y: hatchY + 0.42, z: zT - 0.7 }), R.tin, C.tin));
+  t.push(
+    swatch(
+      place(
+        latheArc(
+          [
+            [0, 0],
+            [0.5, 0],
+            [0.54, 0.025],
+            [0.5, 0.06],
+            [0.24, 0.075],
+            [0.1, 0.11],
+            [0, 0.115],
+          ],
+          20,
+        ),
+        { rx: -Math.PI / 2 - 0.28, y: hatchY + 0.42, z: zT - 0.7 },
+      ),
+      R.tin,
+      C.tin,
+    ),
+  );
   // Turret rivets around the band top.
   for (let i = 0; i < 16; i++) {
     const a = (i / 16) * Math.PI * 2;
-    t.push(swatch(place(latheArc(rivet, 6), { rz: -Math.PI / 2, ry: -a, x: Math.cos(a) * (tr - 0.03), y: H + 0.47, z: zT + Math.sin(a) * (tr - 0.03) }), R.tin, C.tin));
+    t.push(
+      swatch(
+        place(latheArc(rivet, 6), {
+          rz: -Math.PI / 2,
+          ry: -a,
+          x: Math.cos(a) * (tr - 0.03),
+          y: H + 0.47,
+          z: zT + Math.sin(a) * (tr - 0.03),
+        }),
+        R.tin,
+        C.tin,
+      ),
+    );
   }
 
   // Cannon: painted mantlet, stubby tin barrel, brass muzzle band, dark bore.
   const cy = H + 0.3;
   const cz0 = zT + tr - 0.08;
   t.push(swatch(place(roundedBox(0.8, 0.46, 0.34, 0.1, 2), { y: cy, z: cz0 + 0.1 }), R.paint, C.livery));
-  const barrel = (prof2: P2[], sw: Rect, col: string, tessB = 16): VertexData => swatch(place(latheArc(prof2, tessB), { rx: Math.PI / 2, y: cy, z: cz0 + 0.25 }), sw, col);
-  t.push(barrel([[0.22, 0], [0.22, 0.08], [0.17, 0.14], [0.155, 0.78]], R.tin, C.tin));
-  t.push(barrel([[0.155, 0.78], [0.2, 0.8], [0.215, 0.84], [0.215, 0.98], [0.2, 1.01], [0.12, 1.01]], R.brass, C.brass));
-  t.push(barrel([[0.12, 1.01], [0.11, 0.9], [0, 0.9]], R.paint, '#120d0e', 12));
+  const barrel = (prof2: P2[], sw: Rect, col: string, tessB = 16): VertexData =>
+    swatch(place(latheArc(prof2, tessB), { rx: Math.PI / 2, y: cy, z: cz0 + 0.25 }), sw, col);
+  t.push(
+    barrel(
+      [
+        [0.22, 0],
+        [0.22, 0.08],
+        [0.17, 0.14],
+        [0.155, 0.78],
+      ],
+      R.tin,
+      C.tin,
+    ),
+  );
+  t.push(
+    barrel(
+      [
+        [0.155, 0.78],
+        [0.2, 0.8],
+        [0.215, 0.84],
+        [0.215, 0.98],
+        [0.2, 1.01],
+        [0.12, 1.01],
+      ],
+      R.brass,
+      C.brass,
+    ),
+  );
+  t.push(
+    barrel(
+      [
+        [0.12, 1.01],
+        [0.11, 0.9],
+        [0, 0.9],
+      ],
+      R.paint,
+      '#120d0e',
+      12,
+    ),
+  );
 
   // Antenna with a little pennant at the turret's rear left.
   {
-    const ax = -tr * 0.62, az = zT - tr * 0.55;
-    t.push(swatch(place(latheArc([[0.06, 0], [0.06, 0.06], [0.02, 0.08], [0.018, 1.5], [0, 1.52]], 6), { x: ax, y: H + 0.55, z: az }), R.tin, C.tin));
+    const ax = -tr * 0.62,
+      az = zT - tr * 0.55;
+    t.push(
+      swatch(
+        place(
+          latheArc(
+            [
+              [0.06, 0],
+              [0.06, 0.06],
+              [0.02, 0.08],
+              [0.018, 1.5],
+              [0, 1.52],
+            ],
+            6,
+          ),
+          { x: ax, y: H + 0.55, z: az },
+        ),
+        R.tin,
+        C.tin,
+      ),
+    );
     const top = H + 0.55 + 1.45;
     for (const sd of [-1, 1]) {
       const pen = new VertexData();
@@ -963,10 +1408,22 @@ export function createTinGeneral(scene: Scene, look: Look, opts: TinGeneralOptio
         path.at((i * path.length) / nLinks + phase, frame);
         // Rows: local X = (1,0,0); local Y = outward normal; local Z = X cross Y.
         // Written in place (no array literal): this runs every frame while the tank moves.
-        m[o] = 1; m[o + 1] = 0; m[o + 2] = 0; m[o + 3] = 0;
-        m[o + 4] = 0; m[o + 5] = frame.ny; m[o + 6] = frame.nz; m[o + 7] = 0;
-        m[o + 8] = 0; m[o + 9] = -frame.nz; m[o + 10] = frame.ny; m[o + 11] = 0;
-        m[o + 12] = x; m[o + 13] = frame.y; m[o + 14] = frame.z; m[o + 15] = 1;
+        m[o] = 1;
+        m[o + 1] = 0;
+        m[o + 2] = 0;
+        m[o + 3] = 0;
+        m[o + 4] = 0;
+        m[o + 5] = frame.ny;
+        m[o + 6] = frame.nz;
+        m[o + 7] = 0;
+        m[o + 8] = 0;
+        m[o + 9] = -frame.nz;
+        m[o + 10] = frame.ny;
+        m[o + 11] = 0;
+        m[o + 12] = x;
+        m[o + 13] = frame.y;
+        m[o + 14] = frame.z;
+        m[o + 15] = 1;
         o += 16;
       }
     }
@@ -978,7 +1435,20 @@ export function createTinGeneral(scene: Scene, look: Look, opts: TinGeneralOptio
   // ---------------- The General ----------------
   const g: VertexData[] = [];
   const ZS = 0.82; // torso depth squash
-  const coatProf: P2[] = [[0, -0.5], [0.42, -0.5], [0.44, -0.32], [0.385, -0.06], [0.35, 0.12], [0.37, 0.32], [0.405, 0.5], [0.395, 0.62], [0.33, 0.72], [0.2, 0.8], [0.12, 0.82], [0, 0.83]];
+  const coatProf: P2[] = [
+    [0, -0.5],
+    [0.42, -0.5],
+    [0.44, -0.32],
+    [0.385, -0.06],
+    [0.35, 0.12],
+    [0.37, 0.32],
+    [0.405, 0.5],
+    [0.395, 0.62],
+    [0.33, 0.72],
+    [0.2, 0.8],
+    [0.12, 0.82],
+    [0, 0.83],
+  ];
   const radiusAt = (y: number): number => {
     for (let i = 1; i < coatProf.length; i++) {
       const [r1, y1] = coatProf[i];
@@ -990,16 +1460,37 @@ export function createTinGeneral(scene: Scene, look: Look, opts: TinGeneralOptio
   g.push(swatch(place(latheArc(coatProf, 22), { sz: ZS }), R.paint, C.coat));
   // Coat front piping (navy) and gold buttons.
   // Waist belt (white) with a brass buckle.
-  g.push(swatch(place(latheArc([[0.352, 0.03], [0.368, 0.05], [0.368, 0.16], [0.352, 0.18]], 22), { sz: ZS }), R.paint, C.white));
+  g.push(
+    swatch(
+      place(
+        latheArc(
+          [
+            [0.352, 0.03],
+            [0.368, 0.05],
+            [0.368, 0.16],
+            [0.352, 0.18],
+          ],
+          22,
+        ),
+        { sz: ZS },
+      ),
+      R.paint,
+      C.white,
+    ),
+  );
   g.push(swatch(place(roundedBox(0.15, 0.12, 0.04, 0.015, 1), { y: 0.105, z: 0.368 * ZS + 0.01 }), R.brass, C.brass));
   // Cross belts: white straps hugging the coat, front and back.
   const strap = (x0: number, y0s: number, x1: number, y1s: number, back: boolean): VertexData => {
     const N = 10;
     const wd = 0.042;
-    const pos: number[] = [], nrm: number[] = [], idx: number[] = [];
-    const dx = x1 - x0, dy = y1s - y0s;
+    const pos: number[] = [],
+      nrm: number[] = [],
+      idx: number[] = [];
+    const dx = x1 - x0,
+      dy = y1s - y0s;
     const L = Math.hypot(dx, dy);
-    const px = -dy / L, py = dx / L; // in-plane perpendicular
+    const px = -dy / L,
+      py = dx / L; // in-plane perpendicular
     for (let i = 0; i <= N; i++) {
       const tt = i / N;
       for (const side of [-1, 1]) {
@@ -1031,17 +1522,113 @@ export function createTinGeneral(scene: Scene, look: Look, opts: TinGeneralOptio
   // Brass plate where the belts cross, and coat buttons below it.
   const crossY = 0.7 - (0.32 / 0.62) * 0.53;
   const zAt = (y: number): number => radiusAt(y) * ZS;
-  g.push(swatch(place(latheArc([[0, 0], [0.07, 0], [0.065, 0.02], [0.04, 0.035], [0, 0.04]], 12), { rx: Math.PI / 2, y: crossY, z: zAt(crossY) + 0.01 }), R.brass, C.brass));
+  g.push(
+    swatch(
+      place(
+        latheArc(
+          [
+            [0, 0],
+            [0.07, 0],
+            [0.065, 0.02],
+            [0.04, 0.035],
+            [0, 0.04],
+          ],
+          12,
+        ),
+        { rx: Math.PI / 2, y: crossY, z: zAt(crossY) + 0.01 },
+      ),
+      R.brass,
+      C.brass,
+    ),
+  );
   for (const by of [-0.05, -0.2, -0.35]) {
-    g.push(swatch(place(latheArc([[0, 0], [0.032, 0], [0.028, 0.015], [0, 0.024]], 8), { rx: Math.PI / 2, y: by, z: zAt(by) - 0.004 }), R.brass, C.brass));
+    g.push(
+      swatch(
+        place(
+          latheArc(
+            [
+              [0, 0],
+              [0.032, 0],
+              [0.028, 0.015],
+              [0, 0.024],
+            ],
+            8,
+          ),
+          { rx: Math.PI / 2, y: by, z: zAt(by) - 0.004 },
+        ),
+        R.brass,
+        C.brass,
+      ),
+    );
   }
   // Collar (navy with a gold edge) and neck.
-  g.push(swatch(latheArc([[0.12, 0.76], [0.215, 0.79], [0.22, 0.88], [0.2, 0.9], [0.16, 0.9]], 18), R.paint, C.navy));
-  g.push(swatch(latheArc([[0.22, 0.88], [0.226, 0.9], [0.2, 0.915], [0.16, 0.912]], 18), R.brass, C.brass));
-  g.push(swatch(latheArc([[0.13, 0.86], [0.13, 0.98]], 12), R.skin, C.skin));
+  g.push(
+    swatch(
+      latheArc(
+        [
+          [0.12, 0.76],
+          [0.215, 0.79],
+          [0.22, 0.88],
+          [0.2, 0.9],
+          [0.16, 0.9],
+        ],
+        18,
+      ),
+      R.paint,
+      C.navy,
+    ),
+  );
+  g.push(
+    swatch(
+      latheArc(
+        [
+          [0.22, 0.88],
+          [0.226, 0.9],
+          [0.2, 0.915],
+          [0.16, 0.912],
+        ],
+        18,
+      ),
+      R.brass,
+      C.brass,
+    ),
+  );
+  g.push(
+    swatch(
+      latheArc(
+        [
+          [0.13, 0.86],
+          [0.13, 0.98],
+        ],
+        12,
+      ),
+      R.skin,
+      C.skin,
+    ),
+  );
   // Epaulettes: brass dishes with a fringe, tilted outward.
   for (const s of [-1, 1]) {
-    g.push(swatch(place(latheArc([[0, 0.05], [0.12, 0.045], [0.17, 0.01], [0.185, -0.06], [0.175, -0.08], [0.15, -0.02], [0, -0.01]], 16), { rz: -s * 0.45, x: s * 0.34, y: 0.7, sz: 0.9 }), R.brass, C.brass));
+    g.push(
+      swatch(
+        place(
+          latheArc(
+            [
+              [0, 0.05],
+              [0.12, 0.045],
+              [0.17, 0.01],
+              [0.185, -0.06],
+              [0.175, -0.08],
+              [0.15, -0.02],
+              [0, -0.01],
+            ],
+            16,
+          ),
+          { rz: -s * 0.45, x: s * 0.34, y: 0.7, sz: 0.9 },
+        ),
+        R.brass,
+        C.brass,
+      ),
+    );
   }
   // Arms: left hand on the hip, right arm raised with the sabre.
   const sh = (s: number): Vector3 => new Vector3(s * 0.36, 0.6, 0);
@@ -1057,7 +1644,23 @@ export function createTinGeneral(scene: Scene, look: Look, opts: TinGeneralOptio
   const cuff = (a: Vector3, b: Vector3): VertexData => {
     const dir = b.subtract(a).normalize();
     const c0 = b.subtract(dir.scale(0.14));
-    return swatch(alongSegment(latheArc([[0.1, 0], [0.108, 0.02], [0.108, 0.1], [0.095, 0.11]], 12), c0, b), R.paint, C.navy);
+    return swatch(
+      alongSegment(
+        latheArc(
+          [
+            [0.1, 0],
+            [0.108, 0.02],
+            [0.108, 0.1],
+            [0.095, 0.11],
+          ],
+          12,
+        ),
+        c0,
+        b,
+      ),
+      R.paint,
+      C.navy,
+    );
   };
   g.push(cuff(lElbow, lHand));
   g.push(cuff(rElbow, rHand));
@@ -1066,14 +1669,56 @@ export function createTinGeneral(scene: Scene, look: Look, opts: TinGeneralOptio
   // Sabre: brass guard and pommel, navy grip, bright tin blade raised high.
   const tip = new Vector3(0.95, 2.25, -0.08);
   const bladeBase = rHand.add(new Vector3(0.02, 0.12, -0.002));
-  g.push(swatch(alongSegment(latheArc([[0, 0], [0.062, 0.02], [0.055, 0.86], [0.016, 0.98], [0, 1.0]].map(([r, y]) => [r, y * Vector3.Distance(bladeBase, tip)] as P2), 4), bladeBase, tip, 1, 0.28, Math.PI / 4), R.tin, C.tin));
+  g.push(
+    swatch(
+      alongSegment(
+        latheArc(
+          [
+            [0, 0],
+            [0.062, 0.02],
+            [0.055, 0.86],
+            [0.016, 0.98],
+            [0, 1.0],
+          ].map(([r, y]) => [r, y * Vector3.Distance(bladeBase, tip)] as P2),
+          4,
+        ),
+        bladeBase,
+        tip,
+        1,
+        0.28,
+        Math.PI / 4,
+      ),
+      R.tin,
+      C.tin,
+    ),
+  );
   g.push(swatch(alongSegment(place(roundedBox(0.26, 0.04, 0.06, 0.015, 1), {}), bladeBase, tip), R.brass, C.brass));
   const gripA = rHand.subtract(new Vector3(0.02, 0.14, -0.002));
-  g.push(swatch(alongSegment(latheArc([[0.035, 0], [0.04, 0.1], [0.035, 0.2]], 8), gripA, bladeBase), R.paint, C.navy));
-  g.push(swatch(place(latheArc(sphere(0.045), 8, ), { x: gripA.x, y: gripA.y, z: gripA.z }), R.brass, C.brass));
+  g.push(
+    swatch(
+      alongSegment(
+        latheArc(
+          [
+            [0.035, 0],
+            [0.04, 0.1],
+            [0.035, 0.2],
+          ],
+          8,
+        ),
+        gripA,
+        bladeBase,
+      ),
+      R.paint,
+      C.navy,
+    ),
+  );
+  g.push(swatch(place(latheArc(sphere(0.045), 8), { x: gripA.x, y: gripA.y, z: gripA.z }), R.brass, C.brass));
 
   // Head: painted face on the front hemisphere (planar from the front), plain skin behind.
-  const headR = 0.27, headY = 1.1, headZ = 0.02, headSy = 1.06;
+  const headR = 0.27,
+    headY = 1.1,
+    headZ = 0.02,
+    headSy = 1.06;
   const headProf: P2[] = [];
   for (let i = 0; i <= 10; i++) {
     const a = -Math.PI / 2 + (i * Math.PI) / 10;
@@ -1084,19 +1729,137 @@ export function createTinGeneral(scene: Scene, look: Look, opts: TinGeneralOptio
   const face = place(latheArc(headProf, 12, 0, Math.PI), { sy: headSy, y: headY, z: headZ });
   regionMap(face, R.face, (x, y) => [0.5 - x / (2 * headR), 0.5 + (y - headY) / (2 * headR * headSy)]);
   g.push(face);
-  g.push(swatch(place(latheArc(headProf, 12, Math.PI, Math.PI * 2), { sy: headSy, y: headY, z: headZ }), R.skin, C.skin));
+  g.push(
+    swatch(place(latheArc(headProf, 12, Math.PI, Math.PI * 2), { sy: headSy, y: headY, z: headZ }), R.skin, C.skin),
+  );
   // Nose and ears.
-  g.push(swatch(place(latheArc(sphere(0.05), 8), { y: headY - 0.01, z: headZ + headR - 0.01, sz: 0.8 }), R.skin, '#eab08f'));
-  for (const s of [-1, 1]) g.push(swatch(place(latheArc(sphere(0.055), 8), { x: s * (headR - 0.01), y: headY, z: headZ - 0.02, sx: 0.5 }), R.skin, '#eab08f'));
+  g.push(
+    swatch(place(latheArc(sphere(0.05), 8), { y: headY - 0.01, z: headZ + headR - 0.01, sz: 0.8 }), R.skin, '#eab08f'),
+  );
+  for (const s of [-1, 1])
+    g.push(
+      swatch(
+        place(latheArc(sphere(0.055), 8), { x: s * (headR - 0.01), y: headY, z: headZ - 0.02, sx: 0.5 }),
+        R.skin,
+        '#eab08f',
+      ),
+    );
   // Shako: tall navy, gold bands, black visor, brass badge, red plume.
   const shako = (vd: VertexData): VertexData => place(vd, { sz: 0.94, z: headZ - 0.02 });
-  g.push(shako(swatch(latheArc([[0.262, 1.2], [0.272, 1.215], [0.305, 1.73], [0.31, 1.75], [0.29, 1.77], [0, 1.78]], 22), R.paint, C.navy)));
-  g.push(shako(swatch(latheArc([[0.27, 1.2], [0.284, 1.215], [0.292, 1.31], [0.282, 1.325]], 22), R.brass, C.brass)));
-  g.push(shako(swatch(latheArc([[0.302, 1.67], [0.314, 1.68], [0.318, 1.745], [0.306, 1.755]], 22), R.brass, C.brass)));
-  g.push(swatch(place(latheArc([[0, 0], [0.3, 0], [0.31, 0.015], [0.28, 0.03], [0, 0.03]], 16, 0, Math.PI), { rx: 0.22, y: 1.205, z: headZ + 0.03, sz: 1.25 }), R.paint, '#141218'));
-  g.push(swatch(place(latheArc([[0, 0], [0.11, 0], [0.12, 0.02], [0.09, 0.04], [0, 0.045]], 14), { rx: Math.PI / 2 - 0.05, y: 1.48, z: headZ + 0.27 }), R.brass, C.brass));
+  g.push(
+    shako(
+      swatch(
+        latheArc(
+          [
+            [0.262, 1.2],
+            [0.272, 1.215],
+            [0.305, 1.73],
+            [0.31, 1.75],
+            [0.29, 1.77],
+            [0, 1.78],
+          ],
+          22,
+        ),
+        R.paint,
+        C.navy,
+      ),
+    ),
+  );
+  g.push(
+    shako(
+      swatch(
+        latheArc(
+          [
+            [0.27, 1.2],
+            [0.284, 1.215],
+            [0.292, 1.31],
+            [0.282, 1.325],
+          ],
+          22,
+        ),
+        R.brass,
+        C.brass,
+      ),
+    ),
+  );
+  g.push(
+    shako(
+      swatch(
+        latheArc(
+          [
+            [0.302, 1.67],
+            [0.314, 1.68],
+            [0.318, 1.745],
+            [0.306, 1.755],
+          ],
+          22,
+        ),
+        R.brass,
+        C.brass,
+      ),
+    ),
+  );
+  g.push(
+    swatch(
+      place(
+        latheArc(
+          [
+            [0, 0],
+            [0.3, 0],
+            [0.31, 0.015],
+            [0.28, 0.03],
+            [0, 0.03],
+          ],
+          16,
+          0,
+          Math.PI,
+        ),
+        { rx: 0.22, y: 1.205, z: headZ + 0.03, sz: 1.25 },
+      ),
+      R.paint,
+      '#141218',
+    ),
+  );
+  g.push(
+    swatch(
+      place(
+        latheArc(
+          [
+            [0, 0],
+            [0.11, 0],
+            [0.12, 0.02],
+            [0.09, 0.04],
+            [0, 0.045],
+          ],
+          14,
+        ),
+        { rx: Math.PI / 2 - 0.05, y: 1.48, z: headZ + 0.27 },
+      ),
+      R.brass,
+      C.brass,
+    ),
+  );
   g.push(swatch(place(latheArc(sphere(0.06), 8), { y: 1.8, z: headZ + 0.13 }), R.brass, C.brass));
-  g.push(swatch(place(latheArc([[0, 0], [0.065, 0.04], [0.095, 0.14], [0.085, 0.26], [0.05, 0.37], [0, 0.42]], 12), { rx: -0.12, y: 1.82, z: headZ + 0.12 }), R.paint, C.plume));
+  g.push(
+    swatch(
+      place(
+        latheArc(
+          [
+            [0, 0],
+            [0.065, 0.04],
+            [0.095, 0.14],
+            [0.085, 0.26],
+            [0.05, 0.37],
+            [0, 0.42],
+          ],
+          12,
+        ),
+        { rx: -0.12, y: 1.82, z: headZ + 0.12 },
+      ),
+      R.paint,
+      C.plume,
+    ),
+  );
 
   const gvd = place(mergeParts(g), { s: GENERAL_SCALE });
   // Cheap occlusion instead of a ray-traced bake (which costs ~1.5 s at load): darker where
@@ -1109,12 +1872,70 @@ export function createTinGeneral(scene: Scene, look: Look, opts: TinGeneralOptio
 
   // ---------------- Wind-up key (turns about its local Z) ----------------
   const k: VertexData[] = [];
-  k.push(swatch(place(latheArc([[0.2, 0], [0.2, 0.05], [0.13, 0.09], [0.09, 0.1], [0.09, 0.5], [0.15, 0.53], [0.15, 0.6], [0.1, 0.63], [0.1, 0.7]], 14), { rx: -Math.PI / 2 }), R.brass, C.brass));
+  k.push(
+    swatch(
+      place(
+        latheArc(
+          [
+            [0.2, 0],
+            [0.2, 0.05],
+            [0.13, 0.09],
+            [0.09, 0.1],
+            [0.09, 0.5],
+            [0.15, 0.53],
+            [0.15, 0.6],
+            [0.1, 0.63],
+            [0.1, 0.7],
+          ],
+          14,
+        ),
+        { rx: -Math.PI / 2 },
+      ),
+      R.brass,
+      C.brass,
+    ),
+  );
   k.push(swatch(place(latheArc(sphere(0.16), 12), { z: -0.78, sz: 0.8 }), R.brass, C.brass));
   for (const s of [-1, 1]) {
     // Solid butterfly wings with a raised rim.
-    k.push(swatch(place(latheArc([[0, 0.035], [0.27, 0.03], [0.33, 0.015], [0.345, 0], [0.33, -0.015], [0.27, -0.03], [0, -0.035]], 22), { rx: Math.PI / 2, x: s * 0.46, z: -0.78, sy: 0.82 }), R.brass, C.brass));
-    k.push(swatch(place(latheArc([[0.1, 0.03], [0.14, 0.05], [0.18, 0.03]], 22), { rx: Math.PI / 2, x: s * 0.46, z: -0.78 + 0.0, sy: 0.82 }), R.brass, C.brass));
+    k.push(
+      swatch(
+        place(
+          latheArc(
+            [
+              [0, 0.035],
+              [0.27, 0.03],
+              [0.33, 0.015],
+              [0.345, 0],
+              [0.33, -0.015],
+              [0.27, -0.03],
+              [0, -0.035],
+            ],
+            22,
+          ),
+          { rx: Math.PI / 2, x: s * 0.46, z: -0.78, sy: 0.82 },
+        ),
+        R.brass,
+        C.brass,
+      ),
+    );
+    k.push(
+      swatch(
+        place(
+          latheArc(
+            [
+              [0.1, 0.03],
+              [0.14, 0.05],
+              [0.18, 0.03],
+            ],
+            22,
+          ),
+          { rx: Math.PI / 2, x: s * 0.46, z: -0.78 + 0.0, sy: 0.82 },
+        ),
+        R.brass,
+        C.brass,
+      ),
+    );
     k.push(swatch(place(roundedBox(0.3, 0.16, 0.08, 0.03, 1), { x: s * 0.16, z: -0.78 }), R.brass, C.brass));
   }
   const key = buildMesh(scene, 'tinGeneralKey', place(mergeParts(k), { s: KEY_SCALE }), mat);

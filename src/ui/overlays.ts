@@ -339,7 +339,8 @@ export function createOverlays(root: HTMLElement, settings: Settings): Overlays 
     if (current) current.classList.remove('hr-on');
     current = null;
     // Drop focus so Space/keys go back to the game.
-    if (document.activeElement instanceof HTMLElement && root.contains(document.activeElement)) document.activeElement.blur();
+    if (document.activeElement instanceof HTMLElement && root.contains(document.activeElement))
+      document.activeElement.blur();
   }
 
   return {
@@ -351,7 +352,9 @@ export function createOverlays(root: HTMLElement, settings: Settings): Overlays 
       iNew.replaceChildren();
       if (o.intro) iNew.append(el('b', '', 'New: '), o.intro);
       iNew.hidden = !o.intro;
-      iGoals.replaceChildren(...o.goals.map((g, i) => goalLine(starIcon(30, o.earned[i] ? '' : 'tb-off'), g, !o.earned[i])));
+      iGoals.replaceChildren(
+        ...o.goals.map((g, i) => goalLine(starIcon(30, o.earned[i] ? '' : 'tb-off'), g, !o.earned[i])),
+      );
       actions = { play: o.onPlay, map: o.onMap };
       show(intro);
     },
@@ -379,7 +382,9 @@ export function createOverlays(root: HTMLElement, settings: Settings): Overlays 
       rBest.hidden = !(win && o.newBest);
       const goals = stars && o.goals ? o.goals : [];
       rGoals.hidden = goals.length === 0;
-      rGoals.replaceChildren(...goals.map((g, i) => (stars?.[i] ? goalLine(tickIcon(28), g) : goalLine(crossIcon(28), g, true))));
+      rGoals.replaceChildren(
+        ...goals.map((g, i) => (stars?.[i] ? goalLine(tickIcon(28), g) : goalLine(crossIcon(28), g, true))),
+      );
 
       // Primary action (yellow, big) first, where the thumb lands; the rest share a row.
       const plan = resultActions(win, o.hasNext, !!o.onMap);

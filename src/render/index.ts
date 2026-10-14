@@ -112,7 +112,14 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
   engine.setHardwareScalingLevel(scaler.scalingLevel);
 
   let level: LevelVisuals | null = null;
-  const lastStats: RenderStats = { drawCalls: 0, activeMeshes: 0, activeIndices: 0, totalVertices: 0, quality: look.quality, pixelRatio: scaler.ratio };
+  const lastStats: RenderStats = {
+    drawCalls: 0,
+    activeMeshes: 0,
+    activeIndices: 0,
+    totalVertices: 0,
+    quality: look.quality,
+    pixelRatio: scaler.ratio,
+  };
 
   const reframe = (): void => {
     if (!level) return;

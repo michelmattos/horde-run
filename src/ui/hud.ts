@@ -14,7 +14,15 @@ import type { Scene } from '@babylonjs/core/scene';
 import type { BattleState } from '../contracts.ts';
 import type { Input } from '../core/input.ts';
 import { readSafeAreaInsets } from './safeArea.ts';
-import { HUD_METRICS as M, formatCount, hpFraction, hudReserveFor, hudStarLook, pipLit, ringDashOffset } from './uiLogic.ts';
+import {
+  HUD_METRICS as M,
+  formatCount,
+  hpFraction,
+  hudReserveFor,
+  hudStarLook,
+  pipLit,
+  ringDashOffset,
+} from './uiLogic.ts';
 import type { GoalState } from './uiLogic.ts';
 import { UI, WOOD_BG, injectUiTheme, outlineShadow } from './theme.ts';
 import { championIcon, crossIcon, fortIcon, pauseIcon, soldierIcon, starIcon, tickIcon } from './icons.ts';
@@ -254,7 +262,8 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
   for (let i = 0; i < 3; i++) {
     const g = div(
       'tb-goal tb-pending',
-      starIcon(24) + `<span class="tb-mark tb-mark-tick">${tickIcon(13)}</span><span class="tb-mark tb-mark-cross">${crossIcon(13)}</span>`,
+      starIcon(24) +
+        `<span class="tb-mark tb-mark-tick">${tickIcon(13)}</span><span class="tb-mark tb-mark-cross">${crossIcon(13)}</span>`,
     );
     goalEls.push(g);
     goalsBox.append(g);

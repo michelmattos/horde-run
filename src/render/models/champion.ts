@@ -44,7 +44,20 @@ import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData';
 import { Matrix } from '@babylonjs/core/Maths/math.vector';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import type { Look } from '../look/index.ts';
-import { armyPlasticMaterial, assetUrl, bakeVertexAO, buildMesh, fixWinding, lathe, mergeParts, paint, place, plasticMaterial, roundedBox, teamColor } from '../look/index.ts';
+import {
+  armyPlasticMaterial,
+  assetUrl,
+  bakeVertexAO,
+  buildMesh,
+  fixWinding,
+  lathe,
+  mergeParts,
+  paint,
+  place,
+  plasticMaterial,
+  roundedBox,
+  teamColor,
+} from '../look/index.ts';
 import type { ModelInfo, PreviewOptions, PreviewResult } from '../look/model.ts';
 import type { TeamName } from '../look/palette.ts';
 
@@ -82,7 +95,9 @@ function scale3(vd: VertexData, sx: number, sy: number, sz: number): VertexData 
     p[i] *= sx;
     p[i + 1] *= sy;
     p[i + 2] *= sz;
-    const nx = n[i] / sx, ny = n[i + 1] / sy, nz = n[i + 2] / sz;
+    const nx = n[i] / sx,
+      ny = n[i + 1] / sy,
+      nz = n[i + 2] / sz;
     const l = Math.hypot(nx, ny, nz) || 1;
     n[i] = nx / l;
     n[i + 1] = ny / l;
@@ -94,19 +109,31 @@ function scale3(vd: VertexData, sx: number, sy: number, sz: number): VertexData 
 // Rotation+translation that maps local +Y onto the direction a->b, origin onto a, and
 // local +X as close as possible to `out` (used to aim sleeve chevrons outward).
 function frame(a: V3, b: V3, out: V3 = [1, 0, 0]): Matrix {
-  let dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2];
+  let dx = b[0] - a[0],
+    dy = b[1] - a[1],
+    dz = b[2] - a[2];
   const l = Math.hypot(dx, dy, dz) || 1;
-  dx /= l; dy /= l; dz /= l;
+  dx /= l;
+  dy /= l;
+  dz /= l;
   const k = out[0] * dx + out[1] * dy + out[2] * dz;
-  let ux = out[0] - k * dx, uy = out[1] - k * dy, uz = out[2] - k * dz;
+  let ux = out[0] - k * dx,
+    uy = out[1] - k * dy,
+    uz = out[2] - k * dz;
   let ul = Math.hypot(ux, uy, uz);
   if (ul < 1e-4) {
-    ux = dy; uy = -dx; uz = 0;
+    ux = dy;
+    uy = -dx;
+    uz = 0;
     ul = Math.hypot(ux, uy, uz) || 1;
   }
-  ux /= ul; uy /= ul; uz /= ul;
+  ux /= ul;
+  uy /= ul;
+  uz /= ul;
   // w = u x d (keeps determinant +1).
-  const wx = uy * dz - uz * dy, wy = uz * dx - ux * dz, wz = ux * dy - uy * dx;
+  const wx = uy * dz - uz * dy,
+    wy = uz * dx - ux * dz,
+    wz = ux * dy - uy * dx;
   return Matrix.FromValues(ux, uy, uz, 0, dx, dy, dz, 0, wx, wy, wz, 0, a[0], a[1], a[2], 1);
 }
 
@@ -125,8 +152,20 @@ function limb(a: V3, b: V3, ra: number, rb: number, tess: number, lod: Lod): Ver
   // the torso, boots and hands.
   // Repeated points crease the ends so the shaft keeps clean side normals (no banding).
   const prof: Prof = lod.hi
-    ? [[0, -ra * 0.7], [ra, 0], [ra, 0], [rb, L], [rb, L], [0, L + rb * 0.7]]
-    : [[0, -ra * 0.8], [ra, 0], [rb, L], [0, L + rb * 0.8]];
+    ? [
+        [0, -ra * 0.7],
+        [ra, 0],
+        [ra, 0],
+        [rb, L],
+        [rb, L],
+        [0, L + rb * 0.7],
+      ]
+    : [
+        [0, -ra * 0.8],
+        [ra, 0],
+        [rb, L],
+        [0, L + rb * 0.8],
+      ];
   const vd = lathe(prof, tess);
   vd.transform(frame(a, b));
   return vd;
@@ -157,7 +196,17 @@ function box(w: number, h: number, d: number, r: number, seg: number, t: Paramet
 function pillow(w: number, h: number, d: number, t: Parameters<typeof place>[1], bevel = 0.25, sides = 4): VertexData {
   const hh = h / 2;
   const b = Math.min(hh * 0.9, bevel * Math.min(w, d));
-  const vd = lathe([[0, -hh], [0.76, -hh], [1, -hh + b], [1, hh - b], [0.76, hh], [0, hh]], sides);
+  const vd = lathe(
+    [
+      [0, -hh],
+      [0.76, -hh],
+      [1, -hh + b],
+      [1, hh - b],
+      [0.76, hh],
+      [0, hh],
+    ],
+    sides,
+  );
   place(vd, { ry: Math.PI / sides });
   const k = 1 / Math.cos(Math.PI / sides);
   scale3(vd, (w / 2) * k, 1, (d / 2) * k);
@@ -218,7 +267,16 @@ const J = {
 const TUBE = { x: 0.44, y: 2.0, z0: -0.94, z1: 1.06, r: 0.125 };
 const HEAD: V3 = [-0.05, 2.08, 0.06];
 // M1 helmet profile [radius, y] (relative to the helmet origin), z stretched by HELM_Z.
-const HELM: Prof = [[0.33, -0.05], [0.4, -0.02], [0.4, 0.005], [0.345, 0.03], [0.32, 0.17], [0.24, 0.3], [0.12, 0.36], [0, 0.375]];
+const HELM: Prof = [
+  [0.33, -0.05],
+  [0.4, -0.02],
+  [0.4, 0.005],
+  [0.345, 0.03],
+  [0.32, 0.17],
+  [0.24, 0.3],
+  [0.12, 0.36],
+  [0, 0.375],
+];
 const HELM_Z = 1.1;
 const HELM_AT = { x: HEAD[0], y: HEAD[1] + 0.06, z: HEAD[2] - 0.02, rx: 0.08 };
 // The figure is laid out ~2.51 tall; scale it to CHAMPION_HEIGHT (footprint radius ~1).
@@ -234,8 +292,18 @@ function buildBody(lod: Lod): VertexData {
 
   // Base plate: oval with a bevelled rim, 1.6 wide x 1.9 deep (footprint radius ~1).
   const baseProf: Prof = hi
-    ? [[0.95, 0], [0.975, 0.05], [0.9, 0.112], [0, 0.115]]
-    : [[0.96, 0], [0.96, 0.09], [0.88, 0.115], [0, 0.115]];
+    ? [
+        [0.95, 0],
+        [0.975, 0.05],
+        [0.9, 0.112],
+        [0, 0.115],
+      ]
+    : [
+        [0.96, 0],
+        [0.96, 0.09],
+        [0.88, 0.115],
+        [0, 0.115],
+      ];
   add(place(scale3(lathe(baseProf, hi ? 22 : 10), 0.84, 1, 1), { z: 0.02 }), SHADE.base);
 
   // Legs. Left: thigh down to the knee on the ground, shin back along the base.
@@ -256,8 +324,25 @@ function buildBody(lod: Lod): VertexData {
   // Torso: an elliptical lathe, broad shoulders, flaring into full hips at the bottom so
   // the seat flows into it with no ledge at the belt line, leaning forward a little.
   const torsoProf: Prof = hi
-    ? [[0, -0.2], [0.24, -0.19], [0.33, -0.1], [0.33, 0.12], [0.36, 0.38], [0.39, 0.6], [0.35, 0.76], [0.2, 0.86], [0, 0.88]]
-    : [[0, -0.2], [0.33, -0.12], [0.33, 0.1], [0.38, 0.6], [0.22, 0.84], [0, 0.88]];
+    ? [
+        [0, -0.2],
+        [0.24, -0.19],
+        [0.33, -0.1],
+        [0.33, 0.12],
+        [0.36, 0.38],
+        [0.39, 0.6],
+        [0.35, 0.76],
+        [0.2, 0.86],
+        [0, 0.88],
+      ]
+    : [
+        [0, -0.2],
+        [0.33, -0.12],
+        [0.33, 0.1],
+        [0.38, 0.6],
+        [0.22, 0.84],
+        [0, 0.88],
+      ];
   add(place(scale3(lathe(torsoProf, hi ? 11 : 6), 1.24, 1, 0.7), { y: 1.0, z: -0.06, rx: 0.12 }), SHADE.uniform);
   // Rounded deltoid caps where the arms join.
   if (hi) {
@@ -269,7 +354,14 @@ function buildBody(lod: Lod): VertexData {
   if (hi) {
     // Moulded face: brow ridge under the brim and a wedge nose.
     add(pillow(0.28, 0.055, 0.09, { x: HEAD[0], y: HEAD[1] - 0.0, z: HEAD[2] + 0.19, rx: -0.15 }, 0.4), SHADE.face);
-    const nose = lathe([[0, 0], [0.055, 0], [0, 0.1]], 4);
+    const nose = lathe(
+      [
+        [0, 0],
+        [0.055, 0],
+        [0, 0.1],
+      ],
+      4,
+    );
     place(nose, { ry: Math.PI / 4 });
     scale3(nose, 0.75, 1, 1.25);
     // Point it forward and a touch down (+Y -> +Z), base buried in the face.
@@ -277,12 +369,27 @@ function buildBody(lod: Lod): VertexData {
     add(nose, SHADE.face);
     // Chin strap: a thin ring from under the brim at the temples to under the chin; its
     // back half disappears up inside the helmet.
-    const strap = lathe([[0.235, -0.014], [0.247, 0], [0.235, 0.014]], 8);
+    const strap = lathe(
+      [
+        [0.235, -0.014],
+        [0.247, 0],
+        [0.235, 0.014],
+      ],
+      8,
+    );
     place(strap, { rx: Math.PI / 2 - 0.5, x: HEAD[0], y: HEAD[1] + 0.02, z: HEAD[2] });
     add(strap, SHADE.webbing);
   }
   // M1 helmet: dome with a flared brim, a touch longer front to back, tipped down to aim.
-  const helmProf: Prof = hi ? HELM : [[0.33, -0.04], [0.4, 0.0], [0.32, 0.12], [0.2, 0.32], [0, 0.37]];
+  const helmProf: Prof = hi
+    ? HELM
+    : [
+        [0.33, -0.04],
+        [0.4, 0.0],
+        [0.32, 0.12],
+        [0.2, 0.32],
+        [0, 0.37],
+      ];
   add(place(scale3(lathe(helmProf, hi ? 14 : 8), 1, 1, HELM_Z), HELM_AT), SHADE.helmet);
 
   // Arms: right hand on the rear pistol grip, left hand reaching to the front grip.
@@ -295,7 +402,10 @@ function buildBody(lod: Lod): VertexData {
     add(sphere(J.elbowL, 0.138, 5, 3), SHADE.uniform);
   }
   // Mitten hands, flattened and aimed along the forearm, closed around the grips.
-  for (const [el, h] of [[J.elbowR, J.handR], [J.elbowL, J.handL]] as const) {
+  for (const [el, h] of [
+    [J.elbowR, J.handR],
+    [J.elbowL, J.handL],
+  ] as const) {
     const m = scale3(sphereVD(0.12, hi ? 6 : 5, hi ? 3 : 2), 0.95, 1.3, 0.78);
     place(m, { y: 0.03 });
     m.transform(frame(h, lerp3(el, h, 2), [1, 0, 0]));
@@ -309,15 +419,72 @@ function buildBody(lod: Lod): VertexData {
   const tubeLen = TUBE.z1 - TUBE.z0;
   const along = { x: TUBE.x, y: TUBE.y, z: TUBE.z0, rx: Math.PI / 2 }; // lathe +Y -> +Z
   if (hi) {
-    const bell: Prof = [[0, 0.17], [0.13, 0.15], [0.18, 0.035], [0.204, -0.008], [0.232, 0.014], [0.222, 0.085], [r + 0.005, 0.42]];
-    add(place(greyByProfile(lathe(bell, 16), [SHADE.boreDeep, SHADE.boreDeep, SHADE.bore, 0.62, SHADE.tube, SHADE.tube, SHADE.tube]), along), null);
-    const body: Prof = [[r + 0.005, 0.42], [r, 0.86], [r + 0.026, 0.885], [r + 0.026, 0.975], [r, 1.0],
-      [r, tubeLen - 0.1], [r + 0.03, tubeLen - 0.078], [r + 0.03, tubeLen], [r - 0.03, tubeLen], [0, tubeLen - 0.07]];
-    add(place(greyByProfile(lathe(body, 10), [0.84, 0.84, 0.84, 0.84, 0.84, 0.84, 0.84, 0.84, 0.6, SHADE.boreDeep]), along), null);
+    const bell: Prof = [
+      [0, 0.17],
+      [0.13, 0.15],
+      [0.18, 0.035],
+      [0.204, -0.008],
+      [0.232, 0.014],
+      [0.222, 0.085],
+      [r + 0.005, 0.42],
+    ];
+    add(
+      place(
+        greyByProfile(lathe(bell, 16), [
+          SHADE.boreDeep,
+          SHADE.boreDeep,
+          SHADE.bore,
+          0.62,
+          SHADE.tube,
+          SHADE.tube,
+          SHADE.tube,
+        ]),
+        along,
+      ),
+      null,
+    );
+    const body: Prof = [
+      [r + 0.005, 0.42],
+      [r, 0.86],
+      [r + 0.026, 0.885],
+      [r + 0.026, 0.975],
+      [r, 1.0],
+      [r, tubeLen - 0.1],
+      [r + 0.03, tubeLen - 0.078],
+      [r + 0.03, tubeLen],
+      [r - 0.03, tubeLen],
+      [0, tubeLen - 0.07],
+    ];
+    add(
+      place(
+        greyByProfile(lathe(body, 10), [0.84, 0.84, 0.84, 0.84, 0.84, 0.84, 0.84, 0.84, 0.6, SHADE.boreDeep]),
+        along,
+      ),
+      null,
+    );
   } else {
-    const tubeProf: Prof = [[0.21, 0], [r, 0.38], [r, tubeLen - 0.06], [r + 0.02, tubeLen], [r - 0.03, tubeLen], [0, tubeLen - 0.05]];
+    const tubeProf: Prof = [
+      [0.21, 0],
+      [r, 0.38],
+      [r, tubeLen - 0.06],
+      [r + 0.02, tubeLen],
+      [r - 0.03, tubeLen],
+      [0, tubeLen - 0.05],
+    ];
     add(place(greyByProfile(lathe(tubeProf, 6), [0.6, 0.84, 0.84, 0.84, 0.6, 0.35]), along), null);
-    add(place(lathe([[0, 0], [0.2, 0]], 6), { x: TUBE.x, y: TUBE.y, z: TUBE.z0 + 0.03, rx: Math.PI / 2 }), SHADE.bore);
+    add(
+      place(
+        lathe(
+          [
+            [0, 0],
+            [0.2, 0],
+          ],
+          6,
+        ),
+        { x: TUBE.x, y: TUBE.y, z: TUBE.z0 + 0.03, rx: Math.PI / 2 },
+      ),
+      SHADE.bore,
+    );
   }
   // Shoulder rest under the tube, two pistol grips, the sight box on the left side and a
   // front sight post.
@@ -334,10 +501,19 @@ function buildBody(lod: Lod): VertexData {
 
   // Webbing: pistol belt with pouches and buckle.
   if (hi) {
-    const beltProf: Prof = [[0.335, -0.065], [0.355, -0.04], [0.355, 0.04], [0.335, 0.065]];
-    add(place(scale3(place(lathe(beltProf, 8), { ry: Math.PI / 8 }), 1.22, 1, 0.72), { y: 1.14, z: -0.07, rx: 0.06 }), SHADE.webbing);
+    const beltProf: Prof = [
+      [0.335, -0.065],
+      [0.355, -0.04],
+      [0.355, 0.04],
+      [0.335, 0.065],
+    ];
+    add(
+      place(scale3(place(lathe(beltProf, 8), { ry: Math.PI / 8 }), 1.22, 1, 0.72), { y: 1.14, z: -0.07, rx: 0.06 }),
+      SHADE.webbing,
+    );
     add(box(0.14, 0.09, 0.06, 0.02, 0, { y: 1.14, z: 0.19 }), SHADE.metal); // buckle
-    for (const x of [-0.27, 0.27]) add(box(0.15, 0.17, 0.1, 0.04, 0, { x, y: 1.09, z: 0.15, ry: x > 0 ? -0.5 : 0.5 }), SHADE.webbing);
+    for (const x of [-0.27, 0.27])
+      add(box(0.15, 0.17, 0.1, 0.04, 0, { x, y: 1.09, z: 0.15, ry: x > 0 ? -0.5 : 0.5 }), SHADE.webbing);
   }
   // Suspender straps: front pair down the chest, crossing X on the back.
   const strap = (a: V3, b: V3): void => {
@@ -353,7 +529,10 @@ function buildBody(lod: Lod): VertexData {
     strap([-0.27, 1.2, -0.34], [0.25, 1.76, -0.27]);
     strap([0.27, 1.2, -0.34], [-0.25, 1.76, -0.27]);
     // Grenades clipped to the front straps.
-    for (const [x, z] of [[-0.22, 0.2], [0.22, 0.21]] as const) {
+    for (const [x, z] of [
+      [-0.22, 0.2],
+      [0.22, 0.21],
+    ] as const) {
       add(sphere([x, 1.48, z], 0.085, 5, 3, [1, 1.3, 1]), SHADE.grenade);
     }
   }
@@ -370,7 +549,16 @@ function buildBody(lod: Lod): VertexData {
     bagAdd(box(0.075, 0.3, 0.03, 0.012, 0, { y: -0.05, z: -0.128 }), SHADE.webbing); // strap
     bagAdd(box(0.11, 0.07, 0.04, 0.015, 0, { y: 0.06, z: -0.142 }), SHADE.metal); // buckle
     for (const x of [-0.13, 0.12]) {
-      const tail = lathe([[0.058, 0], [0.058, 0.07], [0.03, 0.12], [0.03, 0.22], [0, 0.225]], 5);
+      const tail = lathe(
+        [
+          [0.058, 0],
+          [0.058, 0.07],
+          [0.03, 0.12],
+          [0.03, 0.22],
+          [0, 0.225],
+        ],
+        5,
+      );
       bagAdd(place(tail, { x, y: 0.2, z: 0.02, rx: -0.25 }), SHADE.rocket);
       const fin = box(0.13, 0.08, 0.016, 0.006, 0, { y: 0.175 }); // tail fins, seen edge-on from the side
       bagAdd(place(fin, { x, y: 0.2, z: 0.02, rx: -0.25 }), SHADE.rocket);
@@ -394,7 +582,14 @@ function chevron(m: Matrix, vTop: number, radiusAt: (v: number) => number): Vert
   const LIFT = 0.016; // proud of the sleeve
   const TH = 0.03; // moulded thickness
   // Outline: top edge (end, apex, end) then bottom edge (end, apex, end).
-  const uv: [number, number][] = [[-W, vTop + RISE], [0, vTop], [W, vTop + RISE], [-W, vTop + RISE + S], [0, vTop + S * 1.25], [W, vTop + RISE + S]];
+  const uv: [number, number][] = [
+    [-W, vTop + RISE],
+    [0, vTop],
+    [W, vTop + RISE],
+    [-W, vTop + RISE + S],
+    [0, vTop + S * 1.25],
+    [W, vTop + RISE + S],
+  ];
   const at = (u: number, v: number, h: number): [number, number, number, number, number, number] => {
     const R = radiusAt(v) + h;
     const a = u / radiusAt(v);
@@ -417,16 +612,20 @@ function chevron(m: Matrix, vTop: number, radiusAt: (v: number) => number): Vert
   for (let k = 0; k < 6; k++) {
     const [u0, v0] = uv[loop[k]];
     const [u1, v1] = uv[loop[(k + 1) % 6]];
-    const du = u1 - u0, dv = v1 - v0;
+    const du = u1 - u0,
+      dv = v1 - v0;
     const l = Math.hypot(du, dv) || 1;
     // Outward in uv space: the loop runs so that (dv, -du) points out of the strip.
-    const nu = dv / l, nv = -du / l;
+    const nu = dv / l,
+      nv = -du / l;
     const cv = (v0 + v1) / 2;
     const um = (u0 + u1) / 2;
     const a = um / radiusAt(cv);
     const n: V3 = [-Math.sin(a) * nu, nv, Math.cos(a) * nu];
-    const p0 = vert(at(u0, v0, -0.01), n), p1 = vert(at(u1, v1, -0.01), n);
-    const q0 = vert(at(u0, v0, LIFT + TH - 0.02), n), q1 = vert(at(u1, v1, LIFT + TH - 0.02), n);
+    const p0 = vert(at(u0, v0, -0.01), n),
+      p1 = vert(at(u1, v1, -0.01), n);
+    const q0 = vert(at(u0, v0, LIFT + TH - 0.02), n),
+      q1 = vert(at(u1, v1, LIFT + TH - 0.02), n);
     idx.push(p0, p1, q1, p0, q1, q0);
   }
   const vd = new VertexData();
@@ -440,11 +639,15 @@ function chevron(m: Matrix, vTop: number, radiusAt: (v: number) => number): Vert
 
 // A slightly domed 5-point star stuck to the front of the helmet, with a moulded edge.
 function helmetStar(): VertexData {
-  const R1 = 0.13, R0 = 0.055, LIFT = 0.014, TH = 0.022;
+  const R1 = 0.13,
+    R0 = 0.055,
+    LIFT = 0.014,
+    TH = 0.022;
   const cy = 0.16; // helmet-local height of the star centre
   const helmR = (y: number): number => {
     for (let i = 1; i < HELM.length; i++) {
-      const [r0, y0] = HELM[i - 1], [r1, y1] = HELM[i];
+      const [r0, y0] = HELM[i - 1],
+        [r1, y1] = HELM[i];
       if (y >= y0 && y <= y1) return r0 + ((r1 - r0) * (y - y0)) / (y1 - y0 || 1);
     }
     return HELM[HELM.length - 1][0];
@@ -453,7 +656,8 @@ function helmetStar(): VertexData {
   const at = (x: number, y: number, h: number): [number, number, number] => {
     const r = helmR(y);
     const z = HELM_Z * Math.sqrt(Math.max(0, r * r - x * x));
-    const nx = x / r, nz = z / (HELM_Z * HELM_Z * r);
+    const nx = x / r,
+      nz = z / (HELM_Z * HELM_Z * r);
     const l = Math.hypot(nx, 0.25, nz);
     return [x + (nx / l) * h, y + (0.25 / l) * h, z + (nz / l) * h];
   };
@@ -476,12 +680,16 @@ function helmetStar(): VertexData {
   const ring = pts.map(([x, y]) => vert(at(x, y, top), [x * 2, 0.25 + (y - cy) * 2, 1]));
   for (let i = 0; i < 10; i++) idx.push(c, ring[i], ring[(i + 1) % 10]);
   for (let i = 0; i < 10; i++) {
-    const [x0, y0] = pts[i], [x1, y1] = pts[(i + 1) % 10];
-    const mx = (x0 + x1) / 2, my = (y0 + y1) / 2 - cy;
+    const [x0, y0] = pts[i],
+      [x1, y1] = pts[(i + 1) % 10];
+    const mx = (x0 + x1) / 2,
+      my = (y0 + y1) / 2 - cy;
     const l = Math.hypot(mx, my) || 1;
     const n: V3 = [mx / l, my / l, 0.2];
-    const a = vert(at(x0, y0, 0), n), b = vert(at(x1, y1, 0), n);
-    const a2 = vert(at(x0, y0, top), n), b2 = vert(at(x1, y1, top), n);
+    const a = vert(at(x0, y0, 0), n),
+      b = vert(at(x1, y1, 0), n);
+    const a2 = vert(at(x0, y0, top), n),
+      b2 = vert(at(x1, y1, top), n);
     idx.push(a, b, b2, a, b2, a2);
   }
   const vd = new VertexData();

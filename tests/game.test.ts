@@ -4,7 +4,17 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createBattle } from '../src/game/battle.ts';
 import type { BattleSim } from '../src/game/battle.ts';
-import { LEVELS, WORLDS, getLevel, getLevelById, getWorld, levelCount, levelIndexById, validateLevel, validateWorld } from '../src/game/levels.ts';
+import {
+  LEVELS,
+  WORLDS,
+  getLevel,
+  getLevelById,
+  getWorld,
+  levelCount,
+  levelIndexById,
+  validateLevel,
+  validateWorld,
+} from '../src/game/levels.ts';
 import { createAutoplay } from '../src/game/autoplay.ts';
 import { LAYOUT, SIM_DT, SIM_HZ, Team, UnitKind } from '../src/contracts.ts';
 import type { InputState, LevelDef, SimEvent, SimView } from '../src/contracts.ts';
@@ -71,7 +81,13 @@ function baseLevel(over: Partial<LevelDef> = {}): LevelDef {
 }
 
 const rand = () => 0.5;
-const input = (over: Partial<InputState> = {}): InputState => ({ aimX: 0, firing: false, championPressed: false, paused: false, ...over });
+const input = (over: Partial<InputState> = {}): InputState => ({
+  aimX: 0,
+  firing: false,
+  championPressed: false,
+  paused: false,
+  ...over,
+});
 
 function run(b: ReturnType<typeof createBattle>, steps: number, inp: InputState, events: SimEvent[] = []): SimEvent[] {
   for (let i = 0; i < steps; i++) b.step(inp, events);
@@ -302,13 +318,22 @@ test('the World 1 file lists every level in order and validates', () => {
   assert.equal(WORLDS.length, 1);
   const w = getWorld('w1');
   assert.ok(w);
-  assert.deepEqual({ ...w, levels: undefined }, { id: 'w1', name: 'Bedroom Floor', faction: 'Tan Army', levels: undefined });
-  assert.deepEqual(w.levels, LEVELS.map((l) => l.id));
+  assert.deepEqual(
+    { ...w, levels: undefined },
+    { id: 'w1', name: 'Bedroom Floor', faction: 'Tan Army', levels: undefined },
+  );
+  assert.deepEqual(
+    w.levels,
+    LEVELS.map((l) => l.id),
+  );
   assert.equal(getWorld('w9'), undefined);
   const bad = (mutate: (o: any) => void, pattern: RegExp) => {
     const o = JSON.parse(JSON.stringify(w));
     mutate(o);
-    assert.throws(() => validateWorld(o, 'w.json'), (e: Error) => /w\.json/.test(e.message) && pattern.test(e.message));
+    assert.throws(
+      () => validateWorld(o, 'w.json'),
+      (e: Error) => /w\.json/.test(e.message) && pattern.test(e.message),
+    );
   };
   bad((o) => delete o.faction, /faction/);
   bad((o) => (o.levels = []), /levels/);
@@ -337,7 +362,10 @@ test('validateLevel rejects bad input with a message naming source and field', (
   const bad = (mutate: (l: any) => void, pattern: RegExp) => {
     const l = good();
     mutate(l);
-    assert.throws(() => validateLevel(l, 'bad.json'), (e: Error) => /bad\.json/.test(e.message) && pattern.test(e.message));
+    assert.throws(
+      () => validateLevel(l, 'bad.json'),
+      (e: Error) => /bad\.json/.test(e.message) && pattern.test(e.message),
+    );
   };
   assert.throws(() => validateLevel(null, 'x.json'), /x\.json/);
   bad((l) => delete l.name, /name/);
@@ -351,7 +379,10 @@ test('validateLevel rejects bad input with a message naming source and field', (
   bad((l) => (l.gates[0].z = l.lane.length + 1), /gates\[0\]\.z/);
   bad((l) => (l.gates[1].id = l.gates[0].id), /gates\[1\]\.id.*not unique/);
   bad((l) => (l.gates[0].move = { amplitude: 3, period: 4 }), /gates\[0\]\.x/);
-  bad((l) => (l.gates = Array.from({ length: 33 }, (_, i) => ({ ...l.gates[0], id: `g${i}`, x: 0 }))), /gates.*at most 32/);
+  bad(
+    (l) => (l.gates = Array.from({ length: 33 }, (_, i) => ({ ...l.gates[0], id: `g${i}`, x: 0 }))),
+    /gates.*at most 32/,
+  );
   bad((l) => (l.enemyWaves[0].count = -1), /enemyWaves\[0\]\.count/);
   bad((l) => (l.champion = undefined), /champion/);
 });

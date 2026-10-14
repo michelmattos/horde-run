@@ -66,7 +66,11 @@ export class StaticShadowCache {
 
   constructor(scene: Scene) {
     this.scene = scene;
-    const engine = scene.getEngine() as unknown as { _gl?: WebGL2RenderingContext; webGLVersion?: number; isWebGPU?: boolean };
+    const engine = scene.getEngine() as unknown as {
+      _gl?: WebGL2RenderingContext;
+      webGLVersion?: number;
+      isWebGPU?: boolean;
+    };
     this.gl = !engine.isWebGPU && engine._gl && (engine.webGLVersion ?? 1) >= 2 ? engine._gl : null;
     this.enabled = !!this.gl;
   }
@@ -94,7 +98,20 @@ export class StaticShadowCache {
     if (!map) return;
     const size = map.getSize().width;
     try {
-      const cache = new RenderTargetTexture('shadowStaticCache', size, this.scene, false, true, map.textureType, false, undefined, false, false, undefined, map.textureFormat);
+      const cache = new RenderTargetTexture(
+        'shadowStaticCache',
+        size,
+        this.scene,
+        false,
+        true,
+        map.textureType,
+        false,
+        undefined,
+        false,
+        false,
+        undefined,
+        map.textureFormat,
+      );
       cache.createDepthStencilTexture(this.scene.getEngine().useReverseDepthBuffer ? 516 : 513, true);
       this.cache = cache;
     } catch (e) {

@@ -168,7 +168,11 @@ export function createSaveSheet(
       copiedTimer = window.setTimeout(() => (exportMsg.hidden = true), 3000);
     };
     const clip = navigator.clipboard;
-    if (clip?.writeText) clip.writeText(text).then(() => done(true), () => done(false));
+    if (clip?.writeText)
+      clip.writeText(text).then(
+        () => done(true),
+        () => done(false),
+      );
     else done(false);
   });
 

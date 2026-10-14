@@ -164,7 +164,10 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: s
   return e;
 }
 
-function svg<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number>): SVGElementTagNameMap[K] {
+function svg<K extends keyof SVGElementTagNameMap>(
+  tag: K,
+  attrs: Record<string, string | number>,
+): SVGElementTagNameMap[K] {
   const e = document.createElementNS(SVG_NS, tag);
   for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v));
   return e;
@@ -232,7 +235,11 @@ export function createWorldMap(
   // ----- Scrolling body: coming-soon card on top, then the path track -----
   const scroll = el('div', 'hm-scroll');
   const soon = el('div', 'hm-soon');
-  soon.append(iconSpan('hm-lock', lockSvg(38, '#e6f6ff')), el('b', '', 'World 2 \u00b7 Freezer'), el('span', '', 'Coming soon'));
+  soon.append(
+    iconSpan('hm-lock', lockSvg(38, '#e6f6ff')),
+    el('b', '', 'World 2 \u00b7 Freezer'),
+    el('span', '', 'Coming soon'),
+  );
   const track = el('div', 'hm-track');
   scroll.append(soon, track);
 
@@ -249,8 +256,17 @@ export function createWorldMap(
   // The title stays the first line of the card's text (the smoke test reads it); the art is ordered above it in CSS.
   const art = el('div', 'hm-card-art');
   art.setAttribute('aria-hidden', 'true');
-  art.append(iconSpan('hm-army hm-green', soldierIcon(76, UI.cream)), el('span', 'hm-vs', 'VS'), iconSpan('hm-army hm-tan', soldierIcon(76, UI.cream)));
-  card.append(el('h1', 'hm-card-title', worldTitle(world)), art, el('p', 'hm-card-sub', `vs the ${world.faction}`), el('p', 'hm-card-hint', 'Tap to start'));
+  art.append(
+    iconSpan('hm-army hm-green', soldierIcon(76, UI.cream)),
+    el('span', 'hm-vs', 'VS'),
+    iconSpan('hm-army hm-tan', soldierIcon(76, UI.cream)),
+  );
+  card.append(
+    el('h1', 'hm-card-title', worldTitle(world)),
+    art,
+    el('p', 'hm-card-sub', `vs the ${world.faction}`),
+    el('p', 'hm-card-hint', 'Tap to start'),
+  );
   root.appendChild(card);
   let cardShown = false;
   let cardTimer = 0;
@@ -321,13 +337,41 @@ export function createWorldMap(
     const d = smoothPath(centres);
     s.append(
       // A toy race track lying on the floor: soft contact shadow, ink edge, kerb, grey road, dashed centre line.
-      svg('path', { d, fill: 'none', stroke: 'rgba(40,18,4,.35)', 'stroke-width': 46, 'stroke-linecap': 'round', transform: 'translate(0 6)' }),
+      svg('path', {
+        d,
+        fill: 'none',
+        stroke: 'rgba(40,18,4,.35)',
+        'stroke-width': 46,
+        'stroke-linecap': 'round',
+        transform: 'translate(0 6)',
+      }),
       svg('path', { d, fill: 'none', stroke: UI.ink, 'stroke-width': 42, 'stroke-linecap': 'round' }),
       svg('path', { d, fill: 'none', stroke: '#e03131', 'stroke-width': 36, 'stroke-linecap': 'round' }),
-      svg('path', { d, fill: 'none', stroke: '#f1f3f5', 'stroke-width': 36, 'stroke-dasharray': '14 14', 'stroke-linecap': 'butt' }),
+      svg('path', {
+        d,
+        fill: 'none',
+        stroke: '#f1f3f5',
+        'stroke-width': 36,
+        'stroke-dasharray': '14 14',
+        'stroke-linecap': 'butt',
+      }),
       svg('path', { d, fill: 'none', stroke: '#5c636e', 'stroke-width': 28, 'stroke-linecap': 'round' }),
-      svg('path', { d, fill: 'none', stroke: 'rgba(255,255,255,.12)', 'stroke-width': 10, 'stroke-linecap': 'round', transform: 'translate(-3 -4)' }),
-      svg('path', { d, fill: 'none', stroke: '#f1f3f5', 'stroke-width': 3, 'stroke-dasharray': '10 12', 'stroke-linecap': 'round' }),
+      svg('path', {
+        d,
+        fill: 'none',
+        stroke: 'rgba(255,255,255,.12)',
+        'stroke-width': 10,
+        'stroke-linecap': 'round',
+        transform: 'translate(-3 -4)',
+      }),
+      svg('path', {
+        d,
+        fill: 'none',
+        stroke: '#f1f3f5',
+        'stroke-width': 3,
+        'stroke-dasharray': '10 12',
+        'stroke-linecap': 'round',
+      }),
     );
     track.prepend(s);
 

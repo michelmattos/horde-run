@@ -170,7 +170,16 @@ function toNormal(field: Field, strength: number): Uint8Array {
 }
 
 function raw(scene: Scene, name: string, data: Uint8Array, gamma: boolean): Texture {
-  const t = RawTexture.CreateRGBATexture(data, SIZE, SIZE, scene, true, false, Texture.TRILINEAR_SAMPLINGMODE, Constants.TEXTURETYPE_UNSIGNED_BYTE);
+  const t = RawTexture.CreateRGBATexture(
+    data,
+    SIZE,
+    SIZE,
+    scene,
+    true,
+    false,
+    Texture.TRILINEAR_SAMPLINGMODE,
+    Constants.TEXTURETYPE_UNSIGNED_BYTE,
+  );
   t.name = name;
   t.wrapU = Texture.WRAP_ADDRESSMODE;
   t.wrapV = Texture.WRAP_ADDRESSMODE;
@@ -180,7 +189,12 @@ function raw(scene: Scene, name: string, data: Uint8Array, gamma: boolean): Text
 }
 
 const NORMAL_STRENGTH: Record<SurfaceKind, number> = { wood: 3, fabric: 10, paper: 4, plastic: 2 };
-const FIELDS: Record<SurfaceKind, () => Field> = { wood: woodField, fabric: fabricField, paper: paperField, plastic: plasticField };
+const FIELDS: Record<SurfaceKind, () => Field> = {
+  wood: woodField,
+  fabric: fabricField,
+  paper: paperField,
+  plastic: plasticField,
+};
 
 // Shared albedo + normal textures for a surface kind. Do not dispose them yourself: they
 // live as long as the scene. Clone() a texture if you need a different uScale/vScale.

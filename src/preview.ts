@@ -59,7 +59,9 @@ const params = new URLSearchParams(location.search);
 const key = params.get('model') ?? keys.find((k) => !k.startsWith('_')) ?? keys[0];
 const team = params.get('team') === 'enemy' ? 'enemy' : 'player';
 const variant = params.get('variant');
-let view: View = (VIEWS as readonly string[]).includes(params.get('view') ?? '') ? (params.get('view') as View) : 'orbit';
+let view: View = (VIEWS as readonly string[]).includes(params.get('view') ?? '')
+  ? (params.get('view') as View)
+  : 'orbit';
 let spin = params.get('spin') === '1';
 if (params.get('bare') === '1') document.body.classList.add('bare');
 
@@ -134,7 +136,13 @@ function applyView(v: View): void {
     // Same pitch, fov and height as the lane camera on a 390x844 phone, with the model
     // standing at lane z = gameZ.
     const aspect = engine.getRenderWidth() / Math.max(1, engine.getRenderHeight());
-    const f = computeFraming({ aspect, laneWidth: 10, nearZ: LAYOUT.cannonZ, farZ: 55 + LAYOUT.enemyBaseDepth, margin: 0.6 });
+    const f = computeFraming({
+      aspect,
+      laneWidth: 10,
+      nearZ: LAYOUT.cannonZ,
+      farZ: 55 + LAYOUT.enemyBaseDepth,
+      margin: 0.6,
+    });
     game.position.set(0, f.y, f.z - gameZ);
     game.rotation.set(f.pitch, 0, 0);
     game.fov = f.fov;
@@ -161,7 +169,17 @@ function applyView(v: View): void {
 }
 
 function emptyStats(): PreviewStats {
-  return { model: key, quality: look.quality, drawCalls: 0, meshes: [], trianglesPerModel: 0, trianglesDrawn: 0, materials: 0, textures: 0, bounds: { min: [], max: [] } };
+  return {
+    model: key,
+    quality: look.quality,
+    drawCalls: 0,
+    meshes: [],
+    trianglesPerModel: 0,
+    trianglesDrawn: 0,
+    materials: 0,
+    textures: 0,
+    bounds: { min: [], max: [] },
+  };
 }
 
 function stats(): PreviewStats {
@@ -181,7 +199,10 @@ function stats(): PreviewStats {
   s.materials = mats.size;
   s.textures = scene.textures.length;
   const { min, max } = result.root.getHierarchyBoundingVectors(true);
-  s.bounds = { min: [min.x, min.y, min.z].map((n) => +n.toFixed(3)), max: [max.x, max.y, max.z].map((n) => +n.toFixed(3)) };
+  s.bounds = {
+    min: [min.x, min.y, min.z].map((n) => +n.toFixed(3)),
+    max: [max.x, max.y, max.z].map((n) => +n.toFixed(3)),
+  };
   return s;
 }
 
@@ -269,5 +290,9 @@ boot().catch((e: unknown) => {
   api.error = e instanceof Error ? `${e.message}\n${e.stack ?? ''}` : String(e);
   console.error('preview failed:', e);
   const ui = document.getElementById('ui');
-  if (ui) ui.insertAdjacentHTML('beforeend', `<div class="row" style="color:#ff8a80">${String(api.error).split('\n')[0]}</div>`);
+  if (ui)
+    ui.insertAdjacentHTML(
+      'beforeend',
+      `<div class="row" style="color:#ff8a80">${String(api.error).split('\n')[0]}</div>`,
+    );
 });

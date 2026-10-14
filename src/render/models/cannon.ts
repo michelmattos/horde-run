@@ -121,7 +121,16 @@ function rodX(x0: number, x1: number, y: number, z: number, r: number, tess = 10
 
 // A small dome rivet / bolt head facing +axis (built facing +Y, then placed).
 function rivet(r: number, tess = 8): VertexData {
-  return lathe([[0, 0], [r, 0], [r, r * 0.35], [r * 0.7, r * 0.75], [0, r * 0.9]], tess);
+  return lathe(
+    [
+      [0, 0],
+      [r, 0],
+      [r, r * 0.35],
+      [r * 0.7, r * 0.75],
+      [0, r * 0.9],
+    ],
+    tess,
+  );
 }
 
 // Flat five-point star in the XZ plane (normal +Y), centred on the origin, a thin raised
@@ -189,14 +198,20 @@ function buildCarriage(c: Colors): VertexData {
     // Main cheek plate, front edge raked back a little.
     add(place(roundedBox(0.09, 0.28, 0.66, 0.04, 1), { x: s * CHEEK_X, y: 0.56, z: -0.03, rx: 0.06 }), c.green);
     // Trunnion cap (capsquare) on top of the cheek.
-    add(place(roundedBox(0.13, 0.08, 0.17, 0.035, 1), { x: s * (CHEEK_X + 0.004), y: 0.715, z: BARREL_Z }), c.greenDark);
+    add(
+      place(roundedBox(0.13, 0.08, 0.17, 0.035, 1), { x: s * (CHEEK_X + 0.004), y: 0.715, z: BARREL_Z }),
+      c.greenDark,
+    );
     // Bolt on the capsquare and rivets along the cheek's outer face.
-    add(place(rivet(0.03), { rz: -s * Math.PI / 2, x: s * (CHEEK_X + 0.07), y: 0.715, z: BARREL_Z }), c.greenLight);
+    add(place(rivet(0.03), { rz: (-s * Math.PI) / 2, x: s * (CHEEK_X + 0.07), y: 0.715, z: BARREL_Z }), c.greenLight);
   }
   // Rear transom between the cheeks, joining the trail.
   add(place(roundedBox(0.56, 0.14, 0.14, 0.045, 1), { y: 0.45, z: -0.27 }), c.green);
   // Box trail sloping down to the floor behind.
-  const tz0 = -0.24, ty0 = 0.43, tz1 = TRAIL_END_Z + 0.04, ty1 = 0.09;
+  const tz0 = -0.24,
+    ty0 = 0.43,
+    tz1 = TRAIL_END_Z + 0.04,
+    ty1 = 0.09;
   const len = Math.hypot(tz0 - tz1, ty0 - ty1);
   const ang = Math.atan2(ty0 - ty1, tz0 - tz1);
   const trailPl = { y: (ty0 + ty1) / 2, z: (tz0 + tz1) / 2, rx: -ang };
@@ -205,34 +220,121 @@ function buildCarriage(c: Colors): VertexData {
   add(place(place(star(0.11, 0.045, 0.012), { y: 0.074, z: -0.05 }), trailPl), c.cream);
   // Side rails along the trail (moulded ribs).
   for (const s of [-1, 1]) {
-    add(place(place(roundedBox(0.035, 0.05, len * 0.8, 0.017, 1), { x: s * 0.16, y: 0.04, z: 0.02 }), trailPl), c.greenDark);
+    add(
+      place(place(roundedBox(0.035, 0.05, len * 0.8, 0.017, 1), { x: s * 0.16, y: 0.04, z: 0.02 }), trailPl),
+      c.greenDark,
+    );
   }
   // Spade at the trail end, and a towing ring lying on top of it.
   add(place(roundedBox(0.36, 0.17, 0.06, 0.025, 1), { y: 0.085, z: TRAIL_END_Z - 0.01, rx: 0.25 }), c.greenDark);
-  add(place(CreateTorusVertexData({ diameter: 0.16, thickness: 0.04, tessellation: 9 }), { y: 0.18, z: TRAIL_END_Z - 0.02, rx: -0.35 }), c.greenDark);
+  add(
+    place(CreateTorusVertexData({ diameter: 0.16, thickness: 0.04, tessellation: 9 }), {
+      y: 0.18,
+      z: TRAIL_END_Z - 0.02,
+      rx: -0.35,
+    }),
+    c.greenDark,
+  );
   // Elevation screw under the breech and a crank handwheel on the right side.
-  add(place(CreateCylinderVertexData({ height: 0.16, diameter: 0.06, tessellation: 10 }), { y: 0.5, z: -0.29 }), c.greenDark);
-  add(place(lathe([[0, 0], [0.07, 0], [0.072, 0.025], [0, 0.045]], 10), { y: 0.5, z: -0.29 }), c.greenDark);
+  add(
+    place(CreateCylinderVertexData({ height: 0.16, diameter: 0.06, tessellation: 10 }), { y: 0.5, z: -0.29 }),
+    c.greenDark,
+  );
+  add(
+    place(
+      lathe(
+        [
+          [0, 0],
+          [0.07, 0],
+          [0.072, 0.025],
+          [0, 0.045],
+        ],
+        10,
+      ),
+      { y: 0.5, z: -0.29 },
+    ),
+    c.greenDark,
+  );
   add(rodX(CHEEK_X - 0.02, 0.4, 0.5, -0.22, 0.02, 6), c.greenDark);
-  add(place(CreateTorusVertexData({ diameter: 0.16, thickness: 0.026, tessellation: 9 }), { rz: Math.PI / 2, x: 0.4, y: 0.5, z: -0.22 }), c.greenDark);
+  add(
+    place(CreateTorusVertexData({ diameter: 0.16, thickness: 0.026, tessellation: 9 }), {
+      rz: Math.PI / 2,
+      x: 0.4,
+      y: 0.5,
+      z: -0.22,
+    }),
+    c.greenDark,
+  );
   add(rodX(0.39, 0.41, 0.5, -0.22, 0.012, 6), c.greenDark);
   for (const a of [0, Math.PI / 2]) {
-    add(place(CreateCylinderVertexData({ height: 0.15, diameter: 0.018, tessellation: 6 }), { rx: a, x: 0.4, y: 0.5, z: -0.22 }), c.greenDark);
+    add(
+      place(CreateCylinderVertexData({ height: 0.15, diameter: 0.018, tessellation: 6 }), {
+        rx: a,
+        x: 0.4,
+        y: 0.5,
+        z: -0.22,
+      }),
+      c.greenDark,
+    );
   }
   // Red handle knob on the handwheel rim.
-  add(place(lathe([[0, 0], [0.025, 0.005], [0.032, 0.03], [0.026, 0.06], [0, 0.068]], 10), { rz: -Math.PI / 2, x: 0.41, y: 0.565, z: -0.22 }), c.red);
+  add(
+    place(
+      lathe(
+        [
+          [0, 0],
+          [0.025, 0.005],
+          [0.032, 0.03],
+          [0.026, 0.06],
+          [0, 0.068],
+        ],
+        10,
+      ),
+      { rz: -Math.PI / 2, x: 0.41, y: 0.565, z: -0.22 },
+    ),
+    c.red,
+  );
   return mergeParts(parts);
 }
 
 function buildBarrel(c: Colors): VertexData {
   // Lathe around +Y, then turned so +Y runs along +Z (rx +90 deg maps +Y to +Z).
-  const body = lathe([
-    [0, -0.345], [0.11, -0.345], [0.17, -0.335], [0.2, -0.315], [0.212, -0.29], [0.214, -0.2],
-    [0.208, 0.06], [0.208, 0.09], [0.224, 0.1], [0.226, 0.15], [0.21, 0.165], [0.198, 0.18],
-    [0.18, 0.6], [0.172, 0.78], [0.172, 0.86], [0.19, 0.89], [0.202, 0.925], [0.2, 0.955],
-    [0.182, 0.975], [0.155, MUZZLE_LOCAL], [0.128, 0.975],
-  ].map(fat), 18);
-  const bore = lathe(([[0.128, 0.975], [0.11, 0.94], [0, 0.85]] as [number, number][]).map(fat), 12);
+  const body = lathe(
+    [
+      [0, -0.345],
+      [0.11, -0.345],
+      [0.17, -0.335],
+      [0.2, -0.315],
+      [0.212, -0.29],
+      [0.214, -0.2],
+      [0.208, 0.06],
+      [0.208, 0.09],
+      [0.224, 0.1],
+      [0.226, 0.15],
+      [0.21, 0.165],
+      [0.198, 0.18],
+      [0.18, 0.6],
+      [0.172, 0.78],
+      [0.172, 0.86],
+      [0.19, 0.89],
+      [0.202, 0.925],
+      [0.2, 0.955],
+      [0.182, 0.975],
+      [0.155, MUZZLE_LOCAL],
+      [0.128, 0.975],
+    ].map(fat),
+    18,
+  );
+  const bore = lathe(
+    (
+      [
+        [0.128, 0.975],
+        [0.11, 0.94],
+        [0, 0.85],
+      ] as [number, number][]
+    ).map(fat),
+    12,
+  );
   const parts = [paint(body, c.greenDark), paint(bore, c.bore)];
   // Trunnions: short stubs riding in the cheeks' capsquares.
   parts.push(paint(rodX(-CHEEK_X, CHEEK_X, 0, 0, 0.055, 8), c.greenDark));
@@ -245,14 +347,52 @@ function buildBarrel(c: Colors): VertexData {
 function buildBrass(): VertexData {
   const parts: VertexData[] = [];
   // Breech ring.
-  parts.push(lathe([[0.205, -0.305], [0.226, -0.3], [0.236, -0.28], [0.236, -0.235], [0.226, -0.215], [0.205, -0.21]].map(fat), 18));
+  parts.push(
+    lathe(
+      [
+        [0.205, -0.305],
+        [0.226, -0.3],
+        [0.236, -0.28],
+        [0.236, -0.235],
+        [0.226, -0.215],
+        [0.205, -0.21],
+      ].map(fat),
+      18,
+    ),
+  );
   // Muzzle band.
-  parts.push(lathe([[0.168, 0.775], [0.186, 0.78], [0.192, 0.795], [0.192, 0.835], [0.186, 0.85], [0.168, 0.855]].map(fat), 18));
+  parts.push(
+    lathe(
+      [
+        [0.168, 0.775],
+        [0.186, 0.78],
+        [0.192, 0.795],
+        [0.192, 0.835],
+        [0.186, 0.85],
+        [0.168, 0.855],
+      ].map(fat),
+      18,
+    ),
+  );
   // Cascabel: neck, button knob at the very back (faces the camera).
-  parts.push(lathe([
-    [0.13, -0.335], [0.13, -0.35], [0.1, -0.37], [0.048, -0.395], [0.036, -0.42], [0.052, -0.445],
-    [0.076, -0.475], [0.078, -0.505], [0.062, -0.535], [0.032, -0.552], [0, -0.555],
-  ].map(fat), 12));
+  parts.push(
+    lathe(
+      [
+        [0.13, -0.335],
+        [0.13, -0.35],
+        [0.1, -0.37],
+        [0.048, -0.395],
+        [0.036, -0.42],
+        [0.052, -0.445],
+        [0.076, -0.475],
+        [0.078, -0.505],
+        [0.062, -0.535],
+        [0.032, -0.552],
+        [0, -0.555],
+      ].map(fat),
+      12,
+    ),
+  );
   for (const p of parts) place(p, { rx: Math.PI / 2 });
   // Rear sight (a notched leaf on a block) just ahead of the breech ring, front sight bead.
   parts.push(place(roundedBox(0.1, 0.045, 0.07, 0.015, 1), { y: 0.245, z: -0.15 }));
@@ -267,26 +407,83 @@ function buildWheel(c: Colors): VertexData {
   const parts: VertexData[] = [];
   const W = 0.09; // half width of the tyre
   // Tyre: rounded rubber band.
-  parts.push(paint(lathe([
-    [0.37, -W + 0.004], [0.4, -W], [0.428, -W + 0.012], [WHEEL_RADIUS, -0.03], [WHEEL_RADIUS, 0.03],
-    [0.428, W - 0.012], [0.37, W - 0.004],
-  ], 24), c.tyre));
+  parts.push(
+    paint(
+      lathe(
+        [
+          [0.37, -W + 0.004],
+          [0.4, -W],
+          [0.428, -W + 0.012],
+          [WHEEL_RADIUS, -0.03],
+          [WHEEL_RADIUS, 0.03],
+          [0.428, W - 0.012],
+          [0.37, W - 0.004],
+        ],
+        24,
+      ),
+      c.tyre,
+    ),
+  );
   // Wooden felloe (rim) inside the tyre.
-  parts.push(paint(lathe([[0.372, -0.066], [0.312, -0.062], [0.312, 0.062], [0.372, 0.066]], 24), c.oakLight));
+  parts.push(
+    paint(
+      lathe(
+        [
+          [0.372, -0.066],
+          [0.312, -0.062],
+          [0.312, 0.062],
+          [0.372, 0.066],
+        ],
+        24,
+      ),
+      c.oakLight,
+    ),
+  );
   // Spokes: tapered, slightly flattened, 10 of them.
   for (let i = 0; i < 10; i++) {
     const a = (i / 10) * Math.PI * 2;
-    const spoke = CreateCylinderVertexData({ height: 0.24, diameterTop: 0.04, diameterBottom: 0.06, tessellation: 5, cap: 0 });
+    const spoke = CreateCylinderVertexData({
+      height: 0.24,
+      diameterTop: 0.04,
+      diameterBottom: 0.06,
+      tessellation: 5,
+      cap: 0,
+    });
     // Along +X from r = 0.08 to 0.32 (in the XZ plane), then spun around Y.
     place(spoke, { sz: 0.75, rz: -Math.PI / 2, x: 0.2 });
     place(spoke, { ry: a });
     parts.push(paint(spoke, c.oak));
   }
   // Hub (nave) with an outer cap and axle nut.
-  parts.push(paint(lathe([
-    [0.06, -0.1], [0.1, -0.06], [0.1, 0.04], [0.085, 0.075], [0.065, 0.085], [0.06, 0.125],
-  ], 12), c.oakDark));
-  parts.push(paint(lathe([[0.06, 0.125], [0.045, 0.145], [0, 0.152]], 12), c.greenDark));
+  parts.push(
+    paint(
+      lathe(
+        [
+          [0.06, -0.1],
+          [0.1, -0.06],
+          [0.1, 0.04],
+          [0.085, 0.075],
+          [0.065, 0.085],
+          [0.06, 0.125],
+        ],
+        12,
+      ),
+      c.oakDark,
+    ),
+  );
+  parts.push(
+    paint(
+      lathe(
+        [
+          [0.06, 0.125],
+          [0.045, 0.145],
+          [0, 0.152],
+        ],
+        12,
+      ),
+      c.greenDark,
+    ),
+  );
   const wheel = mergeParts(parts);
   // +Y outward -> +X: rz = -90 deg maps +Y to +X.
   return place(wheel, { rz: -Math.PI / 2 });
@@ -336,7 +533,15 @@ export function buildCannonGeometry(): CannonGeometry {
   const toBody = { y: BARREL_Y, z: BARREL_Z, rx: BARREL_PITCH };
   const barrelBody = place(clone(barrel), toBody);
   const brassBody = place(clone(brass), toBody);
-  const wheelOccluder = lathe([[0.1, -0.06], [0.44, -0.06], [0.44, 0.06], [0.1, 0.06]], 12);
+  const wheelOccluder = lathe(
+    [
+      [0.1, -0.06],
+      [0.44, -0.06],
+      [0.44, 0.06],
+      [0.1, 0.06],
+    ],
+    12,
+  );
   place(wheelOccluder, { rz: -Math.PI / 2 });
   const wl = place(clone(wheelOccluder), { x: WHEEL_X, y: AXLE_Y });
   const wr = place(mirrorX(wheelOccluder), { x: -WHEEL_X, y: AXLE_Y });
@@ -408,7 +613,11 @@ export function createCannon(scene: Scene, look: Look): CannonModel {
   look.receiveShadows(wheels);
   look.receiveShadows(barrelMesh);
 
-  const muzzle = new Vector3(0, BARREL_Y - Math.sin(BARREL_PITCH) * MUZZLE_LOCAL, BARREL_Z + Math.cos(BARREL_PITCH) * MUZZLE_LOCAL);
+  const muzzle = new Vector3(
+    0,
+    BARREL_Y - Math.sin(BARREL_PITCH) * MUZZLE_LOCAL,
+    BARREL_Z + Math.cos(BARREL_PITCH) * MUZZLE_LOCAL,
+  );
 
   return {
     root,

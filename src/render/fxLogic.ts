@@ -104,10 +104,17 @@ export class ParticlePool {
 
   // Returns the slot used. Prefers a free slot after the cursor, else the one with the least life.
   spawn(
-    x: number, y: number, z: number,
-    vx: number, vy: number, vz: number,
-    life: number, size: number,
-    r: number, g: number, b: number,
+    x: number,
+    y: number,
+    z: number,
+    vx: number,
+    vy: number,
+    vz: number,
+    life: number,
+    size: number,
+    r: number,
+    g: number,
+    b: number,
     gravity: number,
   ): number {
     const n = this.capacity;
@@ -305,18 +312,34 @@ export function dartPitch(k: number, y0: number, y1: number, lift: number, dist:
 // pitch about X, yaw about Y (the order of Babylon's RotationYawPitchRoll), then
 // translate. yaw 0 keeps local +Z up the lane; positive pitch tips +Z down.
 export function writeTRS(
-  m: Float32Array, o: number,
-  x: number, y: number, z: number,
-  sx: number, sy: number, sz: number,
-  yaw: number, pitch: number, roll: number,
+  m: Float32Array,
+  o: number,
+  x: number,
+  y: number,
+  z: number,
+  sx: number,
+  sy: number,
+  sz: number,
+  yaw: number,
+  pitch: number,
+  roll: number,
 ): void {
-  const cy = Math.cos(yaw), sny = Math.sin(yaw);
-  const cx = Math.cos(pitch), snx = Math.sin(pitch);
-  const cz = Math.cos(roll), snz = Math.sin(roll);
+  const cy = Math.cos(yaw),
+    sny = Math.sin(yaw);
+  const cx = Math.cos(pitch),
+    snx = Math.sin(pitch);
+  const cz = Math.cos(roll),
+    snz = Math.sin(roll);
   // Rows of Rz * Rx, then times Ry: row = [a0*cy + a2*sy, a1, -a0*sy + a2*cy].
-  const a00 = cz, a01 = snz * cx, a02 = snz * snx;
-  const a10 = -snz, a11 = cz * cx, a12 = cz * snx;
-  const a20 = 0, a21 = -snx, a22 = cx;
+  const a00 = cz,
+    a01 = snz * cx,
+    a02 = snz * snx;
+  const a10 = -snz,
+    a11 = cz * cx,
+    a12 = cz * snx;
+  const a20 = 0,
+    a21 = -snx,
+    a22 = cx;
   m[o] = (a00 * cy + a02 * sny) * sx;
   m[o + 1] = a01 * sx;
   m[o + 2] = (-a00 * sny + a02 * cy) * sx;
@@ -339,13 +362,23 @@ export function writeTRS(
 // scaled by sx, local Y along `up` (ux, uy, uz) scaled by sy, rotated by `spin` in the
 // view plane. The axes are unit vectors read from the camera's view matrix.
 export function writeBillboard(
-  m: Float32Array, o: number,
-  x: number, y: number, z: number,
-  sx: number, sy: number, spin: number,
-  rx: number, ry: number, rz: number,
-  ux: number, uy: number, uz: number,
+  m: Float32Array,
+  o: number,
+  x: number,
+  y: number,
+  z: number,
+  sx: number,
+  sy: number,
+  spin: number,
+  rx: number,
+  ry: number,
+  rz: number,
+  ux: number,
+  uy: number,
+  uz: number,
 ): void {
-  const c = Math.cos(spin), s = Math.sin(spin);
+  const c = Math.cos(spin),
+    s = Math.sin(spin);
   m[o] = (rx * c + ux * s) * sx;
   m[o + 1] = (ry * c + uy * s) * sx;
   m[o + 2] = (rz * c + uz * s) * sx;
@@ -369,27 +402,47 @@ export function writeBillboard(
 // `len`, width `w` across it, facing the camera as far as the streak allows (fwd = the
 // camera's forward axis). Falls back to a plain billboard-ish orientation at rest.
 export function writeStreak(
-  m: Float32Array, o: number,
-  x: number, y: number, z: number,
-  vx: number, vy: number, vz: number,
-  w: number, len: number,
-  fx: number, fy: number, fz: number,
+  m: Float32Array,
+  o: number,
+  x: number,
+  y: number,
+  z: number,
+  vx: number,
+  vy: number,
+  vz: number,
+  w: number,
+  len: number,
+  fx: number,
+  fy: number,
+  fz: number,
 ): void {
   let l = Math.hypot(vx, vy, vz);
-  let ax = vx, ay = vy, az = vz;
+  let ax = vx,
+    ay = vy,
+    az = vz;
   if (l < 1e-4) {
-    ax = 0; ay = 1; az = 0; l = 1;
+    ax = 0;
+    ay = 1;
+    az = 0;
+    l = 1;
   }
-  ax /= l; ay /= l; az /= l;
+  ax /= l;
+  ay /= l;
+  az /= l;
   // across = along x fwd, so the quad's face points at the camera.
   let cx = ay * fz - az * fy;
   let cy = az * fx - ax * fz;
   let cz = ax * fy - ay * fx;
   let cl = Math.hypot(cx, cy, cz);
   if (cl < 1e-4) {
-    cx = 1; cy = 0; cz = 0; cl = 1;
+    cx = 1;
+    cy = 0;
+    cz = 0;
+    cl = 1;
   }
-  cx /= cl; cy /= cl; cz /= cl;
+  cx /= cl;
+  cy /= cl;
+  cz /= cl;
   m[o] = cx * w;
   m[o + 1] = cy * w;
   m[o + 2] = cz * w;
@@ -477,10 +530,34 @@ export interface SceneryProp {
 
 // Footprint radius of a prop at scale 1 (world units, its largest variant), so props
 // never reach the rug or each other. Same values as models/props.ts PROP_RADIUS.
-export const PROP_RADIUS: Record<PropKind, number> = { block: 1.15, book: 1.55, crayon: 1.4, marble: 1.0, car: 1.3, sock: 1.75, brick: 0.95 };
+export const PROP_RADIUS: Record<PropKind, number> = {
+  block: 1.15,
+  book: 1.55,
+  crayon: 1.4,
+  marble: 1.0,
+  car: 1.3,
+  sock: 1.75,
+  brick: 0.95,
+};
 // Scatter mix (sums to 1): big hero toys (car, sock) are rare. Same as models/props.ts.
-export const PROP_WEIGHTS: Record<PropKind, number> = { block: 0.18, book: 0.17, crayon: 0.19, marble: 0.12, car: 0.06, sock: 0.07, brick: 0.21 };
-export const PROP_VARIANT_COUNT: Record<PropKind, number> = { block: 4, book: 3, crayon: 3, marble: 3, car: 2, sock: 2, brick: 4 };
+export const PROP_WEIGHTS: Record<PropKind, number> = {
+  block: 0.18,
+  book: 0.17,
+  crayon: 0.19,
+  marble: 0.12,
+  car: 0.06,
+  sock: 0.07,
+  brick: 0.21,
+};
+export const PROP_VARIANT_COUNT: Record<PropKind, number> = {
+  block: 4,
+  book: 3,
+  crayon: 3,
+  marble: 3,
+  car: 2,
+  sock: 2,
+  brick: 4,
+};
 
 // Small deterministic PRNG (mulberry32) so the bedroom looks the same on every retry.
 export function mulberry32(seed: number): () => number {
@@ -499,7 +576,14 @@ export const SCENERY_CLEARANCE = 1.2; // world units kept free between the lane 
 // Toys scattered on both sides of the lane, never inside it (nor its border) and never
 // overlapping each other. Rows run from zMin to zMax; props reach out to `reach` units
 // beyond the lane edge so wide screens see more of the bedroom floor.
-export function scatterScenery(seed: number, laneWidth: number, zMin: number, zMax: number, count: number, reach = 22): SceneryProp[] {
+export function scatterScenery(
+  seed: number,
+  laneWidth: number,
+  zMin: number,
+  zMax: number,
+  count: number,
+  reach = 22,
+): SceneryProp[] {
   const rand = mulberry32(seed);
   const props: SceneryProp[] = [];
   const edge = laneWidth / 2 + SCENERY_CLEARANCE;

@@ -54,8 +54,24 @@ import { Matrix, Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector';
 import type { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial';
 import type { Look } from '../look/index.ts';
 import {
-  HEX, TOY_COLORS, buildMesh, fabricMaterial, fixWinding, glassMaterial, lathe, lin, mergeParts, paint,
-  paintedTinMaterial, paperMaterial, place, plasticMaterial, roundedBox, rubberMaterial, waxMaterial, woodMaterial,
+  HEX,
+  TOY_COLORS,
+  buildMesh,
+  fabricMaterial,
+  fixWinding,
+  glassMaterial,
+  lathe,
+  lin,
+  mergeParts,
+  paint,
+  paintedTinMaterial,
+  paperMaterial,
+  place,
+  plasticMaterial,
+  roundedBox,
+  rubberMaterial,
+  waxMaterial,
+  woodMaterial,
 } from '../look/index.ts';
 import type { ModelInfo, PreviewOptions, PreviewResult } from '../look/model.ts';
 
@@ -85,14 +101,38 @@ export const PROP_DESATURATION = 0.15;
 //  car: 0 upright, 1 tipped on its side
 //  sock: 0 single, 1 a pair
 //  brick: 0 2x4, 1 2x2, 2 two 2x4 crossed, 3 2x2 on a 2x4
-export const PROP_VARIANTS: Record<PropKindName, number> = { block: 4, book: 3, crayon: 3, marble: 3, car: 2, sock: 2, brick: 4 };
+export const PROP_VARIANTS: Record<PropKindName, number> = {
+  block: 4,
+  book: 3,
+  crayon: 3,
+  marble: 3,
+  car: 2,
+  sock: 2,
+  brick: 4,
+};
 
 // Footprint radius at scale 1 (world units), the largest variant.
-export const PROP_RADIUS: Record<PropKindName, number> = { block: 1.15, book: 1.55, crayon: 1.4, marble: 1.0, car: 1.3, sock: 1.75, brick: 0.95 };
+export const PROP_RADIUS: Record<PropKindName, number> = {
+  block: 1.15,
+  book: 1.55,
+  crayon: 1.4,
+  marble: 1.0,
+  car: 1.3,
+  sock: 1.75,
+  brick: 0.95,
+};
 
 // Suggested scatter mix (sums to 1). Big hero toys (car, sock) are rare; the busy
 // alphabet blocks are kept below the calmer crayons and bricks.
-export const PROP_WEIGHTS: Record<PropKindName, number> = { block: 0.18, book: 0.17, crayon: 0.19, marble: 0.12, car: 0.06, sock: 0.07, brick: 0.21 };
+export const PROP_WEIGHTS: Record<PropKindName, number> = {
+  block: 0.18,
+  book: 0.17,
+  crayon: 0.19,
+  marble: 0.12,
+  car: 0.06,
+  sock: 0.07,
+  brick: 0.21,
+};
 
 export interface PropKit {
   kinds: PropKindName[];
@@ -119,7 +159,8 @@ export interface SceneryLike {
 // Adds an fxLogic SceneryProp: stack -> variant for block/book, shade -> colour.
 export function addSceneryProp(kit: PropKit, p: SceneryLike): void {
   const kind = (PROP_KINDS as readonly string[]).includes(p.kind) ? (p.kind as PropKindName) : 'block';
-  const variant = p.variant ?? (kind === 'block' || kind === 'book' ? Math.max(0, p.stack - 1) : Math.floor(p.shade * 977));
+  const variant =
+    p.variant ?? (kind === 'block' || kind === 'book' ? Math.max(0, p.stack - 1) : Math.floor(p.shade * 977));
   kit.add(kind, variant, p.x, p.z, p.yaw, p.scale, Math.floor(p.shade * PROP_COLOR_COUNT * 7));
 }
 
@@ -145,7 +186,12 @@ function box(w: number, h: number, d: number): VertexData {
 
 // Local vertex AO (like bakeVertexAO in look/geometry.ts, but only rays against
 // triangles near each vertex, so the whole kit bakes in tens of ms instead of seconds).
-interface LocalAo { samples?: number; maxDist?: number; strength?: number; ground?: boolean }
+interface LocalAo {
+  samples?: number;
+  maxDist?: number;
+  strength?: number;
+  ground?: boolean;
+}
 function bakeLocalAO(vd: VertexData, o: LocalAo = {}): VertexData {
   const p = vd.positions!;
   const nrm = vd.normals!;
@@ -161,8 +207,12 @@ function bakeLocalAO(vd: VertexData, o: LocalAo = {}): VertexData {
   // Triangle bounding spheres.
   const sph = new Float32Array(nt * 4);
   for (let t = 0; t < nt; t++) {
-    const a = idx[t * 3] * 3, b = idx[t * 3 + 1] * 3, c = idx[t * 3 + 2] * 3;
-    const cx = (p[a] + p[b] + p[c]) / 3, cy = (p[a + 1] + p[b + 1] + p[c + 1]) / 3, cz = (p[a + 2] + p[b + 2] + p[c + 2]) / 3;
+    const a = idx[t * 3] * 3,
+      b = idx[t * 3 + 1] * 3,
+      c = idx[t * 3 + 2] * 3;
+    const cx = (p[a] + p[b] + p[c]) / 3,
+      cy = (p[a + 1] + p[b + 1] + p[c + 1]) / 3,
+      cz = (p[a + 2] + p[b + 2] + p[c + 2]) / 3;
     let r = 0;
     for (const v of [a, b, c]) r = Math.max(r, Math.hypot(p[v] - cx, p[v + 1] - cy, p[v + 2] - cz));
     sph.set([cx, cy, cz, r], t * 4);
@@ -177,28 +227,52 @@ function bakeLocalAO(vd: VertexData, o: LocalAo = {}): VertexData {
   const colors = vd.colors ? Float32Array.from(vd.colors) : new Float32Array(nv * 4).fill(1);
   const near: number[] = [];
   for (let v = 0; v < nv; v++) {
-    const ox = p[v * 3], oy = p[v * 3 + 1], oz = p[v * 3 + 2];
-    const nx = nrm[v * 3], ny = nrm[v * 3 + 1], nz = nrm[v * 3 + 2];
+    const ox = p[v * 3],
+      oy = p[v * 3 + 1],
+      oz = p[v * 3 + 2];
+    const nx = nrm[v * 3],
+      ny = nrm[v * 3 + 1],
+      nz = nrm[v * 3 + 2];
     near.length = 0;
     for (let t = 0; t < nt; t++) {
-      const ex = sph[t * 4] - ox, ey = sph[t * 4 + 1] - oy, ez = sph[t * 4 + 2] - oz;
+      const ex = sph[t * 4] - ox,
+        ey = sph[t * 4 + 1] - oy,
+        ez = sph[t * 4 + 2] - oz;
       const lim = maxDist + sph[t * 4 + 3];
       if (ex * ex + ey * ey + ez * ez < lim * lim) near.push(t);
     }
     const tx0 = Math.abs(nx) < 0.9 ? 1 : 0;
     const ty0 = tx0 ? 0 : 1;
-    let tx = ty0 * nz, ty = -tx0 * nz, tz = tx0 * ny - ty0 * nx;
+    let tx = ty0 * nz,
+      ty = -tx0 * nz,
+      tz = tx0 * ny - ty0 * nx;
     const tl = Math.hypot(tx, ty, tz) || 1;
-    tx /= tl; ty /= tl; tz /= tl;
-    const bx = ny * tz - nz * ty, by = nz * tx - nx * tz, bz = nx * ty - ny * tx;
-    const sx = ox + nx * 1e-3, sy = oy + ny * 1e-3, sz = oz + nz * 1e-3;
+    tx /= tl;
+    ty /= tl;
+    tz /= tl;
+    const bx = ny * tz - nz * ty,
+      by = nz * tx - nx * tz,
+      bz = nx * ty - ny * tx;
+    const sx = ox + nx * 1e-3,
+      sy = oy + ny * 1e-3,
+      sz = oz + nz * 1e-3;
     let hit = 0;
     for (let k = 0; k < samples; k++) {
-      const a = dirs[k * 3], b = dirs[k * 3 + 1], c = dirs[k * 3 + 2];
-      const dx = tx * a + bx * b + nx * c, dy = ty * a + by * b + ny * c, dz = tz * a + bz * b + nz * c;
-      if (ground && dy < -1e-6 && (sy - minY) / -dy < maxDist) { hit++; continue; }
+      const a = dirs[k * 3],
+        b = dirs[k * 3 + 1],
+        c = dirs[k * 3 + 2];
+      const dx = tx * a + bx * b + nx * c,
+        dy = ty * a + by * b + ny * c,
+        dz = tz * a + bz * b + nz * c;
+      if (ground && dy < -1e-6 && (sy - minY) / -dy < maxDist) {
+        hit++;
+        continue;
+      }
       for (const t of near) {
-        if (rayTri(p, idx, t * 3, sx, sy, sz, dx, dy, dz, maxDist)) { hit++; break; }
+        if (rayTri(p, idx, t * 3, sx, sy, sz, dx, dy, dz, maxDist)) {
+          hit++;
+          break;
+        }
       }
     }
     const ao = 1 - strength * (hit / samples);
@@ -210,18 +284,41 @@ function bakeLocalAO(vd: VertexData, o: LocalAo = {}): VertexData {
   return vd;
 }
 
-function rayTri(p: ArrayLike<number>, idx: ArrayLike<number>, t: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): boolean {
-  const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
-  const e1x = p[b] - p[a], e1y = p[b + 1] - p[a + 1], e1z = p[b + 2] - p[a + 2];
-  const e2x = p[c] - p[a], e2y = p[c + 1] - p[a + 1], e2z = p[c + 2] - p[a + 2];
-  const px = dy * e2z - dz * e2y, py = dz * e2x - dx * e2z, pz = dx * e2y - dy * e2x;
+function rayTri(
+  p: ArrayLike<number>,
+  idx: ArrayLike<number>,
+  t: number,
+  ox: number,
+  oy: number,
+  oz: number,
+  dx: number,
+  dy: number,
+  dz: number,
+  maxT: number,
+): boolean {
+  const a = idx[t] * 3,
+    b = idx[t + 1] * 3,
+    c = idx[t + 2] * 3;
+  const e1x = p[b] - p[a],
+    e1y = p[b + 1] - p[a + 1],
+    e1z = p[b + 2] - p[a + 2];
+  const e2x = p[c] - p[a],
+    e2y = p[c + 1] - p[a + 1],
+    e2z = p[c + 2] - p[a + 2];
+  const px = dy * e2z - dz * e2y,
+    py = dz * e2x - dx * e2z,
+    pz = dx * e2y - dy * e2x;
   const det = e1x * px + e1y * py + e1z * pz;
   if (det > -1e-9 && det < 1e-9) return false;
   const inv = 1 / det;
-  const sx = ox - p[a], sy = oy - p[a + 1], sz = oz - p[a + 2];
+  const sx = ox - p[a],
+    sy = oy - p[a + 1],
+    sz = oz - p[a + 2];
   const u = (sx * px + sy * py + sz * pz) * inv;
   if (u < 0 || u > 1) return false;
-  const qx = sy * e1z - sz * e1y, qy = sz * e1x - sx * e1z, qz = sx * e1y - sy * e1x;
+  const qx = sy * e1z - sz * e1y,
+    qy = sz * e1x - sx * e1z,
+    qz = sx * e1y - sy * e1x;
   const v = (dx * qx + dy * qy + dz * qz) * inv;
   if (v < 0 || u + v > 1) return false;
   const d = (e2x * qx + e2y * qy + e2z * qz) * inv;
@@ -229,7 +326,14 @@ function rayTri(p: ArrayLike<number>, idx: ArrayLike<number>, t: number, ox: num
 }
 
 // Bakes AO over two parts together (so each darkens the other), then splits them again.
-function bakePair(a: VertexData, b: VertexData, samples: number, strength: number, ground = true, maxDist = 0.3): [VertexData, VertexData] {
+function bakePair(
+  a: VertexData,
+  b: VertexData,
+  samples: number,
+  strength: number,
+  ground = true,
+  maxDist = 0.3,
+): [VertexData, VertexData] {
   const na = a.positions!.length / 3;
   const ia = a.indices!.length;
   const all = mergeParts([a, b]);
@@ -243,7 +347,9 @@ function slice(vd: VertexData, v0: number, v1: number, i0: number, i1: number): 
   out.normals = Array.from(vd.normals!).slice(v0 * 3, v1 * 3);
   if (vd.uvs) out.uvs = Array.from(vd.uvs).slice(v0 * 2, v1 * 2);
   if (vd.colors) out.colors = Array.from(vd.colors).slice(v0 * 4, v1 * 4);
-  out.indices = Array.from(vd.indices!).slice(i0, i1).map((i) => i - v0);
+  out.indices = Array.from(vd.indices!)
+    .slice(i0, i1)
+    .map((i) => i - v0);
   return out;
 }
 
@@ -275,7 +381,13 @@ function bandColors(vd: VertexData, bands: readonly [number, number, number][]):
 
 // Builds a VertexData from raw arrays with rough outward normals, then fixes the winding
 // and recomputes smooth normals from it.
-function rawMesh(positions: number[], indices: number[], roughNormals: number[], uvs: number[], colors?: number[]): VertexData {
+function rawMesh(
+  positions: number[],
+  indices: number[],
+  roughNormals: number[],
+  uvs: number[],
+  colors?: number[],
+): VertexData {
   const vd = new VertexData();
   vd.positions = positions;
   vd.indices = indices;
@@ -295,13 +407,42 @@ function rawMesh(positions: number[], indices: number[], roughNormals: number[],
 const BLOCK = 1.0;
 type Seg = [number, number, number, number];
 const LETTERS: Record<string, Seg[]> = {
-  A: [[-0.22, -0.27, 0, 0.27], [0, 0.27, 0.22, -0.27], [-0.12, -0.05, 0.12, -0.05]],
-  B: [[-0.18, -0.27, -0.18, 0.27], [-0.18, 0.27, 0.1, 0.27], [0.1, 0.27, 0.17, 0.14], [0.17, 0.14, 0.1, 0.01], [-0.18, 0.01, 0.12, 0.01], [0.12, 0.01, 0.2, -0.13], [0.2, -0.13, 0.12, -0.27], [0.12, -0.27, -0.18, -0.27]],
-  E: [[-0.17, -0.27, -0.17, 0.27], [-0.17, 0.27, 0.19, 0.27], [-0.17, 0.0, 0.12, 0.0], [-0.17, -0.27, 0.19, -0.27]],
-  H: [[-0.18, -0.27, -0.18, 0.27], [0.18, -0.27, 0.18, 0.27], [-0.18, 0, 0.18, 0]],
+  A: [
+    [-0.22, -0.27, 0, 0.27],
+    [0, 0.27, 0.22, -0.27],
+    [-0.12, -0.05, 0.12, -0.05],
+  ],
+  B: [
+    [-0.18, -0.27, -0.18, 0.27],
+    [-0.18, 0.27, 0.1, 0.27],
+    [0.1, 0.27, 0.17, 0.14],
+    [0.17, 0.14, 0.1, 0.01],
+    [-0.18, 0.01, 0.12, 0.01],
+    [0.12, 0.01, 0.2, -0.13],
+    [0.2, -0.13, 0.12, -0.27],
+    [0.12, -0.27, -0.18, -0.27],
+  ],
+  E: [
+    [-0.17, -0.27, -0.17, 0.27],
+    [-0.17, 0.27, 0.19, 0.27],
+    [-0.17, 0.0, 0.12, 0.0],
+    [-0.17, -0.27, 0.19, -0.27],
+  ],
+  H: [
+    [-0.18, -0.27, -0.18, 0.27],
+    [0.18, -0.27, 0.18, 0.27],
+    [-0.18, 0, 0.18, 0],
+  ],
   // Numbers mixed in, so a scatter of blocks reads less templated.
-  '4': [[0.1, -0.27, 0.1, 0.27], [0.1, 0.27, -0.2, -0.07], [-0.2, -0.07, 0.2, -0.07]],
-  '7': [[-0.18, 0.27, 0.19, 0.27], [0.19, 0.27, -0.04, -0.27]],
+  '4': [
+    [0.1, -0.27, 0.1, 0.27],
+    [0.1, 0.27, -0.2, -0.07],
+    [-0.2, -0.07, 0.2, -0.07],
+  ],
+  '7': [
+    [-0.18, 0.27, 0.19, 0.27],
+    [0.19, 0.27, -0.04, -0.27],
+  ],
 };
 const LETTER_T = 0.095; // stroke width
 const EMBOSS = 0.045; // how far letters stand proud
@@ -314,7 +455,9 @@ function letterOnFrontFace(segs: Seg[], half: number): VertexData[] {
     const x2 = -mx2;
     const len = Math.hypot(x2 - x1, y2 - y1) + LETTER_T * 0.9;
     const ang = Math.atan2(y2 - y1, x2 - x1);
-    parts.push(place(box(len, LETTER_T, EMBOSS), { x: (x1 + x2) / 2, y: (y1 + y2) / 2, z: half + EMBOSS / 2 - 0.004, rz: ang }));
+    parts.push(
+      place(box(len, LETTER_T, EMBOSS), { x: (x1 + x2) / 2, y: (y1 + y2) / 2, z: half + EMBOSS / 2 - 0.004, rz: ang }),
+    );
   }
   // Raised frame around the face (the classic alphabet-block border).
   // Thin and low, so the frame stays quieter than the glyph.
@@ -331,7 +474,14 @@ function letterOnFrontFace(segs: Seg[], half: number): VertexData[] {
 function blockGeometry(): [VertexData, VertexData] {
   const half = BLOCK / 2;
   const body = roundedBox(BLOCK, BLOCK, BLOCK, 0.085, 3);
-  const faces: [string, number, number][] = [['A', 0, 0], ['B', Math.PI, 0], ['E', Math.PI / 2, 0], ['4', -Math.PI / 2, 0], ['H', 0, -Math.PI / 2], ['7', 0, Math.PI / 2]];
+  const faces: [string, number, number][] = [
+    ['A', 0, 0],
+    ['B', Math.PI, 0],
+    ['E', Math.PI / 2, 0],
+    ['4', -Math.PI / 2, 0],
+    ['H', 0, -Math.PI / 2],
+    ['7', 0, Math.PI / 2],
+  ];
   const letterParts: VertexData[] = [];
   for (const [ch, ry, rx] of faces) {
     const m = mergeParts(letterOnFrontFace(LETTERS[ch], half));
@@ -355,10 +505,25 @@ function bookGeometry(): [VertexData, VertexData] {
   cover.push(place(roundedBox(BOOK_W, tb, BOOK_D, 0.022, 2), { y: BOOK_H - tb / 2 }));
   // Rounded spine: a flattened cylinder along Z joining the boards.
   const sx = -BOOK_W / 2 + 0.07;
-  cover.push(place(CreateCylinderVertexData({ height: BOOK_D, diameter: BOOK_H, tessellation: 16 }), { rx: Math.PI / 2, sx: 0.55, x: sx, y: BOOK_H / 2 }));
+  cover.push(
+    place(CreateCylinderVertexData({ height: BOOK_D, diameter: BOOK_H, tessellation: 16 }), {
+      rx: Math.PI / 2,
+      sx: 0.55,
+      x: sx,
+      y: BOOK_H / 2,
+    }),
+  );
   // Raised bands across the spine.
   for (const z of [-0.78, -0.62, 0.62, 0.78]) {
-    cover.push(place(CreateCylinderVertexData({ height: 0.045, diameter: BOOK_H + 0.035, tessellation: 16 }), { rx: Math.PI / 2, sx: 0.6, x: sx - 0.006, y: BOOK_H / 2, z }));
+    cover.push(
+      place(CreateCylinderVertexData({ height: 0.045, diameter: BOOK_H + 0.035, tessellation: 16 }), {
+        rx: Math.PI / 2,
+        sx: 0.6,
+        x: sx - 0.006,
+        y: BOOK_H / 2,
+        z,
+      }),
+    );
   }
   const pages: VertexData[] = [];
   const inner = BOOK_H - 2 * tb;
@@ -368,18 +533,33 @@ function bookGeometry(): [VertexData, VertexData] {
     const jw = [0.0, 0.025, 0.012, 0.03, 0.006][i];
     const jd = [0.02, 0.0, 0.028, 0.01, 0.022][i];
     const w = BOOK_W - 0.1 - jw;
-    const slab = place(roundedBox(w, h - 0.003, BOOK_D - 0.1 - jd, 0.008, 1), { x: -BOOK_W / 2 + 0.03 + w / 2, y: tb + h * (i + 0.5) });
+    const slab = place(roundedBox(w, h - 0.003, BOOK_D - 0.1 - jd, 0.008, 1), {
+      x: -BOOK_W / 2 + 0.03 + w / 2,
+      y: tb + h * (i + 0.5),
+    });
     const shade = [1, 0.93, 0.98, 0.9, 0.96][i];
     pages.push(paint(slab, [shade, shade * 0.985, shade * 0.95]));
   }
   // Cover label with two printed title lines.
   const labelY = BOOK_H + 0.006;
-  pages.push(paint(place(roundedBox(0.92, 0.012, 0.62, 0.005, 1), { x: 0.12, y: labelY, z: 0.42 }), [0.98, 0.95, 0.86]));
+  pages.push(
+    paint(place(roundedBox(0.92, 0.012, 0.62, 0.005, 1), { x: 0.12, y: labelY, z: 0.42 }), [0.98, 0.95, 0.86]),
+  );
   const ink = lin('ink');
-  pages.push(paint(place(box(0.62, 0.014, 0.08), { x: 0.12, y: labelY + 0.002, z: 0.53 }), [ink.r * 2.2, ink.g * 2.2, ink.b * 2.2]));
-  pages.push(paint(place(box(0.42, 0.014, 0.05), { x: 0.12, y: labelY + 0.002, z: 0.34 }), [ink.r * 3, ink.g * 3, ink.b * 3]));
+  pages.push(
+    paint(place(box(0.62, 0.014, 0.08), { x: 0.12, y: labelY + 0.002, z: 0.53 }), [
+      ink.r * 2.2,
+      ink.g * 2.2,
+      ink.b * 2.2,
+    ]),
+  );
+  pages.push(
+    paint(place(box(0.42, 0.014, 0.05), { x: 0.12, y: labelY + 0.002, z: 0.34 }), [ink.r * 3, ink.g * 3, ink.b * 3]),
+  );
   // Spine label (a small paper label across the spine's outer face).
-  pages.push(paint(place(box(0.014, BOOK_H * 0.5, 0.46), { x: sx - BOOK_H * 0.275 - 0.004, y: BOOK_H / 2 }), [0.97, 0.93, 0.82]));
+  pages.push(
+    paint(place(box(0.014, BOOK_H * 0.5, 0.46), { x: sx - BOOK_H * 0.275 - 0.004, y: BOOK_H / 2 }), [0.97, 0.93, 0.82]),
+  );
   return bakePair(mergeParts(cover), mergeParts(pages), 8, 0.6, true, 0.12);
 }
 
@@ -392,17 +572,52 @@ const CRAYON_L = 2.2;
 function crayonGeometry(): [VertexData, VertexData] {
   const r = CRAYON_R;
   const h = CRAYON_L / 2;
-  const wax = lathe([
-    [0, -h], [r - 0.02, -h], [r - 0.004, -h + 0.012], [r, -h + 0.04], [r, 0.66], [r - 0.012, 0.7],
-    [0.07, 1.0], [0.05, h - 0.015], [0.03, h], [0, h],
-  ], 18);
+  const wax = lathe(
+    [
+      [0, -h],
+      [r - 0.02, -h],
+      [r - 0.004, -h + 0.012],
+      [r, -h + 0.04],
+      [r, 0.66],
+      [r - 0.012, 0.7],
+      [0.07, 1.0],
+      [0.05, h - 0.015],
+      [0.03, h],
+      [0, h],
+    ],
+    18,
+  );
   const rw = r + 0.012;
-  const wrapper = lathe([
-    [r - 0.002, -0.96], [rw, -0.955], [rw, -0.86], [rw, -0.858], [rw, -0.79], [rw, -0.788], [rw, -0.73], [rw, -0.728], [rw, -0.68], [rw, -0.678],
-    [rw, 0.36], [rw, 0.362], [rw, 0.43], [rw, 0.432], [rw, 0.5], [rw, 0.502], [rw, 0.6], [r - 0.002, 0.606],
-  ], 18);
+  const wrapper = lathe(
+    [
+      [r - 0.002, -0.96],
+      [rw, -0.955],
+      [rw, -0.86],
+      [rw, -0.858],
+      [rw, -0.79],
+      [rw, -0.788],
+      [rw, -0.73],
+      [rw, -0.728],
+      [rw, -0.68],
+      [rw, -0.678],
+      [rw, 0.36],
+      [rw, 0.362],
+      [rw, 0.43],
+      [rw, 0.432],
+      [rw, 0.5],
+      [rw, 0.502],
+      [rw, 0.6],
+      [r - 0.002, 0.606],
+    ],
+    18,
+  );
   // Ink bands near both ends of the wrapper (darker versions of the crayon colour).
-  bandColors(wrapper, [[-0.859, -0.789, 0.28], [-0.729, -0.679, 0.28], [0.361, 0.431, 0.3], [0.501, 0.62, 0.62]]);
+  bandColors(wrapper, [
+    [-0.859, -0.789, 0.28],
+    [-0.729, -0.679, 0.28],
+    [0.361, 0.431, 0.3],
+    [0.501, 0.62, 0.62],
+  ]);
   paint(wax, [1, 1, 1]);
   const lay = { rx: Math.PI / 2 }; // axis through the origin; instances lift it by r
   place(wax, lay);
@@ -494,10 +709,20 @@ function carGeometry(): [VertexData, VertexData] {
   const dark = lin('tread');
   const tyre: [number, number, number] = [dark.r, dark.g, dark.b];
   const hub: [number, number, number] = [0.62, 0.63, 0.66];
-  const wheel = lathe([
-    [0, 0.115], [0.11, 0.115], [0.135, 0.12], [0.135, 0.121], [0.22, 0.12], [0.265, 0.085],
-    [0.27, -0.06], [0.24, -0.11], [0, -0.12],
-  ], 14);
+  const wheel = lathe(
+    [
+      [0, 0.115],
+      [0.11, 0.115],
+      [0.135, 0.12],
+      [0.135, 0.121],
+      [0.22, 0.12],
+      [0.265, 0.085],
+      [0.27, -0.06],
+      [0.24, -0.11],
+      [0, -0.12],
+    ],
+    14,
+  );
   // Hub face lighter (radius < 0.134), tyre dark.
   {
     const p = wheel.positions!;
@@ -526,7 +751,17 @@ function carGeometry(): [VertexData, VertexData] {
   trim.push(paint(place(box(0.46, 0.1, 0.04), { y: 0.4, z: CAR_L / 2 - 0.02 }), [0.08, 0.08, 0.09]));
   const headC = lin('#fff1c4');
   for (const x of [-0.33, 0.33]) {
-    trim.push(paint(place(CreateCylinderVertexData({ height: 0.04, diameter: 0.15, tessellation: 10 }), { rx: Math.PI / 2, x, y: 0.42, z: CAR_L / 2 - 0.02 }), [headC.r, headC.g, headC.b]));
+    trim.push(
+      paint(
+        place(CreateCylinderVertexData({ height: 0.04, diameter: 0.15, tessellation: 10 }), {
+          rx: Math.PI / 2,
+          x,
+          y: 0.42,
+          z: CAR_L / 2 - 0.02,
+        }),
+        [headC.r, headC.g, headC.b],
+      ),
+    );
     const tail = lin('#c0392b');
     trim.push(paint(place(box(0.2, 0.08, 0.04), { x, y: 0.43, z: -CAR_L / 2 + 0.02 }), [tail.r, tail.g, tail.b]));
   }
@@ -534,9 +769,27 @@ function carGeometry(): [VertexData, VertexData] {
   const cream = lin('#f6edd6');
   const ink = lin('ink');
   for (const sgn of [-1, 1]) {
-    trim.push(paint(place(CreateCylinderVertexData({ height: 0.02, diameter: 0.34, tessellation: 14 }), { rz: Math.PI / 2, x: sgn * (CAR_W / 2 + 0.002), y: 0.37, z: 0.02 }), [cream.r, cream.g, cream.b]));
-    trim.push(paint(place(box(0.02, 0.2, 0.045), { x: sgn * (CAR_W / 2 + 0.012), y: 0.37, z: 0.02 }), [ink.r, ink.g, ink.b]));
-    trim.push(paint(place(box(0.02, 0.05, 0.06), { x: sgn * (CAR_W / 2 + 0.012), y: 0.44, z: 0.02 + 0.035 * sgn * -1 }), [ink.r, ink.g, ink.b]));
+    trim.push(
+      paint(
+        place(CreateCylinderVertexData({ height: 0.02, diameter: 0.34, tessellation: 14 }), {
+          rz: Math.PI / 2,
+          x: sgn * (CAR_W / 2 + 0.002),
+          y: 0.37,
+          z: 0.02,
+        }),
+        [cream.r, cream.g, cream.b],
+      ),
+    );
+    trim.push(
+      paint(place(box(0.02, 0.2, 0.045), { x: sgn * (CAR_W / 2 + 0.012), y: 0.37, z: 0.02 }), [ink.r, ink.g, ink.b]),
+    );
+    trim.push(
+      paint(place(box(0.02, 0.05, 0.06), { x: sgn * (CAR_W / 2 + 0.012), y: 0.44, z: 0.02 + 0.035 * sgn * -1 }), [
+        ink.r,
+        ink.g,
+        ink.b,
+      ]),
+    );
   }
   return bakePair(bodyVd, mergeParts(trim), 8, 0.6, true, 0.2);
 }
@@ -550,25 +803,53 @@ function carGeometry(): [VertexData, VertexData] {
 const SOCK_RING = 16;
 
 function sockGeometry(): [VertexData, VertexData] {
-  const ctrl: [number, number][] = [[-0.36, 1.42], [-0.31, 0.88], [-0.29, 0.32], [-0.22, -0.1], [0.14, -0.29], [0.6, -0.31], [1.02, -0.24]];
+  const ctrl: [number, number][] = [
+    [-0.36, 1.42],
+    [-0.31, 0.88],
+    [-0.29, 0.32],
+    [-0.22, -0.1],
+    [0.14, -0.29],
+    [0.6, -0.31],
+    [1.02, -0.24],
+  ];
   const cr = (t: number): [number, number, number, number] => {
     const segs = ctrl.length - 1;
     const f = Math.min(segs - 1e-6, Math.max(0, t) * segs);
     const i = Math.floor(f);
     const u = f - i;
-    const p0 = ctrl[Math.max(0, i - 1)], p1 = ctrl[i], p2 = ctrl[i + 1], p3 = ctrl[Math.min(segs, i + 2)];
-    const cat = (a: number, b: number, c: number, d: number): number => 0.5 * (2 * b + (-a + c) * u + (2 * a - 5 * b + 4 * c - d) * u * u + (-a + 3 * b - 3 * c + d) * u * u * u);
-    const dcat = (a: number, b: number, c: number, d: number): number => 0.5 * ((-a + c) + 2 * (2 * a - 5 * b + 4 * c - d) * u + 3 * (-a + 3 * b - 3 * c + d) * u * u);
-    return [cat(p0[0], p1[0], p2[0], p3[0]), cat(p0[1], p1[1], p2[1], p3[1]), dcat(p0[0], p1[0], p2[0], p3[0]), dcat(p0[1], p1[1], p2[1], p3[1])];
+    const p0 = ctrl[Math.max(0, i - 1)],
+      p1 = ctrl[i],
+      p2 = ctrl[i + 1],
+      p3 = ctrl[Math.min(segs, i + 2)];
+    const cat = (a: number, b: number, c: number, d: number): number =>
+      0.5 * (2 * b + (-a + c) * u + (2 * a - 5 * b + 4 * c - d) * u * u + (-a + 3 * b - 3 * c + d) * u * u * u);
+    const dcat = (a: number, b: number, c: number, d: number): number =>
+      0.5 * (-a + c + 2 * (2 * a - 5 * b + 4 * c - d) * u + 3 * (-a + 3 * b - 3 * c + d) * u * u);
+    return [
+      cat(p0[0], p1[0], p2[0], p3[0]),
+      cat(p0[1], p1[1], p2[1], p3[1]),
+      dcat(p0[0], p1[0], p2[0], p3[0]),
+      dcat(p0[1], p1[1], p2[1], p3[1]),
+    ];
   };
   const CUFF = 0.1;
-  const STRIPES: [number, number][] = [[0.15, 0.175], [0.235, 0.26], [0.32, 0.345]];
+  const STRIPES: [number, number][] = [
+    [0.15, 0.175],
+    [0.235, 0.26],
+    [0.32, 0.345],
+  ];
   const HEEL: [number, number] = [0.45, 0.62];
   const TOE = 0.87;
   const WRINKLES = [0.205, 0.29, 0.385];
   // Stations along the tube: t (0 cuff .. 1 toe), axial offset along the tangent, scale of
   // the cross-section, vertex shade, and whether the surface faces inward (sock interior).
-  interface Station { t: number; ax: number; sc: number; shade: number; inner: boolean }
+  interface Station {
+    t: number;
+    ax: number;
+    sc: number;
+    shade: number;
+    inner: boolean;
+  }
   const st: Station[] = [];
   // Inside the opening (dark), then the rolled lip curling out to the cuff.
   st.push({ t: 0, ax: 0.14, sc: 0.78, shade: 0.16, inner: true });
@@ -583,7 +864,8 @@ function sockGeometry(): [VertexData, VertexData] {
   ts.push(CUFF, HEEL[0], HEEL[1], TOE);
   for (const [a, c] of STRIPES) ts.push(a, c);
   ts.sort((a, c) => a - c);
-  for (let i = 0; i < ts.length; i++) if (i === 0 || ts[i] - ts[i - 1] > 4e-3) st.push({ t: ts[i], ax: 0, sc: 1, shade: 1, inner: false });
+  for (let i = 0; i < ts.length; i++)
+    if (i === 0 || ts[i] - ts[i - 1] > 4e-3) st.push({ t: ts[i], ax: 0, sc: 1, shade: 1, inner: false });
   // Rounded toe: the cross-section shrinks on a quarter circle past the end.
   const toeN = 5;
   for (let k = 1; k <= toeN; k++) {
@@ -602,8 +884,10 @@ function sockGeometry(): [VertexData, VertexData] {
     const t = s.t;
     const [cx0, cz0, dx, dz] = cr(t);
     const dl = Math.hypot(dx, dz) || 1;
-    const tx = dx / dl, tz = dz / dl;
-    const nx = -tz, nz = tx;
+    const tx = dx / dl,
+      tz = dz / dl;
+    const nx = -tz,
+      nz = tx;
     // Cross-section half width (a) and top height (b): the foot a touch wider and flatter.
     let a = 0.29 + 0.03 * Math.min(1, Math.max(0, (t - 0.45) / 0.2));
     let b = 0.145 - 0.02 * Math.min(1, Math.max(0, (t - 0.45) / 0.2));
@@ -613,7 +897,10 @@ function sockGeometry(): [VertexData, VertexData] {
     a *= 1 + 0.05 * w;
     b *= 1 + 0.34 * w - 0.1 * gauss(t, 0.245, 0.02);
     // Heel pocket: bulges out behind the bend.
-    const heel = t > HEEL[0] - 0.03 && t < HEEL[1] + 0.03 ? Math.sin(Math.min(1, Math.max(0, (t - HEEL[0] + 0.03) / (HEEL[1] - HEEL[0] + 0.06))) * Math.PI) : 0;
+    const heel =
+      t > HEEL[0] - 0.03 && t < HEEL[1] + 0.03
+        ? Math.sin(Math.min(1, Math.max(0, (t - HEEL[0] + 0.03) / (HEEL[1] - HEEL[0] + 0.06))) * Math.PI)
+        : 0;
     b *= 1 + 0.18 * heel;
     // Ribbed cuff a little wider.
     if (t <= CUFF && s.ax === 0) a *= 1.06;
@@ -624,7 +911,8 @@ function sockGeometry(): [VertexData, VertexData] {
     const yc = 0.36 * b * s.sc + 0.006;
     for (let j = 0; j <= ring; j++) {
       const th = -Math.PI / 2 + (j / ring) * Math.PI * 2;
-      const sn = Math.sin(th), cs = Math.cos(th);
+      const sn = Math.sin(th),
+        cs = Math.cos(th);
       // Knit ribs on the cuff run along the sock.
       const rib = t <= CUFF && s.ax === 0 ? 1 + 0.035 * Math.cos(j * Math.PI) : 1;
       // Flat underside (the cloth lies on the floor), rounded top.
@@ -633,18 +921,23 @@ function sockGeometry(): [VertexData, VertexData] {
       pos.push(cx + nx * off, Math.max(0.003, yc + yy * s.sc * rib), cz + nz * off);
       const k = s.inner ? -1 : 1;
       const lipBlend = s.ax < 0 ? 0.6 : 0; // the lip faces out of the opening
-      nrm.push(k * nx * cs * (1 - lipBlend) - tx * lipBlend, k * sn * (1 - lipBlend), k * nz * cs * (1 - lipBlend) - tz * lipBlend);
+      nrm.push(
+        k * nx * cs * (1 - lipBlend) - tx * lipBlend,
+        k * sn * (1 - lipBlend),
+        k * nz * cs * (1 - lipBlend) - tz * lipBlend,
+      );
       uv.push((j / ring) * 2, t * 7 + s.ax);
       col.push(s.shade, s.shade, s.shade, 1);
       // Heel side: the outer corner of the bend (towards -x, -z).
-      heelDir.push(-(nx * cs) * 0.7 - (nz * cs) * 0.7 + sn * 0.2);
+      heelDir.push(-(nx * cs) * 0.7 - nz * cs * 0.7 + sn * 0.2);
     }
   }
   const idxA: number[] = [];
   const idxB: number[] = [];
   const row = ring + 1;
   for (let k = 0; k < st.length - 1; k++) {
-    const s0 = st[k], s1 = st[k + 1];
+    const s0 = st[k],
+      s1 = st[k + 1];
     const mid = (s0.t + s1.t) / 2;
     const lipOrToe = s0.ax !== 0 || s1.ax !== 0 || s0.sc !== 1 || s1.sc !== 1;
     const banded = mid <= CUFF || mid >= TOE || STRIPES.some(([a, c]) => mid >= a && mid <= c);
@@ -676,12 +969,18 @@ function sockGeometry(): [VertexData, VertexData] {
   // Fix winding for both lists together, smooth normals, recentre on the footprint, AO.
   const all = rawMesh(pos, [...idxA, ...idxB], nrm, uv, col);
   const p = all.positions!;
-  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  let x0 = Infinity,
+    x1 = -Infinity,
+    z0 = Infinity,
+    z1 = -Infinity;
   for (let i = 0; i < p.length; i += 3) {
-    x0 = Math.min(x0, p[i]); x1 = Math.max(x1, p[i]);
-    z0 = Math.min(z0, p[i + 2]); z1 = Math.max(z1, p[i + 2]);
+    x0 = Math.min(x0, p[i]);
+    x1 = Math.max(x1, p[i]);
+    z0 = Math.min(z0, p[i + 2]);
+    z1 = Math.max(z1, p[i + 2]);
   }
-  const ox = (x0 + x1) / 2, oz = (z0 + z1) / 2;
+  const ox = (x0 + x1) / 2,
+    oz = (z0 + z1) / 2;
   for (let i = 0; i < p.length; i += 3) {
     p[i] -= ox;
     p[i + 2] -= oz;
@@ -710,7 +1009,16 @@ function brickGeometry(nx: number, nz: number): VertexData {
   const w = nx * PITCH - 0.012;
   const d = nz * PITCH - 0.012;
   const parts: VertexData[] = [place(roundedBox(w, BRICK_H, d, 0.035, 2), { y: BRICK_H / 2 })];
-  const stud = lathe([[0.122, 0], [0.122, 0.13], [0.116, 0.155], [0.1, 0.165], [0, 0.165]], 16);
+  const stud = lathe(
+    [
+      [0.122, 0],
+      [0.122, 0.13],
+      [0.116, 0.155],
+      [0.1, 0.165],
+      [0, 0.165],
+    ],
+    16,
+  );
   for (let i = 0; i < nx; i++) {
     for (let j = 0; j < nz; j++) {
       const s = new VertexData();
@@ -739,7 +1047,8 @@ class Batch {
     this.cap = cap;
     this.matrices = new Float32Array(cap * 16);
     // Identity matrices, so bounds stay finite while a mesh has no instances.
-    for (let i = 0; i < cap; i++) this.matrices[i * 16] = this.matrices[i * 16 + 5] = this.matrices[i * 16 + 10] = this.matrices[i * 16 + 15] = 1;
+    for (let i = 0; i < cap; i++)
+      this.matrices[i * 16] = this.matrices[i * 16 + 5] = this.matrices[i * 16 + 10] = this.matrices[i * 16 + 15] = 1;
     this.colors = colored ? new Float32Array(cap * 4).fill(1) : null;
     mesh.thinInstanceSetBuffer('matrix', this.matrices, 16, false);
     if (this.colors) mesh.thinInstanceSetBuffer('color', this.colors, 4, false);
@@ -817,13 +1126,30 @@ export function createPropKit(scene: Scene, look: Look): PropKit {
 
   const blockMat = mat('block', () => woodMaterial(scene, null, { instanceColor: true, normalStrength: 0.25 }));
   const letterMat = mat('letters', () => woodMaterial(scene, '#e0d2b2', { roughness: 0.64, normalStrength: 0.1 }));
-  const coverMat = mat('cover', () => plasticMaterial(scene, null, { instanceColor: true, texture: 'fabric', roughness: 0.78, normalStrength: 0.35, textureScale: 3 }));
+  const coverMat = mat('cover', () =>
+    plasticMaterial(scene, null, {
+      instanceColor: true,
+      texture: 'fabric',
+      roughness: 0.78,
+      normalStrength: 0.35,
+      textureScale: 3,
+    }),
+  );
   const pageMat = mat('pages', () => paperMaterial(scene, 'paper', { normalStrength: 0.25 }));
   const waxMat = mat('wax', () => waxMaterial(scene, null, { instanceColor: true }));
   const wrapMat = mat('wrapper', () => paperMaterial(scene, null, { instanceColor: true, roughness: 0.8 }));
-  const coreMat = mat('marbleCore', () => plasticMaterial(scene, null, { instanceColor: true, roughness: 0.25, clearcoat: 0.5 }));
+  const coreMat = mat('marbleCore', () =>
+    plasticMaterial(scene, null, { instanceColor: true, roughness: 0.25, clearcoat: 0.5 }),
+  );
   const glassMat = mat('marbleGlass', () => {
-    const g = glassMaterial(scene, null, { instanceColor: true, alpha: 0.42, envIntensity: 2.2, clearcoat: 1, clearcoatRoughness: 0.02, roughness: 0.03 });
+    const g = glassMaterial(scene, null, {
+      instanceColor: true,
+      alpha: 0.42,
+      envIntensity: 2.2,
+      clearcoat: 1,
+      clearcoatRoughness: 0.02,
+      roughness: 0.03,
+    });
     g.backFaceCulling = true;
     // Stronger rim: reflections ride on top of the transparency (Fresnel at the edge).
     g.useRadianceOverAlpha = true;
@@ -837,8 +1163,12 @@ export function createPropKit(scene: Scene, look: Look): PropKit {
     m.sheen.intensity = 0.18;
     return m;
   });
-  const sockCreamMat = mat('sockCream', () => fabricMaterial(scene, '#efe6d2', { textureScale: 2, normalStrength: 0.7 }));
-  const brickMat = mat('brick', () => plasticMaterial(scene, null, { instanceColor: true, clearcoat: 0.3, roughness: 0.36 }));
+  const sockCreamMat = mat('sockCream', () =>
+    fabricMaterial(scene, '#efe6d2', { textureScale: 2, normalStrength: 0.7 }),
+  );
+  const brickMat = mat('brick', () =>
+    plasticMaterial(scene, null, { instanceColor: true, clearcoat: 0.3, roughness: 0.36 }),
+  );
 
   const g = propGeometry();
   const [blockBody, blockLetters] = g.block;
@@ -895,7 +1225,17 @@ export function createPropKit(scene: Scene, look: Look): PropKit {
     return col.set(c.r * k, c.g * k, c.b * k);
   };
   // Writes `local` (scale, yaw/pitch/roll, offset in prop space) x prop matrix.
-  const part = (sx: number, sy: number, sz: number, ry: number, rx: number, rz: number, x: number, y: number, z: number): Matrix => {
+  const part = (
+    sx: number,
+    sy: number,
+    sz: number,
+    ry: number,
+    rx: number,
+    rz: number,
+    x: number,
+    y: number,
+    z: number,
+  ): Matrix => {
     Quaternion.RotationYawPitchRollToRef(ry, rx, rz, q);
     sv.set(sx, sy, sz);
     tv.set(x, y, z);
@@ -906,7 +1246,13 @@ export function createPropKit(scene: Scene, look: Look): PropKit {
 
   // Face-up orientations for alphabet blocks (pitch, roll) so each shows other letters.
   // No upside-down roll: the front letters never show rotated 180 degrees.
-  const FACE_UP: readonly [number, number][] = [[0, 0], [Math.PI / 2, 0], [-Math.PI / 2, 0], [0, Math.PI / 2], [0, -Math.PI / 2]];
+  const FACE_UP: readonly [number, number][] = [
+    [0, 0],
+    [Math.PI / 2, 0],
+    [-Math.PI / 2, 0],
+    [0, Math.PI / 2],
+    [0, -Math.PI / 2],
+  ];
   const BLOCK_COLORS = [0, 1, 3, 4, 5]; // TOY_COLORS without yellow
   const blockScale = (x: number, z: number, i: number): number => 0.9 + hash(x, z, i + 11) * 0.14;
 
@@ -930,7 +1276,8 @@ export function createPropKit(scene: Scene, look: Look): PropKit {
       if (v === 3) {
         if (i < 2) {
           yaw = (h2 - 0.5) * 0.3;
-          const ext = (sc: number, ya: number): number => (BLOCK * sc) / 2 * (Math.cos(Math.abs(ya)) + Math.sin(Math.abs(ya)));
+          const ext = (sc: number, ya: number): number =>
+            ((BLOCK * sc) / 2) * (Math.cos(Math.abs(ya)) + Math.sin(Math.abs(ya)));
           const e0 = ext(s0, (hash(x, z, 11) - 0.5) * 0.3);
           const e1 = ext(s1, (hash(x, z, 12) - 0.5) * 0.3);
           const mid = (e0 - e1) / 2; // centre the pair
@@ -985,19 +1332,23 @@ export function createPropKit(scene: Scene, look: Look): PropKit {
       const len1 = 0.85 + h1 * 0.15;
       const yaw0 = -0.55;
       const yaw1 = 0.6;
-      const d0x = Math.sin(yaw0), d0z = Math.cos(yaw0);
-      const d1x = Math.sin(yaw1), d1z = Math.cos(yaw1);
+      const d0x = Math.sin(yaw0),
+        d0z = Math.cos(yaw0);
+      const d1x = Math.sin(yaw1),
+        d1z = Math.cos(yaw1);
       const half1 = (CRAYON_L / 2) * len1;
       // Crossing point on the first crayon's axis; the second crosses it 0.3 of its half
       // length in front of its own centre, so the tail is 1.3 half-lengths from it.
-      const cx = 0.2 * d0x, cz = 0.2 * d0z;
+      const cx = 0.2 * d0x,
+        cz = 0.2 * d0z;
       const dist = 1.3 * half1;
       // Axis-over-axis height where they touch: two wrapper radii, over the skew factor of
       // the crossing (~0.95), plus what the tail sinks by tilting (lift * (1 - cos)).
       const touch = (2 * lift) / 0.95 + 0.005;
       let pitch = Math.asin(Math.min(0.9, touch / dist));
       pitch = Math.asin(Math.min(0.9, (touch + lift * (1 - Math.cos(pitch))) / dist));
-      const cp = Math.cos(pitch), sp = Math.sin(pitch);
+      const cp = Math.cos(pitch),
+        sp = Math.sin(pitch);
       const tailY = lift * cp; // the tail's lower rim just touches the floor
       const c1x = cx - d1x * 0.3 * half1 * cp;
       const c1z = cz - d1z * 0.3 * half1 * cp;
@@ -1033,7 +1384,13 @@ export function createPropKit(scene: Scene, look: Look): PropKit {
   // Cluster layout (x, z, scale), relaxed offline so every pair stays >= 1.02 x the sum
   // of radii apart even with the +-0.03 position and +-5% scale jitter below.
   const MARBLES: readonly [number, number, number][] = [
-    [0, 0, 1.35], [0.644, 0.258, 1], [0.13, -0.681, 1], [-0.566, -0.377, 0.95], [-0.563, 0.405, 1], [0.59, -0.323, 0.92], [-0.023, 0.693, 1],
+    [0, 0, 1.35],
+    [0.644, 0.258, 1],
+    [0.13, -0.681, 1],
+    [-0.566, -0.377, 0.95],
+    [-0.563, 0.405, 1],
+    [0.59, -0.323, 0.92],
+    [-0.023, 0.693, 1],
   ];
   const shellTint = new Color3();
   function addMarbles(variant: number, x: number, z: number, ci: number): void {
@@ -1055,9 +1412,10 @@ export function createPropKit(scene: Scene, look: Look): PropKit {
   }
   function addCar(variant: number, x: number, z: number, ci: number): void {
     const h = hash(x, z, 13);
-    const m = variant % 2 === 1
-      ? part(1, 1, 1, 0, 0, Math.PI / 2, 0.45, CAR_W / 2 + 0.12, 0) // tipped on its left side
-      : part(1, 1, 1, 0, 0, 0, 0, 0, 0);
+    const m =
+      variant % 2 === 1
+        ? part(1, 1, 1, 0, 0, Math.PI / 2, 0.45, CAR_W / 2 + 0.12, 0) // tipped on its left side
+        : part(1, 1, 1, 0, 0, 0, 0, 0, 0);
     b.carBody.push(m, colorOf(ci, h));
     b.carTrim.push(m, null);
   }
@@ -1068,7 +1426,10 @@ export function createPropKit(scene: Scene, look: Look): PropKit {
       const h = hash(x, z, i + 17);
       // A pair lies nested side by side (the second shifted along the leg), never through
       // each other.
-      const m = i === 0 ? part(1, 1, 1, 0, 0, 0, n === 2 ? -0.38 : 0, 0, n === 2 ? -0.38 : 0) : part(0.97, 1, 0.97, 0.06 * (h - 0.5), 0, 0, 0.4, 0, 0.4);
+      const m =
+        i === 0
+          ? part(1, 1, 1, 0, 0, 0, n === 2 ? -0.38 : 0, 0, n === 2 ? -0.38 : 0)
+          : part(0.97, 1, 0.97, 0.06 * (h - 0.5), 0, 0, 0.4, 0, 0.4);
       b.sock.push(m, colorOf(ci, h));
       b.sockCream.push(m, null);
     }
@@ -1101,13 +1462,27 @@ export function createPropKit(scene: Scene, look: Look): PropKit {
       tv.set(x, 0, z);
       Matrix.ComposeToRef(sv, q, tv, prop);
       switch (kind) {
-        case 'block': addBlock(v, x, z, ci); break;
-        case 'book': addBook(v, x, z, ci); break;
-        case 'crayon': addCrayon(v, x, z, ci); break;
-        case 'marble': addMarbles(v, x, z, ci); break;
-        case 'car': addCar(v, x, z, ci); break;
-        case 'sock': addSock(v, x, z, ci); break;
-        case 'brick': addBrick(v, x, z, ci); break;
+        case 'block':
+          addBlock(v, x, z, ci);
+          break;
+        case 'book':
+          addBook(v, x, z, ci);
+          break;
+        case 'crayon':
+          addCrayon(v, x, z, ci);
+          break;
+        case 'marble':
+          addMarbles(v, x, z, ci);
+          break;
+        case 'car':
+          addCar(v, x, z, ci);
+          break;
+        case 'sock':
+          addSock(v, x, z, ci);
+          break;
+        case 'brick':
+          addBrick(v, x, z, ci);
+          break;
       }
     },
     commit() {

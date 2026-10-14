@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { QUALITY_SETTINGS, QualityGovernor, higherQuality, lowerQuality, parseQuality } from '../src/render/look/quality.ts';
+import {
+  QUALITY_SETTINGS,
+  QualityGovernor,
+  higherQuality,
+  lowerQuality,
+  parseQuality,
+} from '../src/render/look/quality.ts';
 
 test('quality tiers order and parse', () => {
   assert.equal(lowerQuality('high'), 'medium');
@@ -53,10 +59,16 @@ test('a remembered lower start tier can still retry up to the ceiling once', () 
 test('a big overload steps down faster than a mild one', () => {
   const heavy = new QualityGovernor('high');
   let t = 0;
-  while (heavy.level === 'high' && t < 5) { heavy.sample(1 / 25); t += 1 / 25; } // 40 ms frames
+  while (heavy.level === 'high' && t < 5) {
+    heavy.sample(1 / 25);
+    t += 1 / 25;
+  } // 40 ms frames
   const mild = new QualityGovernor('high');
   let u = 0;
-  while (mild.level === 'high' && u < 5) { mild.sample(0.021); u += 0.021; } // 21 ms frames
+  while (mild.level === 'high' && u < 5) {
+    mild.sample(0.021);
+    u += 0.021;
+  } // 21 ms frames
   assert.ok(t < u, `heavy ${t.toFixed(2)} s should beat mild ${u.toFixed(2)} s`);
   assert.ok(t < 1.6);
 });

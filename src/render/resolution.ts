@@ -41,7 +41,10 @@ export class ResolutionScaler {
   // `start`: a ratio remembered from an earlier session (clamped to [MIN_RATIO, cap]).
   constructor(devicePixelRatio: number, start?: number) {
     this.cap = Math.min(Math.max(devicePixelRatio, MIN_RATIO), MAX_RATIO);
-    this.ratio = start !== undefined && start > 0 ? Math.min(this.cap, Math.max(MIN_RATIO, Math.round(start / STEP) * STEP)) : this.cap;
+    this.ratio =
+      start !== undefined && start > 0
+        ? Math.min(this.cap, Math.max(MIN_RATIO, Math.round(start / STEP) * STEP))
+        : this.cap;
   }
 
   // Ignore frame times for `seconds` (call on level load) and forget the step-up backoff.

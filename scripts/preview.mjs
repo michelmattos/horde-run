@@ -41,7 +41,10 @@ async function waitForServer(u, timeoutMs) {
   throw new Error(`dev server did not start at ${u}`);
 }
 
-const server = spawn('npx', ['vite', '--port', String(port), '--strictPort'], { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+const server = spawn('npx', ['vite', '--port', String(port), '--strictPort'], {
+  stdio: ['ignore', 'pipe', 'pipe'],
+  detached: true,
+});
 let serverLog = '';
 server.stdout.on('data', (d) => (serverLog += d));
 server.stderr.on('data', (d) => (serverLog += d));
@@ -72,7 +75,10 @@ try {
   let summary = null;
   for (const shot of shots) {
     // A fresh page per size, so the canvas, DPR and camera framing are exactly right.
-    const context = await browser.newContext({ viewport: { width: shot.w, height: shot.h }, deviceScaleFactor: shot.dpr });
+    const context = await browser.newContext({
+      viewport: { width: shot.w, height: shot.h },
+      deviceScaleFactor: shot.dpr,
+    });
     const page = await context.newPage();
     page.on('console', (m) => {
       if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push(`console: ${m.text()}`);
@@ -82,7 +88,9 @@ try {
       if (r.status() >= 400 && !r.url().endsWith('/favicon.ico')) errors.push(`HTTP ${r.status()} ${r.url()}`);
     });
     await page.goto(url.replace('view=front', `view=${shot.view}`), { waitUntil: 'load' });
-    await page.waitForFunction(() => window.__preview && (window.__preview.ready || window.__preview.error), null, { timeout: 120000 });
+    await page.waitForFunction(() => window.__preview && (window.__preview.ready || window.__preview.error), null, {
+      timeout: 120000,
+    });
     const err = await page.evaluate(() => window.__preview.error);
     if (err) throw new Error(`preview error: ${err}`);
     await page.evaluate((v) => window.__preview.setView(v), shot.view);
@@ -93,7 +101,13 @@ try {
     if (!summary) summary = await page.evaluate(() => window.__preview.stats());
     await context.close();
   }
-  console.log(JSON.stringify({ model: key, team, variant: flags.variant ?? null, ...summary, screenshots: files, errors }, null, 2));
+  console.log(
+    JSON.stringify(
+      { model: key, team, variant: flags.variant ?? null, ...summary, screenshots: files, errors },
+      null,
+      2,
+    ),
+  );
   if (errors.length) {
     console.error(`preview FAILED:\n  ${errors.join('\n  ')}`);
     code = 1;

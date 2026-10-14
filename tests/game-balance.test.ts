@@ -30,11 +30,17 @@ test('balance: the opening levels are easy for a phone player', () => {
     const runs = humanRuns(level);
     console.log(runLine(id, runs));
     for (const [a, r] of runs.entries()) assert.equal(r.outcome, 'victory', `${id} attempt ${a} lost`);
-    assert.ok(runs.filter((r) => r.playerBase > 0.5).length >= runs.length - 1, `${id}: the base often ends below half`);
+    assert.ok(
+      runs.filter((r) => r.playerBase > 0.5).length >= runs.length - 1,
+      `${id}: the base often ends below half`,
+    );
     const t = median(runs.map((r) => r.seconds));
     assert.ok(t >= 60 && t <= 120, `${id}: median battle ${t.toFixed(0)} s`);
     // Plenty of runs beat the target time too (1-2 is the tightest, about half).
-    assert.ok(runs.filter((r) => r.stars[2]).length >= runs.length / 4, `${id}: the target time ${level.targetTime} s is too tight`);
+    assert.ok(
+      runs.filter((r) => r.stars[2]).length >= runs.length / 4,
+      `${id}: the target time ${level.targetTime} s is too tight`,
+    );
   }
 });
 
@@ -43,7 +49,10 @@ test('balance: the human profile is deterministic and clearly weaker than the pr
   assert.deepEqual(play(level, 'human', 3), play(level, 'human', 3), 'deterministic');
   const human = humanRuns(level, 4);
   const precise = play(level, 1);
-  assert.ok(median(human.map((r) => r.seconds)) > precise.seconds + 15, 'the human is clearly slower than the precise bot');
+  assert.ok(
+    median(human.map((r) => r.seconds)) > precise.seconds + 15,
+    'the human is clearly slower than the precise bot',
+  );
 });
 
 test('autoplay human profile: late reactions, thumb lifts and a late champion', () => {
@@ -78,12 +87,18 @@ test('autoplay human profile: late reactions, thumb lifts and a late champion', 
   };
   const human = trace('human', 0);
   assert.deepEqual(human, trace('human', 0), 'deterministic');
-  assert.ok(human.slice(0, Math.round(0.35 * SIM_HZ)).every((i) => i.aimX === 0), 'holds still before its first reaction');
+  assert.ok(
+    human.slice(0, Math.round(0.35 * SIM_HZ)).every((i) => i.aimX === 0),
+    'holds still before its first reaction',
+  );
   const lifted = human.filter((i) => !i.firing).length / human.length;
   assert.ok(lifted > 0.04 && lifted < 0.15, `thumb up ${(lifted * 100).toFixed(1)}% of the time`);
   const drift = Math.max(...human.map((i) => Math.abs(i.aimX)));
   assert.ok(drift > 0.3 && drift < 1, `aim drifts by up to ${drift.toFixed(2)} around the gate`);
-  assert.ok(trace('precise', 0).every((i) => i.firing), 'the precise bot never lifts its thumb');
+  assert.ok(
+    trace('precise', 0).every((i) => i.firing),
+    'the precise bot never lifts its thumb',
+  );
 
   const pressedAt = (t: InputState[]) => t.findIndex((i) => i.championPressed) * SIM_DT;
   assert.equal(pressedAt(trace('precise', 1)), 0, 'the precise bot launches at once');

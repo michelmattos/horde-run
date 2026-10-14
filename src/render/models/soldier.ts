@@ -48,7 +48,16 @@ import type { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import type { Look } from '../look/index.ts';
-import { armyPlasticMaterial, bakeVertexAO, buildMesh, fixWinding, mergeParts, paint, place, teamColor } from '../look/index.ts';
+import {
+  armyPlasticMaterial,
+  bakeVertexAO,
+  buildMesh,
+  fixWinding,
+  mergeParts,
+  paint,
+  place,
+  teamColor,
+} from '../look/index.ts';
 import type { ModelInfo, PreviewOptions, PreviewResult } from '../look/model.ts';
 import type { TeamName } from '../look/palette.ts';
 
@@ -79,7 +88,7 @@ const SHADE = {
   gear: 0.88, // pack and bedroll: one slightly darker mass
   boots: 0.9,
   base: 1,
-}
+};
 
 type V3 = [number, number, number];
 
@@ -187,7 +196,9 @@ function scaled(vd: VertexData, sx: number, sy: number, sz: number): VertexData 
     p[i] *= sx;
     p[i + 1] *= sy;
     p[i + 2] *= sz;
-    const nx = nr[i] / sx, ny = nr[i + 1] / sy, nz = nr[i + 2] / sz;
+    const nx = nr[i] / sx,
+      ny = nr[i + 1] / sy,
+      nz = nr[i + 2] / sz;
     const l = Math.hypot(nx, ny, nz) || 1;
     nr[i] = nx / l;
     nr[i + 1] = ny / l;
@@ -287,16 +298,38 @@ function buildSoldier(detail: Detail): VertexData {
   const S = SHADE;
 
   // ---- base plate: thin bevelled oval, 0.45 x 0.55, 0.04 thick (bottom never seen) ----
-  const base = revolve(full ? [[0.5, 0], [0.5, 0.02], [0.468, 0.04], [0, 0.04]] : [[0.5, 0], [0.48, 0.04], [0, 0.04]], full ? 16 : 10);
+  const base = revolve(
+    full
+      ? [
+          [0.5, 0],
+          [0.5, 0.02],
+          [0.468, 0.04],
+          [0, 0.04],
+        ]
+      : [
+          [0.5, 0],
+          [0.48, 0.04],
+          [0, 0.04],
+        ],
+    full ? 16 : 10,
+  );
   parts.push(shade(scaled(base, 0.45, 1, 0.55), S.base));
 
   // ---- boots: chunky, the trailing one pushing off its toe ----
   const boot = (ankle: V3, heelUp: number): VertexData => {
-    const x = ankle[0], z = ankle[2];
-    return tube([
-      { p: [x, 0.088 + heelUp, z - 0.055], a: 0.046, b: 0.05, s: S.boots },
-      { p: [x, 0.07, z + 0.09], a: 0.044, b: 0.036, s: S.boots },
-    ], full ? 6 : 4, [1, 0, 0], 0.6, 0.75, full ? 0 : Math.PI / 4);
+    const x = ankle[0],
+      z = ankle[2];
+    return tube(
+      [
+        { p: [x, 0.088 + heelUp, z - 0.055], a: 0.046, b: 0.05, s: S.boots },
+        { p: [x, 0.07, z + 0.09], a: 0.044, b: 0.036, s: S.boots },
+      ],
+      full ? 6 : 4,
+      [1, 0, 0],
+      0.6,
+      0.75,
+      full ? 0 : Math.PI / 4,
+    );
   };
   parts.push(boot(P.ankleL, 0), boot(P.ankleR, full ? 0.02 : 0));
 
@@ -304,13 +337,17 @@ function buildSoldier(detail: Detail): VertexData {
   const leg = (hip: V3, knee: V3, ankle: V3): VertexData => {
     const rings: Ring[] = full
       ? [
-        { p: hip, a: 0.088, b: 0.086 },
-        { p: lerp3(hip, knee, 0.45), a: 0.083, b: 0.08 },
-        { p: knee, a: 0.06, b: 0.062 },
-        { p: lerp3(knee, ankle, 0.4), a: 0.064, b: 0.068 },
-        { p: ankle, a: 0.052 },
-      ]
-      : [{ p: hip, a: 0.078 }, { p: knee, a: 0.06 }, { p: ankle, a: 0.05 }];
+          { p: hip, a: 0.088, b: 0.086 },
+          { p: lerp3(hip, knee, 0.45), a: 0.083, b: 0.08 },
+          { p: knee, a: 0.06, b: 0.062 },
+          { p: lerp3(knee, ankle, 0.4), a: 0.064, b: 0.068 },
+          { p: ankle, a: 0.052 },
+        ]
+      : [
+          { p: hip, a: 0.078 },
+          { p: knee, a: 0.06 },
+          { p: ankle, a: 0.05 },
+        ];
     return shade(tube(rings, full ? 6 : 4, [1, 0, 0], 0, 0), S.body);
   };
   parts.push(leg(P.hipL, P.kneeL, P.ankleL), leg(P.hipR, P.kneeR, P.ankleR));
@@ -318,18 +355,18 @@ function buildSoldier(detail: Detail): VertexData {
   // ---- torso: hips, belted waist, chest, shoulders rounding into the neck ----
   const torsoRings: Ring[] = full
     ? [
-      { p: [0, 0.53, -0.01], a: 0.136, b: 0.1, s: S.body },
-      { p: [0, 0.615, -0.004], a: 0.13, b: 0.095, s: S.belt },
-      { p: [0, 0.77, 0.018], a: 0.152, b: 0.114, s: S.body },
-      { p: [0, 0.87, 0.022], a: 0.166, b: 0.11, s: S.body },
-      { p: [0, 0.935, 0.016], a: 0.15, b: 0.094, s: S.body },
-      { p: [0, 0.975, 0.01], a: 0.095, b: 0.066, s: S.body },
-    ]
+        { p: [0, 0.53, -0.01], a: 0.136, b: 0.1, s: S.body },
+        { p: [0, 0.615, -0.004], a: 0.13, b: 0.095, s: S.belt },
+        { p: [0, 0.77, 0.018], a: 0.152, b: 0.114, s: S.body },
+        { p: [0, 0.87, 0.022], a: 0.166, b: 0.11, s: S.body },
+        { p: [0, 0.935, 0.016], a: 0.15, b: 0.094, s: S.body },
+        { p: [0, 0.975, 0.01], a: 0.095, b: 0.066, s: S.body },
+      ]
     : [
-      { p: [0, 0.54, -0.01], a: 0.135, b: 0.1, s: S.body },
-      { p: [0, 0.8, 0.018], a: 0.16, b: 0.105, s: S.body },
-      { p: [0, 0.96, 0.015], a: 0.14, b: 0.082, s: S.body },
-    ];
+        { p: [0, 0.54, -0.01], a: 0.135, b: 0.1, s: S.body },
+        { p: [0, 0.8, 0.018], a: 0.16, b: 0.105, s: S.body },
+        { p: [0, 0.96, 0.015], a: 0.14, b: 0.082, s: S.body },
+      ];
   parts.push(tube(torsoRings, full ? 8 : 6, [1, 0, 0], 0, 0.45, full ? Math.PI / 8 : 0));
 
   // ---- rifle (port arms) ----
@@ -337,13 +374,16 @@ function buildSoldier(detail: Detail): VertexData {
   const at = (t: number): V3 => add(P.butt, mul(d, t));
   const rifleRings: Ring[] = full
     ? [
-      { p: at(0), a: 0.027, b: 0.056 },
-      { p: at(0.3), a: 0.024, b: 0.032 },
-      { p: at(0.46), a: 0.028, b: 0.042 },
-      { p: at(0.78), a: 0.022, b: 0.026 },
-      { p: at(1), a: 0.015, b: 0.015 },
-    ]
-    : [{ p: at(0), a: 0.025, b: 0.046 }, { p: at(1), a: 0.016, b: 0.018 }];
+        { p: at(0), a: 0.027, b: 0.056 },
+        { p: at(0.3), a: 0.024, b: 0.032 },
+        { p: at(0.46), a: 0.028, b: 0.042 },
+        { p: at(0.78), a: 0.022, b: 0.026 },
+        { p: at(1), a: 0.015, b: 0.015 },
+      ]
+    : [
+        { p: at(0), a: 0.025, b: 0.046 },
+        { p: at(1), a: 0.016, b: 0.018 },
+      ];
   parts.push(shade(tube(rifleRings, 4, [0, 0, 1], 0.2, 0.3, Math.PI / 4), S.rifle));
 
   // ---- arms: a deltoid that starts inside the torso, tapering to the fists ----
@@ -351,12 +391,16 @@ function buildSoldier(detail: Detail): VertexData {
     const wrist = lerp3(elbow, grip, 0.8);
     const rings: Ring[] = full
       ? [
-        { p: shoulder, a: 0.07 },
-        { p: elbow, a: 0.049 },
-        { p: wrist, a: 0.038 },
-        { p: grip, a: 0.046 },
-      ]
-      : [{ p: shoulder, a: 0.058 }, { p: elbow, a: 0.045 }, { p: grip, a: 0.04 }];
+          { p: shoulder, a: 0.07 },
+          { p: elbow, a: 0.049 },
+          { p: wrist, a: 0.038 },
+          { p: grip, a: 0.046 },
+        ]
+      : [
+          { p: shoulder, a: 0.058 },
+          { p: elbow, a: 0.045 },
+          { p: grip, a: 0.04 },
+        ];
     return shade(tube(rings, full ? 6 : 4, [0, 1, 0], 0.75, 0.6, full ? Math.PI / 6 : 0), S.body); // a vertex, not a flat, faces out
   };
   parts.push(arm(P.shoulderR, P.elbowR, at(P.gripR)), arm(P.shoulderL, P.elbowL, at(P.gripL)));
@@ -366,34 +410,89 @@ function buildSoldier(detail: Detail): VertexData {
   // smoothly over the whole surface (separate stacked parts caught the sun as hairlines
   // across the back, which is the view the player sees most). ----
   if (full) {
-    parts.push(shade(tube([
-      { p: [0, 0.655, -0.095], a: 0.07, b: 0.03 },
-      { p: [0, 0.7, -0.127], a: 0.106, b: 0.056 },
-      { p: [0, 0.8, -0.138], a: 0.114, b: 0.064 },
-      { p: [0, 0.878, -0.134], a: 0.13, b: 0.066 },
-      { p: [0, 0.928, -0.116], a: 0.118, b: 0.048 },
-    ], 8, [1, 0, 0], 0, 0.4, Math.PI / 8), S.gear));
+    parts.push(
+      shade(
+        tube(
+          [
+            { p: [0, 0.655, -0.095], a: 0.07, b: 0.03 },
+            { p: [0, 0.7, -0.127], a: 0.106, b: 0.056 },
+            { p: [0, 0.8, -0.138], a: 0.114, b: 0.064 },
+            { p: [0, 0.878, -0.134], a: 0.13, b: 0.066 },
+            { p: [0, 0.928, -0.116], a: 0.118, b: 0.048 },
+          ],
+          8,
+          [1, 0, 0],
+          0,
+          0.4,
+          Math.PI / 8,
+        ),
+        S.gear,
+      ),
+    );
   } else {
-    parts.push(shade(tube([
-      { p: [0, 0.68, -0.12], a: 0.09, b: 0.045 },
-      { p: [0, 0.88, -0.13], a: 0.11, b: 0.06 },
-    ], 6, [1, 0, 0], 0.5, 0.6), S.gear));
+    parts.push(
+      shade(
+        tube(
+          [
+            { p: [0, 0.68, -0.12], a: 0.09, b: 0.045 },
+            { p: [0, 0.88, -0.13], a: 0.11, b: 0.06 },
+          ],
+          6,
+          [1, 0, 0],
+          0.5,
+          0.6,
+        ),
+        S.gear,
+      ),
+    );
   }
 
   // ---- head (with neck), a shade lighter; the top is hidden by the helmet ----
-  const head = revolve(full
-    ? [[0.045, -0.13], [0.074, -0.06], [0.092, -0.005], [0.084, 0.05]]
-    : [[0.06, -0.1], [0.088, -0.02], [0.074, 0.05]], 6, undefined, Math.PI / 2);
+  const head = revolve(
+    full
+      ? [
+          [0.045, -0.13],
+          [0.074, -0.06],
+          [0.092, -0.005],
+          [0.084, 0.05],
+        ]
+      : [
+          [0.06, -0.1],
+          [0.088, -0.02],
+          [0.074, 0.05],
+        ],
+    6,
+    undefined,
+    Math.PI / 2,
+  );
   parts.push(shade(place(scaled(head, 1, 1, 1.06), { x: P.head[0], y: P.head[1], z: P.head[2] }), S.face));
 
   // ---- M1 helmet: dome plus a wide brim with a rolled lip, dipping at the back. The
   // brim and its underside are moulded darker than the dome, so a dark line always
   // separates helmet from face, even from the high lane camera. ----
-  const helmet = revolve(full
-    ? [[0.108, 0.0], [0.186, -0.024], [0.19, -0.002], [0.13, 0.03], [0.128, 0.09], [0.088, 0.155], [0, 0.18]]
-    : [[0.108, 0.0], [0.182, -0.012], [0.124, 0.03], [0.11, 0.125], [0, 0.18]],
-  full ? 12 : 8,
-  full ? [S.brimUnder, S.brimUnder, S.brim, S.helmetBase, S.helmet, S.helmet, S.helmet] : [S.brimUnder, S.brim, S.helmetBase, S.helmet, S.helmet]);
+  const helmet = revolve(
+    full
+      ? [
+          [0.108, 0.0],
+          [0.186, -0.024],
+          [0.19, -0.002],
+          [0.13, 0.03],
+          [0.128, 0.09],
+          [0.088, 0.155],
+          [0, 0.18],
+        ]
+      : [
+          [0.108, 0.0],
+          [0.182, -0.012],
+          [0.124, 0.03],
+          [0.11, 0.125],
+          [0, 0.18],
+        ],
+    full ? 12 : 8,
+    full
+      ? [S.brimUnder, S.brimUnder, S.brim, S.helmetBase, S.helmet, S.helmet, S.helmet]
+      : [S.brimUnder, S.brim, S.helmetBase, S.helmet, S.helmet],
+  );
   {
     const hp = helmet.positions as number[];
     for (let i = 0; i < hp.length; i += 3) {
@@ -601,14 +700,31 @@ export async function preview(scene: Scene, look: Look, opts: PreviewOptions): P
       const hop = Math.abs(sn);
       const pitch = hop * 0.16; // +pitch tips a +Z-facing figure forward
       const roll = sn * 0.1;
-      const cp = Math.cos(pitch), spn = Math.sin(pitch), cr = Math.cos(roll), sr = Math.sin(roll), cy = Math.cos(u.yaw), sy = Math.sin(u.yaw);
+      const cp = Math.cos(pitch),
+        spn = Math.sin(pitch),
+        cr = Math.cos(roll),
+        sr = Math.sin(roll),
+        cy = Math.cos(u.yaw),
+        sy = Math.sin(u.yaw);
       const o = i * 16;
       const m = matrices;
       // Same row-vector rotation as crowd.ts: Rx(pitch) * Rz(roll) * Ry(yaw).
-      m[o] = cr * cy; m[o + 1] = sr; m[o + 2] = -cr * sy; m[o + 3] = 0;
-      m[o + 4] = -cp * sr * cy + spn * sy; m[o + 5] = cp * cr; m[o + 6] = cp * sr * sy + spn * cy; m[o + 7] = 0;
-      m[o + 8] = spn * sr * cy + cp * sy; m[o + 9] = -spn * cr; m[o + 10] = -spn * sr * sy + cp * cy; m[o + 11] = 0;
-      m[o + 12] = u.x; m[o + 13] = hop * 0.11; m[o + 14] = u.z; m[o + 15] = 1;
+      m[o] = cr * cy;
+      m[o + 1] = sr;
+      m[o + 2] = -cr * sy;
+      m[o + 3] = 0;
+      m[o + 4] = -cp * sr * cy + spn * sy;
+      m[o + 5] = cp * cr;
+      m[o + 6] = cp * sr * sy + spn * cy;
+      m[o + 7] = 0;
+      m[o + 8] = spn * sr * cy + cp * sy;
+      m[o + 9] = -spn * cr;
+      m[o + 10] = -spn * sr * sy + cp * cy;
+      m[o + 11] = 0;
+      m[o + 12] = u.x;
+      m[o + 13] = hop * 0.11;
+      m[o + 14] = u.z;
+      m[o + 15] = 1;
     }
   };
   units.forEach((u, i) => {

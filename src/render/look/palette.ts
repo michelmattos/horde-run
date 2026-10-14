@@ -60,7 +60,14 @@ export const HEX = {
 
 export type PaletteKey = keyof typeof HEX;
 
-export const TOY_COLORS: readonly PaletteKey[] = ['toyRed', 'toyBlue', 'toyYellow', 'toyPurple', 'toyOrange', 'toyTeal'];
+export const TOY_COLORS: readonly PaletteKey[] = [
+  'toyRed',
+  'toyBlue',
+  'toyYellow',
+  'toyPurple',
+  'toyOrange',
+  'toyTeal',
+];
 
 // Gamma-space colour (StandardMaterial, GUI, canvas).
 export function srgb(hexOrKey: string): Color3 {

@@ -33,7 +33,13 @@ export class CameraRig {
   // `rows` optionally moves the cannon row and the enemy base's far edge (NDC y) inward.
   // `top` (the enemy fort's flag tip / the boss's plume) is kept at or under NDC row
   // `topLimit` (default: the far row).
-  reframe(level: LevelDef, aspect: number, rows?: { near: number; far: number }, top?: { y: number; z: number }, topLimit?: number): void {
+  reframe(
+    level: LevelDef,
+    aspect: number,
+    rows?: { near: number; far: number },
+    top?: { y: number; z: number },
+    topLimit?: number,
+  ): void {
     const input = {
       aspect,
       nearNdcY: rows?.near,

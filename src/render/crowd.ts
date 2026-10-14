@@ -100,7 +100,18 @@ class InstanceBatch {
   }
 
   // Scale s, roll (Z), pitch (X), yaw (Y), translate; colour (linear).
-  write(x: number, y: number, z: number, s: number, pitch: number, roll: number, yaw: number, r: number, g: number, b: number): void {
+  write(
+    x: number,
+    y: number,
+    z: number,
+    s: number,
+    pitch: number,
+    roll: number,
+    yaw: number,
+    r: number,
+    g: number,
+    b: number,
+  ): void {
     writeTRS(this.matrices, this.count * 16, x, y, z, s, s, s, yaw, pitch, roll);
     const c = this.colors;
     if (c) {
@@ -192,8 +203,12 @@ export class CrowdRenderer {
     this.blobs.count = 0;
     const pc = this.playerColor;
     const ec = this.enemyColor;
-    const pr = pc.r, pg = pc.g, pb = pc.b;
-    const er = ec.r, eg = ec.g, eb = ec.b;
+    const pr = pc.r,
+      pg = pc.g,
+      pb = pc.b;
+    const er = ec.r,
+      eg = ec.g,
+      eb = ec.b;
     const cb = CHAMPION_BRIGHT;
     const { posX, posZ, team, kind, radius } = view;
     for (let i = 0; i < n; i++) {

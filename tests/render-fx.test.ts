@@ -109,11 +109,18 @@ test('scenery stays outside the lane and is deterministic', () => {
   const b = scatterScenery(7, laneWidth, -6, 70, 80);
   assert.deepEqual(a, b);
   for (const p of a) {
-    assert.ok(Math.abs(p.x) - PROP_RADIUS[p.kind] * p.scale >= laneWidth / 2 + SCENERY_CLEARANCE - 1e-9, `${p.kind} at x=${p.x} intrudes on the lane`);
+    assert.ok(
+      Math.abs(p.x) - PROP_RADIUS[p.kind] * p.scale >= laneWidth / 2 + SCENERY_CLEARANCE - 1e-9,
+      `${p.kind} at x=${p.x} intrudes on the lane`,
+    );
     assert.ok(p.z >= -6 && p.z <= 70);
   }
   assert.ok(a.some((p) => p.x < 0) && a.some((p) => p.x > 0), 'both sides of the lane');
-  for (const kind of ['block', 'book', 'crayon'] as const) assert.ok(a.some((p) => p.kind === kind), `some ${kind}s`);
+  for (const kind of ['block', 'book', 'crayon'] as const)
+    assert.ok(
+      a.some((p) => p.kind === kind),
+      `some ${kind}s`,
+    );
 });
 
 test('scattered props never overlap each other', () => {
@@ -124,7 +131,10 @@ test('scattered props never overlap each other', () => {
       const p = a[i];
       const q = a[j];
       const d = Math.hypot(p.x - q.x, p.z - q.z);
-      assert.ok(d >= PROP_RADIUS[p.kind] * p.scale + PROP_RADIUS[q.kind] * q.scale - 1e-9, `${p.kind} and ${q.kind} overlap`);
+      assert.ok(
+        d >= PROP_RADIUS[p.kind] * p.scale + PROP_RADIUS[q.kind] * q.scale - 1e-9,
+        `${p.kind} and ${q.kind} overlap`,
+      );
     }
   }
 });
@@ -224,9 +234,14 @@ test('tracers report the slot of each landed dart', () => {
 });
 
 test('effects pools stay within the 400-particle budget', async () => {
-  const src = await import('node:fs').then((fs) => fs.readFileSync(new URL('../src/render/effects.ts', import.meta.url), 'utf8'));
+  const src = await import('node:fs').then((fs) =>
+    fs.readFileSync(new URL('../src/render/effects.ts', import.meta.url), 'utf8'),
+  );
   const num = (name: string) => Number(new RegExp(`const ${name} = (\\d+)`).exec(src)![1]);
   const total = ['TRACERS', 'FALLEN', 'SOLIDS', 'CONFETTI', 'PUFFS', 'SPARKS', 'RINGS'].reduce((a, k) => a + num(k), 0);
   assert.ok(total <= 400, `pooled ${total}`);
-  assert.ok(!/camera\.(position|rotation|target|alpha|beta|radius|fov)\s*[=+\-*]/.test(src), 'effects never move the camera');
+  assert.ok(
+    !/camera\.(position|rotation|target|alpha|beta|radius|fov)\s*[=+\-*]/.test(src),
+    'effects never move the camera',
+  );
 });

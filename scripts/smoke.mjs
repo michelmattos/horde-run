@@ -34,7 +34,9 @@ async function freePort() {
 // Minimal PNG reader (8-bit RGB / RGBA, non-interlaced: what Chromium writes).
 function decodePng(buf) {
   let p = 8;
-  let w = 0, h = 0, ch = 0;
+  let w = 0,
+    h = 0,
+    ch = 0;
   const idat = [];
   while (p < buf.length) {
     const len = buf.readUInt32BE(p);
@@ -66,7 +68,9 @@ function decodePng(buf) {
       else if (f === 3) v += (a + b) >> 1;
       else if (f === 4) {
         const pp = a + b - c;
-        const pa = Math.abs(pp - a), pb = Math.abs(pp - b), pc = Math.abs(pp - c);
+        const pa = Math.abs(pp - a),
+          pb = Math.abs(pp - b),
+          pc = Math.abs(pp - c);
         v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
       }
       out[y * stride + x] = v & 255;
@@ -81,11 +85,15 @@ function decodePng(buf) {
 function sceneContent(path) {
   const { w, h, ch, data } = decodePng(readFileSync(path));
   const colours = new Set();
-  let n = 0, sum = 0, sum2 = 0;
+  let n = 0,
+    sum = 0,
+    sum2 = 0;
   for (let y = Math.floor(h * 0.22); y < h * 0.78; y += 3) {
     for (let x = Math.floor(w * 0.08); x < w * 0.92; x += 3) {
       const i = (y * w + x) * ch;
-      const r = data[i], g = data[i + 1], b = data[i + 2];
+      const r = data[i],
+        g = data[i + 1],
+        b = data[i + 2];
       const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
       sum += l;
       sum2 += l * l;
@@ -137,7 +145,7 @@ let exitCode = 0;
 
 function stopServer() {
   try {
-    process.kill(-server.pid, 'SIGTERM');
+    if (server.pid) process.kill(-server.pid, 'SIGTERM');
   } catch {
     // already gone
   }
@@ -170,7 +178,9 @@ try {
   await card.waitFor({ state: 'attached', timeout: 10000 });
   // The card dismisses itself after a couple of seconds; on a slow software-GL boot it can
   // be gone already, so fall back to its accessible name (the same title line).
-  const titleText = (await card.isVisible()) ? (await card.innerText()).split('\n')[0] : await card.getAttribute('aria-label');
+  const titleText = (await card.isVisible())
+    ? (await card.innerText()).split('\n')[0]
+    : await card.getAttribute('aria-label');
   await page.screenshot({ path: 'smoke-title.png' });
   // The card also dismisses itself after a couple of seconds; tap it only if it is still up.
   if (await card.isVisible()) await card.tap({ timeout: 3000 }).catch(() => {});
@@ -209,7 +219,11 @@ try {
     await sleep(50);
   }
   await page.screenshot({ path: 'smoke-play.png' });
-  const afterPlay = await page.evaluate(() => ({ state: { ...window.__horde.state() }, units: window.__horde.units(), zoom: window.__horde.zoom() }));
+  const afterPlay = await page.evaluate(() => ({
+    state: { ...window.__horde.state() },
+    units: window.__horde.units(),
+    zoom: window.__horde.zoom(),
+  }));
   await touch('touchEnd', 0, 0);
 
   // Push the crowd past 1000 player units, topping up while enemies cancel them.
@@ -236,7 +250,11 @@ try {
     peakUnits = Math.max(peakUnits, s.units);
   }
   await page.screenshot({ path: 'smoke-crowd.png' });
-  const final = await page.evaluate(() => ({ state: { ...window.__horde.state() }, level: window.__horde.level(), zoom: window.__horde.zoom() }));
+  const final = await page.evaluate(() => ({
+    state: { ...window.__horde.state() },
+    level: window.__horde.level(),
+    zoom: window.__horde.zoom(),
+  }));
   const crowdRender = await page.evaluate(() => window.__horde.render());
 
   // Boss level: jump straight in and fire for a few seconds.
@@ -254,7 +272,11 @@ try {
   }
   await page.screenshot({ path: 'smoke-boss.png' });
   await touch('touchEnd', 0, 0);
-  const boss = await page.evaluate(() => ({ level: window.__horde.level(), state: { ...window.__horde.state() }, render: window.__horde.render() }));
+  const boss = await page.evaluate(() => ({
+    level: window.__horde.level(),
+    state: { ...window.__horde.state() },
+    render: window.__horde.render(),
+  }));
 
   // Result screen: knock the boss's base down to its last hit point; the next base hit
   // (or the base's own HP check) ends the battle and the result card follows.
@@ -272,11 +294,13 @@ try {
   for (const shot of ['smoke-play.png', 'smoke-crowd.png', 'smoke-boss.png']) {
     const c = sceneContent(shot);
     content[shot] = c;
-    if (c.lumaStd < MIN_LUMA_STD || c.colours < MIN_COLOURS) errors.push(`${shot} shows no 3D scene (luma std ${c.lumaStd}, ${c.colours} colours)`);
+    if (c.lumaStd < MIN_LUMA_STD || c.colours < MIN_COLOURS)
+      errors.push(`${shot} shows no 3D scene (luma std ${c.lumaStd}, ${c.colours} colours)`);
   }
   if (crowdRender.drawCalls < MIN_DRAW_CALLS) errors.push(`crowd frame drew only ${crowdRender.drawCalls} calls`);
   if (boss.render.drawCalls < MIN_DRAW_CALLS) errors.push(`boss frame drew only ${boss.render.drawCalls} calls`);
-  if (errors.some((e) => /Unable to compile effect|SHADER ERROR/i.test(e))) errors.push('shader compile errors (see above)');
+  if (errors.some((e) => /Unable to compile effect|SHADER ERROR/i.test(e)))
+    errors.push('shader compile errors (see above)');
 
   const summary = {
     port: PORT,
@@ -300,10 +324,23 @@ try {
     titleCard: titleText,
     outcome: final.state.outcome,
     finalTime: +final.state.time.toFixed(2),
-    boss: { level: boss.level, time: +boss.state.time.toFixed(2), bossPhase: boss.state.bossPhase, enemyBaseX: +(boss.state.enemyBaseX ?? 0).toFixed(2) },
+    boss: {
+      level: boss.level,
+      time: +boss.state.time.toFixed(2),
+      bossPhase: boss.state.bossPhase,
+      enemyBaseX: +(boss.state.enemyBaseX ?? 0).toFixed(2),
+    },
     render: { crowd: crowdRender, boss: boss.render },
     result,
-    screenshots: ['smoke-title.png', 'smoke-map.png', 'smoke-card.png', 'smoke-play.png', 'smoke-crowd.png', 'smoke-boss.png', 'smoke-result.png'],
+    screenshots: [
+      'smoke-title.png',
+      'smoke-map.png',
+      'smoke-card.png',
+      'smoke-play.png',
+      'smoke-crowd.png',
+      'smoke-boss.png',
+      'smoke-result.png',
+    ],
     errors,
   };
   console.log(JSON.stringify(summary, null, 2));
@@ -312,7 +349,8 @@ try {
   if (afterPlay.state.time <= 1) errors.push('battle clock did not advance');
   if (peakPlayer < 1000) errors.push(`player units peaked at ${peakPlayer}, expected 1000+`);
   if (!/World 1 \u00b7 Bedroom Floor/.test(titleText)) errors.push(`title card read "${titleText}"`);
-  if (!(final.zoom >= 0.08 && final.zoom > afterPlay.zoom)) errors.push(`camera did not zoom out with the crowd (${afterPlay.zoom} -> ${final.zoom})`);
+  if (!(final.zoom >= 0.08 && final.zoom > afterPlay.zoom))
+    errors.push(`camera did not zoom out with the crowd (${afterPlay.zoom} -> ${final.zoom})`);
   if (fpsAvg > 62) errors.push(`fps ${fpsAvg.toFixed(1)} is above the 60 fps cap`);
   if (boss.level !== '1-10' || !(boss.state.time > 2)) errors.push('boss level did not run');
   if (result !== 'victory') errors.push(`expected a victory result screen, got ${result}`);

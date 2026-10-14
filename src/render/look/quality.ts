@@ -25,9 +25,36 @@ export interface QualitySettings {
 }
 
 export const QUALITY_SETTINGS: Record<QualityLevel, QualitySettings> = {
-  high: { shadowMapSize: 2048, shadowFilter: 'medium', crowdShadows: true, postProcess: true, msaa: 4, fxaa: false, bloom: true, vignette: true },
-  medium: { shadowMapSize: 1024, shadowFilter: 'medium', crowdShadows: true, postProcess: true, msaa: 1, fxaa: true, bloom: true, vignette: true },
-  low: { shadowMapSize: 1024, shadowFilter: 'low', crowdShadows: false, postProcess: false, msaa: 1, fxaa: false, bloom: false, vignette: false },
+  high: {
+    shadowMapSize: 2048,
+    shadowFilter: 'medium',
+    crowdShadows: true,
+    postProcess: true,
+    msaa: 4,
+    fxaa: false,
+    bloom: true,
+    vignette: true,
+  },
+  medium: {
+    shadowMapSize: 1024,
+    shadowFilter: 'medium',
+    crowdShadows: true,
+    postProcess: true,
+    msaa: 1,
+    fxaa: true,
+    bloom: true,
+    vignette: true,
+  },
+  low: {
+    shadowMapSize: 1024,
+    shadowFilter: 'low',
+    crowdShadows: false,
+    postProcess: false,
+    msaa: 1,
+    fxaa: false,
+    bloom: false,
+    vignette: false,
+  },
 };
 
 export function parseQuality(v: string | null | undefined): QualityLevel | null {

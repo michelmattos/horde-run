@@ -98,7 +98,13 @@ function scaled(t: Texture, s: number): Texture {
 // Injection-moulded toy plastic (army men, forts, toy blocks, gate frames): smooth,
 // dielectric, a soft wide highlight. Big hero pieces may add clearcoat: 0.3-0.6.
 export function plasticMaterial(scene: Scene, color: ColorInput | null, o: MaterialOptions = {}): PBRMaterial {
-  return build(scene, 'plastic', color, { roughness: 0.42, metallic: 0, clearcoat: 0, clearcoatRoughness: 0.15, texture: false, normalStrength: 0.15 }, o);
+  return build(
+    scene,
+    'plastic',
+    color,
+    { roughness: 0.42, metallic: 0, clearcoat: 0, clearcoatRoughness: 0.15, texture: false, normalStrength: 0.15 },
+    o,
+  );
 }
 
 // The crowd's shared plastic (mob riflemen and the champion body): white albedo, team
@@ -113,28 +119,58 @@ export function armyPlasticMaterial(scene: Scene): PBRMaterial {
 // Bare tin plate (the Tin General's tank, wind-up key shaft): bright metal, fairly glossy.
 // For lithographed (painted) tin use paintedTinMaterial.
 export function tinMaterial(scene: Scene, color: ColorInput | null = 'tin', o: MaterialOptions = {}): PBRMaterial {
-  return build(scene, 'tin', color, { roughness: 0.3, metallic: 0.95, clearcoat: 0, clearcoatRoughness: 0.1, texture: 'plastic', normalStrength: 0.1 }, o);
+  return build(
+    scene,
+    'tin',
+    color,
+    { roughness: 0.3, metallic: 0.95, clearcoat: 0, clearcoatRoughness: 0.1, texture: 'plastic', normalStrength: 0.1 },
+    o,
+  );
 }
 
 // Lithographed / enamelled tin: printed colour under a glossy varnish, a hint of metal.
 export function paintedTinMaterial(scene: Scene, color: ColorInput | null, o: MaterialOptions = {}): PBRMaterial {
-  return build(scene, 'paintedTin', color, { roughness: 0.38, metallic: 0.25, clearcoat: 0.7, clearcoatRoughness: 0.12, texture: false, normalStrength: 0 }, o);
+  return build(
+    scene,
+    'paintedTin',
+    color,
+    { roughness: 0.38, metallic: 0.25, clearcoat: 0.7, clearcoatRoughness: 0.12, texture: false, normalStrength: 0 },
+    o,
+  );
 }
 
 // Brass (wind-up key, buttons, medals).
 export function brassMaterial(scene: Scene, o: MaterialOptions = {}): PBRMaterial {
-  return build(scene, 'brass', 'brass', { roughness: 0.28, metallic: 1, clearcoat: 0, clearcoatRoughness: 0.1, texture: false, normalStrength: 0 }, o);
+  return build(
+    scene,
+    'brass',
+    'brass',
+    { roughness: 0.28, metallic: 1, clearcoat: 0, clearcoatRoughness: 0.1, texture: false, normalStrength: 0 },
+    o,
+  );
 }
 
 // Wood (alphabet blocks, cannon wheels, furniture, floorboards): grain texture, satin
 // varnish. Texture grain runs along V; rotate UVs on the mesh to orient it.
 export function woodMaterial(scene: Scene, color: ColorInput | null = 'oak', o: MaterialOptions = {}): PBRMaterial {
-  return build(scene, 'wood', color, { roughness: 0.55, metallic: 0, clearcoat: 0.25, clearcoatRoughness: 0.35, texture: 'wood', normalStrength: 0.35 }, o);
+  return build(
+    scene,
+    'wood',
+    color,
+    { roughness: 0.55, metallic: 0, clearcoat: 0.25, clearcoatRoughness: 0.35, texture: 'wood', normalStrength: 0.35 },
+    o,
+  );
 }
 
 // Fabric (the rug, the sock, the bed skirt): matte, weave normal, a sheen at grazing angles.
 export function fabricMaterial(scene: Scene, color: ColorInput | null, o: MaterialOptions = {}): PBRMaterial {
-  const m = build(scene, 'fabric', color, { roughness: 0.92, metallic: 0, clearcoat: 0, clearcoatRoughness: 0, texture: 'fabric', normalStrength: 0.6 }, o);
+  const m = build(
+    scene,
+    'fabric',
+    color,
+    { roughness: 0.92, metallic: 0, clearcoat: 0, clearcoatRoughness: 0, texture: 'fabric', normalStrength: 0.6 },
+    o,
+  );
   m.sheen.isEnabled = true;
   // Sheen tinted by the cloth colour (white sheen washes dark wool out to grey).
   m.sheen.intensity = 0.35;
@@ -145,23 +181,47 @@ export function fabricMaterial(scene: Scene, color: ColorInput | null, o: Materi
 
 // Paper and card (book pages, gate signs, sticker labels): matte, faint fibre.
 export function paperMaterial(scene: Scene, color: ColorInput | null = 'paper', o: MaterialOptions = {}): PBRMaterial {
-  return build(scene, 'paper', color, { roughness: 0.85, metallic: 0, clearcoat: 0, clearcoatRoughness: 0, texture: 'paper', normalStrength: 0.2 }, o);
+  return build(
+    scene,
+    'paper',
+    color,
+    { roughness: 0.85, metallic: 0, clearcoat: 0, clearcoatRoughness: 0, texture: 'paper', normalStrength: 0.2 },
+    o,
+  );
 }
 
 // Crayon wax: waxy, semi-matte, rich colour.
 export function waxMaterial(scene: Scene, color: ColorInput | null, o: MaterialOptions = {}): PBRMaterial {
-  return build(scene, 'wax', color, { roughness: 0.62, metallic: 0, clearcoat: 0, clearcoatRoughness: 0, texture: 'plastic', normalStrength: 0.2 }, o);
+  return build(
+    scene,
+    'wax',
+    color,
+    { roughness: 0.62, metallic: 0, clearcoat: 0, clearcoatRoughness: 0, texture: 'plastic', normalStrength: 0.2 },
+    o,
+  );
 }
 
 // Rubber (tank treads, toy car tyres, eraser): dark, matte.
 export function rubberMaterial(scene: Scene, color: ColorInput | null = 'tread', o: MaterialOptions = {}): PBRMaterial {
-  return build(scene, 'rubber', color, { roughness: 0.88, metallic: 0, clearcoat: 0, clearcoatRoughness: 0, texture: 'plastic', normalStrength: 0.3 }, o);
+  return build(
+    scene,
+    'rubber',
+    color,
+    { roughness: 0.88, metallic: 0, clearcoat: 0, clearcoatRoughness: 0, texture: 'plastic', normalStrength: 0.3 },
+    o,
+  );
 }
 
 // Glass (marbles, windows): opaque by default (a marble reads as coloured glass from its
 // sharp reflections); alpha < 1 for see-through panes.
 export function glassMaterial(scene: Scene, color: ColorInput | null, o: MaterialOptions = {}): PBRMaterial {
-  const m = build(scene, 'glass', color, { roughness: 0.04, metallic: 0, clearcoat: 1, clearcoatRoughness: 0.02, texture: false, normalStrength: 0 }, o);
+  const m = build(
+    scene,
+    'glass',
+    color,
+    { roughness: 0.04, metallic: 0, clearcoat: 1, clearcoatRoughness: 0.02, texture: false, normalStrength: 0 },
+    o,
+  );
   m.indexOfRefraction = 1.5;
   return m;
 }

@@ -247,9 +247,13 @@ export class Effects {
     this.root = new TransformNode('fxRoot', scene);
 
     // --- solids: PBR plastic, colour per instance (linear) ---
-    const plastic = this.own(plasticMaterial(scene, null, { name: 'fxPlastic', instanceColor: true, roughness: 0.38, clearcoat: 0.35 }));
+    const plastic = this.own(
+      plasticMaterial(scene, null, { name: 'fxPlastic', instanceColor: true, roughness: 0.38, clearcoat: 0.35 }),
+    );
     const foam = this.own(plasticMaterial(scene, null, { name: 'fxFoam', instanceColor: true, roughness: 0.72 }));
-    const paperMat = this.own(plasticMaterial(scene, null, { name: 'fxPaper', instanceColor: true, roughness: 0.6, backFaceCulling: false }));
+    const paperMat = this.own(
+      plasticMaterial(scene, null, { name: 'fxPaper', instanceColor: true, roughness: 0.6, backFaceCulling: false }),
+    );
     paperMat.twoSidedLighting = true;
 
     // --- sprites: unlit, colour and alpha per instance ---
@@ -304,7 +308,22 @@ export class Effects {
       } else {
         this.ring(x, z, w * 0.35, w * 1.05, 0.75, 0.55, this.S.trap, 1.15, 0.9);
         this.tornPaper(x, z, w, this.count(14));
-        for (let i = 0; i < 3; i++) this.puff(x + this.r(-0.4, 0.4) * w, this.r(0.5, 1.1), z + this.r(-0.3, 0.3), this.r(-1, 1), 0.6, -0.4, 0.7, 2.0, 0.8, this.S.trapPuff.r, this.S.trapPuff.g, this.S.trapPuff.b, 0.8);
+        for (let i = 0; i < 3; i++)
+          this.puff(
+            x + this.r(-0.4, 0.4) * w,
+            this.r(0.5, 1.1),
+            z + this.r(-0.3, 0.3),
+            this.r(-1, 1),
+            0.6,
+            -0.4,
+            0.7,
+            2.0,
+            0.8,
+            this.S.trapPuff.r,
+            this.S.trapPuff.g,
+            this.S.trapPuff.b,
+            0.8,
+          );
       }
     } else if (this.gateTrickle.allow(key)) {
       if (positive) this.confettiFountain(x, z, w, 3);
@@ -320,7 +339,21 @@ export class Effects {
     for (let i = 0; i < 2; i++) {
       const a = this.rand() * Math.PI * 2;
       const tint = this.r(0.92, 1.08);
-      this.puff(x + Math.cos(a) * 0.25, this.r(0.2, 0.35), z + Math.sin(a) * 0.25, Math.cos(a) * 0.7, this.r(0.2, 0.5), Math.sin(a) * 0.7, 0.55, 1.5, this.r(0.7, 0.9), c.r * tint, c.g * tint, c.b * tint, 0.85);
+      this.puff(
+        x + Math.cos(a) * 0.25,
+        this.r(0.2, 0.35),
+        z + Math.sin(a) * 0.25,
+        Math.cos(a) * 0.7,
+        this.r(0.2, 0.5),
+        Math.sin(a) * 0.7,
+        0.55,
+        1.5,
+        this.r(0.7, 0.9),
+        c.r * tint,
+        c.g * tint,
+        c.b * tint,
+        0.85,
+      );
     }
   }
 
@@ -341,16 +374,53 @@ export class Effects {
       const c = pick === 0 && i % 2 === 0 ? C.tanDark : pick < 3 ? C.tan : C.tanLight;
       const a = this.rand() * Math.PI * 2;
       const sp = this.r(1.6, 4);
-      this.solid(SHARD, x + this.r(-1, 1) * spread, this.r(0.5, 1.8), z + this.r(-0.3, 0.3), Math.cos(a) * sp, this.r(4, 7.5), Math.sin(a) * sp * 0.8, this.r(1.6, 2.2), this.r(0.2, 0.36), c);
+      this.solid(
+        SHARD,
+        x + this.r(-1, 1) * spread,
+        this.r(0.5, 1.8),
+        z + this.r(-0.3, 0.3),
+        Math.cos(a) * sp,
+        this.r(4, 7.5),
+        Math.sin(a) * sp * 0.8,
+        this.r(1.6, 2.2),
+        this.r(0.2, 0.36),
+        c,
+      );
     }
     const blocks = wall ? 3 : 2;
     for (let i = 0; i < blocks; i++) {
       const a = this.rand() * Math.PI * 2;
       const sp = this.r(1.2, 2.6);
-      this.solid(BLOCK, x + this.r(-1, 1) * spread, this.r(0.8, 1.6), z + this.r(-0.2, 0.2), Math.cos(a) * sp, this.r(4.5, 6.5), Math.sin(a) * sp * 0.7, 2.4, this.r(0.34, 0.44), i % 2 === 0 ? C.tanLight : C.tan);
+      this.solid(
+        BLOCK,
+        x + this.r(-1, 1) * spread,
+        this.r(0.8, 1.6),
+        z + this.r(-0.2, 0.2),
+        Math.cos(a) * sp,
+        this.r(4.5, 6.5),
+        Math.sin(a) * sp * 0.7,
+        2.4,
+        this.r(0.34, 0.44),
+        i % 2 === 0 ? C.tanLight : C.tan,
+      );
     }
     const f = this.S.fluff;
-    for (let i = 0; i < 3; i++) this.puff(x + this.r(-1, 1) * spread, this.r(0.3, 0.8), z + this.r(-0.3, 0.3), this.r(-0.8, 0.8), 0.4, this.r(-0.5, 0.5), 0.85, 2.2, this.r(0.9, 1.3), f.r, f.g, f.b, 0.75);
+    for (let i = 0; i < 3; i++)
+      this.puff(
+        x + this.r(-1, 1) * spread,
+        this.r(0.3, 0.8),
+        z + this.r(-0.3, 0.3),
+        this.r(-0.8, 0.8),
+        0.4,
+        this.r(-0.5, 0.5),
+        0.85,
+        2.2,
+        this.r(0.9, 1.3),
+        f.r,
+        f.g,
+        f.b,
+        0.75,
+      );
   }
 
   // Units that ran past the enemy base: a small cool-grey puff just beyond the lane end.
@@ -358,7 +428,21 @@ export class Effects {
     const c = this.S.fluffCool;
     for (let i = 0; i < 3; i++) {
       const a = this.rand() * Math.PI * 2;
-      this.puff(x + Math.cos(a) * 0.3, 0.3, z + 0.4 + Math.sin(a) * 0.3, Math.cos(a) * 0.8, 0.5, Math.sin(a) * 0.8, 0.6, 1.6, 0.75, c.r, c.g, c.b, 0.75);
+      this.puff(
+        x + Math.cos(a) * 0.3,
+        0.3,
+        z + 0.4 + Math.sin(a) * 0.3,
+        Math.cos(a) * 0.8,
+        0.5,
+        Math.sin(a) * 0.8,
+        0.6,
+        1.6,
+        0.75,
+        c.r,
+        c.g,
+        c.b,
+        0.75,
+      );
     }
   }
 
@@ -369,7 +453,18 @@ export class Effects {
     for (let i = 0; i < n; i++) {
       const px = x + this.r(-0.5, 0.5) * width;
       const c = i % 3 === 0 ? (good ? C.goodDark : C.trapDark) : good ? C.good : C.trap;
-      this.solid(SHARD, px, this.r(0.5, 2), z, (px - x) * 1.4, this.r(2.5, 5.5), this.r(-2.2, 0.6), this.r(1.3, 1.8), this.r(0.18, 0.3), c);
+      this.solid(
+        SHARD,
+        px,
+        this.r(0.5, 2),
+        z,
+        (px - x) * 1.4,
+        this.r(2.5, 5.5),
+        this.r(-2.2, 0.6),
+        this.r(1.3, 1.8),
+        this.r(0.18, 0.3),
+        c,
+      );
     }
     if (good) this.confettiFountain(x, z, width, this.count(8));
     else this.tornPaper(x, z, width, this.count(8));
@@ -390,12 +485,38 @@ export class Effects {
       const c = pick === 3 ? this.S.tinRed : this.S.sparkBrass;
       const k = pick === 3 ? 1.8 : 2.4; // brief overdrive: these are the only things that bloom
       const sp = this.r(5, 8.5);
-      this.sparks.spawn(x + Math.cos(a) * rad, this.r(1.2, 2), z + Math.sin(a) * rad * 0.6, Math.cos(a) * sp, this.r(2, 5), Math.sin(a) * sp * 0.7, this.r(0.6, 0.9), this.r(0.12, 0.18), c.r * k, c.g * k, c.b * k, 9);
+      this.sparks.spawn(
+        x + Math.cos(a) * rad,
+        this.r(1.2, 2),
+        z + Math.sin(a) * rad * 0.6,
+        Math.cos(a) * sp,
+        this.r(2, 5),
+        Math.sin(a) * sp * 0.7,
+        this.r(0.6, 0.9),
+        this.r(0.12, 0.18),
+        c.r * k,
+        c.g * k,
+        c.b * k,
+        9,
+      );
     }
     // A handful of brass "medals" among them, tumbling down like confetti.
     for (let i = 0; i < this.count(10); i++) {
       const a = this.rand() * Math.PI * 2;
-      this.confettiPiece(x + Math.cos(a) * rad, this.r(1.4, 2.2), z + Math.sin(a) * rad * 0.6, Math.cos(a) * 3, this.r(3, 6), Math.sin(a) * 2, this.r(1.4, 1.9), this.r(0.18, 0.24), 1, 1, i % 2 === 0 ? C.brass : C.gold, 1.15);
+      this.confettiPiece(
+        x + Math.cos(a) * rad,
+        this.r(1.4, 2.2),
+        z + Math.sin(a) * rad * 0.6,
+        Math.cos(a) * 3,
+        this.r(3, 6),
+        Math.sin(a) * 2,
+        this.r(1.4, 1.9),
+        this.r(0.18, 0.24),
+        1,
+        1,
+        i % 2 === 0 ? C.brass : C.gold,
+        1.15,
+      );
     }
   }
 
@@ -410,8 +531,29 @@ export class Effects {
     for (let i = 0; i < n; i++) {
       const a = this.rand() * Math.PI * 2;
       const sp = this.r(1.2, 2.8);
-      const c = enemy ? (i % 3 === 0 ? C.tanDark : i % 3 === 1 ? C.tan : C.tanLight) : i % 3 === 0 ? C.greenDark : i % 3 === 1 ? C.green : C.greenLight;
-      this.solid(SHARD, x + this.r(-0.3, 0.3), this.r(0.6, 1.2), z + this.r(-0.2, 0.2), Math.cos(a) * sp, this.r(3, 5), Math.sin(a) * sp * 0.6 - (enemy ? 1 : -1) * 0.8, this.r(0.9, 1.3), this.r(0.1, 0.16), c);
+      const c = enemy
+        ? i % 3 === 0
+          ? C.tanDark
+          : i % 3 === 1
+            ? C.tan
+            : C.tanLight
+        : i % 3 === 0
+          ? C.greenDark
+          : i % 3 === 1
+            ? C.green
+            : C.greenLight;
+      this.solid(
+        SHARD,
+        x + this.r(-0.3, 0.3),
+        this.r(0.6, 1.2),
+        z + this.r(-0.2, 0.2),
+        Math.cos(a) * sp,
+        this.r(3, 5),
+        Math.sin(a) * sp * 0.6 - (enemy ? 1 : -1) * 0.8,
+        this.r(0.9, 1.3),
+        this.r(0.1, 0.16),
+        c,
+      );
     }
     const f = this.S.fluff;
     this.puff(x, 0.7, z, 0, 0.6, 0, 0.45, 1.4, 0.6, f.r, f.g, f.b, 0.6);
@@ -419,7 +561,17 @@ export class Effects {
 
   // ---------- spawn helpers ----------
 
-  private ring(x: number, z: number, w0: number, w1: number, aspect: number, life: number, c: Rgb, k: number, alpha: number): void {
+  private ring(
+    x: number,
+    z: number,
+    w0: number,
+    w1: number,
+    aspect: number,
+    life: number,
+    c: Rgb,
+    k: number,
+    alpha: number,
+  ): void {
     const i = this.nextRing;
     this.nextRing = (i + 1) % RINGS;
     this.ringX[i] = x;
@@ -435,14 +587,39 @@ export class Effects {
     this.ringCol[i * 4 + 3] = alpha;
   }
 
-  private puff(x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, grow: number, size: number, r: number, g: number, b: number, alpha: number): void {
+  private puff(
+    x: number,
+    y: number,
+    z: number,
+    vx: number,
+    vy: number,
+    vz: number,
+    life: number,
+    grow: number,
+    size: number,
+    r: number,
+    g: number,
+    b: number,
+    alpha: number,
+  ): void {
     const s = this.puffs.spawn(x, y, z, vx, vy, vz, life, size, r, g, b, -0.8);
     this.puffGrow[s] = grow;
     this.puffAlpha[s] = alpha;
     this.puffSpin[s] = this.rand() * Math.PI * 2;
   }
 
-  private solid(shape: number, x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, size: number, c: Rgb): void {
+  private solid(
+    shape: number,
+    x: number,
+    y: number,
+    z: number,
+    vx: number,
+    vy: number,
+    vz: number,
+    life: number,
+    size: number,
+    c: Rgb,
+  ): void {
     const s = this.solids.spawn(x, y, z, vx, vy, vz, life, size, c.r, c.g, c.b, GRAVITY);
     this.solidShape[s] = shape;
     const o = s * 3;
@@ -454,7 +631,20 @@ export class Effects {
     this.solidSpin[o + 2] = this.r(-12, 12);
   }
 
-  private confettiPiece(x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, size: number, ax: number, az: number, c: Rgb, k: number): void {
+  private confettiPiece(
+    x: number,
+    y: number,
+    z: number,
+    vx: number,
+    vy: number,
+    vz: number,
+    life: number,
+    size: number,
+    ax: number,
+    az: number,
+    c: Rgb,
+    k: number,
+  ): void {
     const s = this.confetti.spawn(x, y, z, vx, vy, vz, life, size, c.r * k, c.g * k, c.b * k, 9);
     const o = s * 3;
     this.confRot[o] = this.rand() * Math.PI * 2;
@@ -474,7 +664,20 @@ export class Effects {
       const c = pick < 0.45 ? C.gold : pick < 0.8 ? C.good : C.paper;
       const strip = this.rand() < 0.3;
       const px = x + this.r(-0.42, 0.42) * w;
-      this.confettiPiece(px, this.r(0.9, 1.9), z + this.r(-0.15, 0.15), (px - x) * 0.9 + this.r(-1, 1), this.r(5, 8.5), this.r(-2.4, 0.4), this.r(1.5, 2.1), this.r(0.21, 0.3), strip ? 0.38 : 1, strip ? 1.5 : 1, c, pick < 0.45 ? 1.15 : 1);
+      this.confettiPiece(
+        px,
+        this.r(0.9, 1.9),
+        z + this.r(-0.15, 0.15),
+        (px - x) * 0.9 + this.r(-1, 1),
+        this.r(5, 8.5),
+        this.r(-2.4, 0.4),
+        this.r(1.5, 2.1),
+        this.r(0.21, 0.3),
+        strip ? 0.38 : 1,
+        strip ? 1.5 : 1,
+        c,
+        pick < 0.45 ? 1.15 : 1,
+      );
     }
   }
 
@@ -485,7 +688,20 @@ export class Effects {
       const c = pick < 0.5 ? C.trap : pick < 0.75 ? C.trapDark : C.paper;
       const px = x + this.r(-0.4, 0.4) * w;
       const s = this.r(0.2, 0.34);
-      this.confettiPiece(px, this.r(0.8, 1.7), z + this.r(-0.2, 0.2), (px - x) * 1.2 + this.r(-1.5, 1.5), this.r(2.5, 5), this.r(-2, 0.6), this.r(1.0, 1.5), s, this.r(0.55, 1), this.r(0.45, 1.1), c, 1);
+      this.confettiPiece(
+        px,
+        this.r(0.8, 1.7),
+        z + this.r(-0.2, 0.2),
+        (px - x) * 1.2 + this.r(-1.5, 1.5),
+        this.r(2.5, 5),
+        this.r(-2, 0.6),
+        this.r(1.0, 1.5),
+        s,
+        this.r(0.55, 1),
+        this.r(0.45, 1.1),
+        c,
+        1,
+      );
     }
   }
 
@@ -536,7 +752,20 @@ export class Effects {
       const d = Math.max(1e-3, Math.hypot(dx, dz));
       // Squash puff and the dart bouncing back off the target.
       this.puff(ex, DART_TO_Y, ez, 0, 0.4, 0, 0.3, 1.9, 0.5, foam.r, foam.g, foam.b, 0.85);
-      const f = this.fallen.spawn(ex - (dx / d) * 0.25, DART_TO_Y, ez - (dz / d) * 0.25, (-dx / d) * this.r(1, 1.8), this.r(2, 3.2), (-dz / d) * this.r(1, 1.8), 0.9, 1, 1, 1, 1, GRAVITY);
+      const f = this.fallen.spawn(
+        ex - (dx / d) * 0.25,
+        DART_TO_Y,
+        ez - (dz / d) * 0.25,
+        (-dx / d) * this.r(1, 1.8),
+        this.r(2, 3.2),
+        (-dz / d) * this.r(1, 1.8),
+        0.9,
+        1,
+        1,
+        1,
+        1,
+        GRAVITY,
+      );
       const o = f * 3;
       this.fallenRot[o] = Math.atan2(dx, dz);
       this.fallenRot[o + 1] = 0.3;
@@ -557,7 +786,19 @@ export class Effects {
       const j = b.next();
       if (j < 0) break;
       const y0 = this.dartFromY[i];
-      writeTRS(b.m, j * 16, t.x0[i] + dx * k, dartHeight(k, y0, DART_TO_Y, DART_LIFT), t.z0[i] + dz * k, DART_SCALE, DART_SCALE, DART_SCALE, Math.atan2(dx, dz), dartPitch(k, y0, DART_TO_Y, DART_LIFT, dist), k * DART_TIME * DART_SPIN + i);
+      writeTRS(
+        b.m,
+        j * 16,
+        t.x0[i] + dx * k,
+        dartHeight(k, y0, DART_TO_Y, DART_LIFT),
+        t.z0[i] + dz * k,
+        DART_SCALE,
+        DART_SCALE,
+        DART_SCALE,
+        Math.atan2(dx, dz),
+        dartPitch(k, y0, DART_TO_Y, DART_LIFT, dist),
+        k * DART_TIME * DART_SPIN + i,
+      );
       b.color(j, 1, 1, 1, 1);
     }
 
@@ -582,7 +823,19 @@ export class Effects {
       const s = Math.min(1, k / 0.25) * DART_SCALE;
       const j = b.next();
       if (j < 0) break;
-      writeTRS(b.m, j * 16, p.px[i], p.py[i], p.pz[i], s * (2 - squash), s * (2 - squash), s * squash, rot[o], rot[o + 1], rot[o + 2]);
+      writeTRS(
+        b.m,
+        j * 16,
+        p.px[i],
+        p.py[i],
+        p.pz[i],
+        s * (2 - squash),
+        s * (2 - squash),
+        s * squash,
+        rot[o],
+        rot[o + 1],
+        rot[o + 2],
+      );
       b.color(j, 1, 1, 1, 1);
     }
     b.commit();
@@ -651,7 +904,19 @@ export class Effects {
       const s = p.size[i] * (k < 0.2 ? k / 0.2 : 1);
       const j = b.next();
       if (j < 0) break;
-      writeTRS(b.m, j * 16, p.px[i], p.py[i], p.pz[i], s * this.confAspect[i * 2], s, s * this.confAspect[i * 2 + 1], rot[o], rot[o + 1], rot[o + 2]);
+      writeTRS(
+        b.m,
+        j * 16,
+        p.px[i],
+        p.py[i],
+        p.pz[i],
+        s * this.confAspect[i * 2],
+        s,
+        s * this.confAspect[i * 2 + 1],
+        rot[o],
+        rot[o + 1],
+        rot[o + 2],
+      );
       b.color(j, p.r[i], p.g[i], p.b[i], 1);
     }
     b.commit();
@@ -671,7 +936,22 @@ export class Effects {
       const a = this.puffAlpha[i] * fxEnvelope(k, 0.12, 0.7);
       const j = b.next();
       if (j < 0) break;
-      writeBillboard(b.m, j * 16, p.px[i], p.py[i], p.pz[i], s, s, this.puffSpin[i] + age * 0.6, this.rX, this.rY, this.rZ, this.uX, this.uY, this.uZ);
+      writeBillboard(
+        b.m,
+        j * 16,
+        p.px[i],
+        p.py[i],
+        p.pz[i],
+        s,
+        s,
+        this.puffSpin[i] + age * 0.6,
+        this.rX,
+        this.rY,
+        this.rZ,
+        this.uX,
+        this.uY,
+        this.uZ,
+      );
       b.color(j, p.r[i], p.g[i], p.b[i], a);
     }
     b.commit();
@@ -712,7 +992,13 @@ export class Effects {
       if (j < 0) break;
       writeTRS(b.m, j * 16, this.ringX[i], 0.045, this.ringZ[i], w, 1, w * this.ringAspect[i], 0, 0, 0);
       const c = i * 4;
-      b.color(j, this.ringCol[c], this.ringCol[c + 1], this.ringCol[c + 2], this.ringCol[c + 3] * fxEnvelope(k, 0.08, 0.75));
+      b.color(
+        j,
+        this.ringCol[c],
+        this.ringCol[c + 1],
+        this.ringCol[c + 2],
+        this.ringCol[c + 3] * fxEnvelope(k, 0.08, 0.75),
+      );
     }
     b.commit();
   }
@@ -730,7 +1016,15 @@ export class Effects {
     this.gateTrickle.clear();
     this.baseChips.clear();
     this.sinceDust = DUST_INTERVAL;
-    for (const b of [this.darts, this.shardBatch, this.blockBatch, this.confBatch, this.puffBatch, this.sparkBatch, this.ringBatch]) {
+    for (const b of [
+      this.darts,
+      this.shardBatch,
+      this.blockBatch,
+      this.confBatch,
+      this.puffBatch,
+      this.sparkBatch,
+      this.ringBatch,
+    ]) {
       b.count = 0;
       b.commit();
     }
@@ -742,7 +1036,15 @@ export class Effects {
     for (let i = 0; i < RINGS; i++) if (this.ringLife[i] > 0) rings++;
     let darts = 0;
     for (let i = 0; i < TRACERS; i++) if (this.tracers.isLive(i)) darts++;
-    return darts + rings + this.fallen.liveCount() + this.solids.liveCount() + this.confetti.liveCount() + this.puffs.liveCount() + this.sparks.liveCount();
+    return (
+      darts +
+      rings +
+      this.fallen.liveCount() +
+      this.solids.liveCount() +
+      this.confetti.liveCount() +
+      this.puffs.liveCount() +
+      this.sparks.liveCount()
+    );
   }
 
   dispose(): void {
@@ -795,8 +1097,21 @@ function setColors(vd: VertexData, fn: (x: number, y: number, z: number) => [num
 // back end and a lighter seam (shows the spin), a blue rubber suction cup on the nose.
 function dartGeometry(): VertexData {
   const prof: [number, number][] = [
-    [0, -0.33], [0.05, -0.33], [0.07, -0.315], [0.078, -0.29], [0.078, 0.17], [0.072, 0.19],
-    [0.045, 0.2], [0.045, 0.2], [0.042, 0.24], [0.06, 0.26], [0.11, 0.31], [0.12, 0.325], [0.112, 0.335], [0.08, 0.33], [0, 0.322],
+    [0, -0.33],
+    [0.05, -0.33],
+    [0.07, -0.315],
+    [0.078, -0.29],
+    [0.078, 0.17],
+    [0.072, 0.19],
+    [0.045, 0.2],
+    [0.045, 0.2],
+    [0.042, 0.24],
+    [0.06, 0.26],
+    [0.11, 0.31],
+    [0.12, 0.325],
+    [0.112, 0.335],
+    [0.08, 0.33],
+    [0, 0.322],
   ];
   const vd = lathe(prof, 12);
   const orange = lin(HEX.toyOrange);
@@ -838,7 +1153,9 @@ function shardGeometry(): VertexData {
 function blockGeometry(): VertexData {
   const vd = roundedBox(1, 1, 1, 0.12, 2);
   return setColors(vd, (x, y, z) => {
-    const edge = Math.max(Math.abs(x), Math.abs(y), Math.abs(z)) > 0.47 && (Math.abs(x) > 0.38 ? 1 : 0) + (Math.abs(y) > 0.38 ? 1 : 0) + (Math.abs(z) > 0.38 ? 1 : 0) >= 2;
+    const edge =
+      Math.max(Math.abs(x), Math.abs(y), Math.abs(z)) > 0.47 &&
+      (Math.abs(x) > 0.38 ? 1 : 0) + (Math.abs(y) > 0.38 ? 1 : 0) + (Math.abs(z) > 0.38 ? 1 : 0) >= 2;
     const k = (edge ? 0.86 : 1) * (y < -0.4 ? 0.85 : 1);
     return [k, k, k];
   });
@@ -908,7 +1225,14 @@ function alphaTexture(scene: Scene, name: string, n: number, alpha: (u: number, 
 // A lumpy carpet-fluff cloud: a few overlapping soft blobs inside a round falloff.
 function fluffTexture(scene: Scene): Texture {
   const blobs: [number, number, number][] = [
-    [0, 0.02, 0.24], [-0.17, -0.06, 0.16], [0.16, -0.08, 0.17], [-0.1, 0.16, 0.15], [0.12, 0.15, 0.14], [0.0, -0.2, 0.13], [-0.24, 0.1, 0.1], [0.25, 0.06, 0.1],
+    [0, 0.02, 0.24],
+    [-0.17, -0.06, 0.16],
+    [0.16, -0.08, 0.17],
+    [-0.1, 0.16, 0.15],
+    [0.12, 0.15, 0.14],
+    [0.0, -0.2, 0.13],
+    [-0.24, 0.1, 0.1],
+    [0.25, 0.06, 0.1],
   ];
   return alphaTexture(scene, 'fxFluff', 64, (u, v) => {
     let a = 0;
@@ -927,7 +1251,10 @@ function fluffTexture(scene: Scene): Texture {
 function ringTexture(scene: Scene): Texture {
   return alphaTexture(scene, 'fxRing', 128, (u, v) => {
     const r = Math.hypot(u, v) * 2; // 0 centre → 1 edge of the quad
-    const band = Math.min(1, Math.exp(-Math.pow((r - 0.82) / 0.045, 2)) + 0.4 * Math.exp(-Math.pow((r - 0.8) / 0.13, 2)));
+    const band = Math.min(
+      1,
+      Math.exp(-Math.pow((r - 0.82) / 0.045, 2)) + 0.4 * Math.exp(-Math.pow((r - 0.8) / 0.13, 2)),
+    );
     const glow = r < 0.82 ? 0.22 * Math.pow(r / 0.82, 3) : 0;
     return r >= 1 ? 0 : band + glow;
   });

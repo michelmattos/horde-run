@@ -1,7 +1,16 @@
 // UI helper math: time format, pop curves, star timing and result button choice.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatTime, hudStarStyle, mixHex, pipLit, popScale, resultActions, starPopDelays, STAR_POP } from '../src/ui/uiLogic.ts';
+import {
+  formatTime,
+  hudStarStyle,
+  mixHex,
+  pipLit,
+  popScale,
+  resultActions,
+  starPopDelays,
+  STAR_POP,
+} from '../src/ui/uiLogic.ts';
 
 test('formatTime pads seconds and clamps negatives', () => {
   assert.equal(formatTime(0), '0:00');
@@ -47,7 +56,10 @@ test('result buttons: Next first on a win, Retry first on a defeat', () => {
 });
 
 test('boss pips light up to the current phase', () => {
-  assert.deepEqual([0, 1, 2].map((i) => pipLit(i, 1)), [true, true, false]);
+  assert.deepEqual(
+    [0, 1, 2].map((i) => pipLit(i, 1)),
+    [true, true, false],
+  );
 });
 
 test('hudReserve covers the sticker HUD strips plus the clear gap', async () => {
