@@ -9,6 +9,12 @@
 // Boss levels (level.boss): the enemy base strafes across the lane. Phases switch as
 // its HP falls; the strafe integrates a phase angle and eases its amplitude, so the
 // base never jumps, and each new phase can summon enemies and change the trickle.
+//
+// Expedition runs (level.mods, BattleMods): cannon mobs get per-weight hp and damage
+// (gate clones inherit both), every Nth mob can be a knight (a small champion),
+// shots can come in bursts, a crowd can wait in front of the cannon at the start and
+// champions can bring an echo of mobs. A level without mods plays exactly as before:
+// no extra rand() calls, no extra spawns.
 
 import type { BattleState, DefenderView, InputState, LevelDef, SimEvent, SimView } from '../contracts.ts';
 import { LAYOUT, SIM_DT, Team, UnitKind } from '../contracts.ts';
@@ -47,6 +53,11 @@ export interface Battle {
 }
 
 const SHOT_SPREAD = 0.3; // x jitter half-width when a shot holds several mobs
+// Knight stats when mods.knightEvery is set without mods.knight.
+export const DEFAULT_KNIGHT = { hp: 10, damage: 10, radius: 0.55 } as const;
+const START_CROWD_ROWS = 5; // startCrowd stands in rows at z = cannonZ + 1 .. + 5
+const ECHO_BEHIND = 0.6; // championEcho mobs spawn this far behind the champion
+const ECHO_SPREAD = 0.8;
 const DEFAULT_WAVE_INTERVAL = 0.05;
 const EPS = 1e-9; // absorbs float drift in accumulators so steady rates stay exact
 export const BOSS_AMP_EASE = 1; // seconds for the strafe amplitude to reach a new phase's
@@ -91,11 +102,59 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
   let shotAcc = 1 - shotInc;
   let trickleAcc = 0;
 
+  // Mods, resolved once. Spawn option objects are built here so step() stays allocation-free.
+  const mods = level.mods;
+  const mobOpts: { spread: number; hp?: number; damage?: number } = { spread: mods?.shotSpread ?? SHOT_SPREAD };
+  if (mods?.mobHp !== undefined) mobOpts.hp = mods.mobHp;
+  if (mods?.mobDamage !== undefined) mobOpts.damage = mods.mobDamage;
+  const knightEvery = mods?.knightEvery ?? 0;
+  const knight = mods?.knight ?? DEFAULT_KNIGHT;
+  const knightOpts = { hp: knight.hp, damage: knight.damage, radius: knight.radius };
+  const burstShots = mods?.burst ? Math.max(1, Math.floor(mods.burst.shots)) : 0;
+  const burstGap = mods?.burst?.gap ?? 0;
+  const startCrowd = Math.max(0, Math.floor(mods?.startCrowd ?? 0));
+  const echo = Math.max(0, Math.floor(mods?.championEcho ?? 0));
+  const crowdOpts = { ...mobOpts, spread: level.cannon.aimLimit };
+  const echoOpts = { ...mobOpts, spread: ECHO_SPREAD };
+  let burstQueue = 0; // burst shots still to fire
+  let burstCd = 0; // seconds until the next queued burst shot
+
   function fire(): void {
     const n = level.cannon.unitsPerShot;
-    sim.spawn(Team.Player, UnitKind.Mob, cannonX, LAYOUT.cannonZ, n, { spread: SHOT_SPREAD });
+    // Every knightEvery-th mob counted over the battle is a knight instead.
+    const knights = knightEvery
+      ? Math.floor((stats.mobsFired + n) / knightEvery) - Math.floor(stats.mobsFired / knightEvery)
+      : 0;
+    if (n > knights) sim.spawn(Team.Player, UnitKind.Mob, cannonX, LAYOUT.cannonZ, n - knights, mobOpts);
+    if (knights > 0) sim.spawn(Team.Player, UnitKind.Champion, cannonX, LAYOUT.cannonZ, knights, knightOpts);
     stats.mobsFired += n;
     state.championCharge = Math.min(1, state.championCharge + n * chargePerMob);
+  }
+
+  // A shot released by the fire rate: one shot, or a burst queued at the current aim.
+  function release(): void {
+    if (burstShots > 0) burstQueue += burstShots;
+    else fire();
+  }
+
+  // Fires queued burst shots `burstGap` apart, whether or not the thumb is still down.
+  function drainBurst(): void {
+    if (burstCd > 0) burstCd -= SIM_DT;
+    while (burstQueue > 0 && burstCd <= EPS) {
+      fire();
+      burstQueue--;
+      burstCd += burstGap;
+    }
+    if (burstQueue === 0 && burstCd < 0) burstCd = 0;
+  }
+
+  function spawnStartCrowd(): void {
+    let left = startCrowd;
+    for (let r = 0; r < START_CROWD_ROWS && left > 0; r++) {
+      const n = Math.ceil(left / (START_CROWD_ROWS - r));
+      sim.spawn(Team.Player, UnitKind.Mob, 0, LAYOUT.cannonZ + 1 + r, n, crowdOpts);
+      left -= n;
+    }
   }
 
   function spawnEnemy(x: number): void {
@@ -165,21 +224,24 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
     cannonX = clamp(input.aimX, -lim, lim);
 
     if (playing) {
+      if (steps === 1 && startCrowd > 0) spawnStartCrowd();
       shotAcc += shotInc;
       if (input.firing) {
         while (shotAcc >= 1 - EPS) {
           shotAcc -= 1;
-          fire();
+          release();
         }
       } else if (shotAcc > 1 - shotInc) {
         shotAcc = 1 - shotInc;
       }
+      if (burstShots > 0) drainBurst();
 
       if (input.championPressed && state.championCharge >= 1 - EPS) {
         sim.spawn(Team.Player, UnitKind.Champion, cannonX, LAYOUT.cannonZ, 1, {
           hp: level.champion.hp,
           damage: level.champion.damage,
         });
+        if (echo > 0) sim.spawn(Team.Player, UnitKind.Mob, cannonX, LAYOUT.cannonZ - ECHO_BEHIND, echo, echoOpts);
         state.championCharge = 0;
         stats.championsLaunched++;
         events.push({ type: 'championLaunched', x: cannonX });

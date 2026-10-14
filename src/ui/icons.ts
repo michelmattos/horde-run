@@ -182,3 +182,47 @@ export function gearIcon(size: number, color: string = HEX.uiInk): string {
     'tb-ico',
   );
 }
+
+// Chunky red heart (the Expedition run's HP), ink outline and a glint.
+const HEART_D =
+  'M16 27.5 C10 23 4.5 18.5 4.5 12.2 C4.5 8.2 7.4 5.5 10.8 5.5 C13.1 5.5 15 6.9 16 8.9 C17 6.9 18.9 5.5 21.2 5.5 C24.6 5.5 27.5 8.2 27.5 12.2 C27.5 18.5 22 23 16 27.5 Z';
+export function heartIcon(size: number | string): string {
+  return svg(
+    '0 0 32 32',
+    `<path d="${HEART_D}" fill="${INK}" stroke="${INK}" stroke-width="6" stroke-linejoin="round" transform="translate(0 1.2)"/>` +
+      `<path d="${HEART_D}" fill="${HEX.uiRed}" stroke="${INK}" stroke-width="2.6" stroke-linejoin="round"/>` +
+      `<path d="M8.6 10.8 C8.8 9 10.2 8 11.6 8.1" fill="none" stroke="#ffd2cc" stroke-width="2.4" stroke-linecap="round"/>`,
+    size,
+    'tb-ico',
+  );
+}
+
+// Gold coin: ink rim, raised inner ring, a star stamp and a glint.
+export function coinIcon(size: number | string): string {
+  return svg(
+    '0 0 32 32',
+    `<circle cx="16" cy="17.2" r="12.5" fill="${INK}"/>` +
+      `<circle cx="16" cy="16" r="12" fill="#d99a12" stroke="${INK}" stroke-width="2.6"/>` +
+      `<circle cx="16" cy="16" r="8.4" fill="${HEX.uiYellow}" stroke="#b27a00" stroke-width="1.6"/>` +
+      `<path d="M16 10.6 L17.5 14.2 L21.2 14.4 L18.3 16.8 L19.3 20.4 L16 18.4 L12.7 20.4 L13.7 16.8 L10.8 14.4 L14.5 14.2 Z" fill="#e3a514" stroke="#b27a00" stroke-width=".8" stroke-linejoin="round"/>` +
+      `<path d="M8.6 12.6 C9.4 10.4 11 8.8 13.2 8" fill="none" stroke="#fff3c4" stroke-width="2" stroke-linecap="round"/>`,
+    size,
+    'tb-ico',
+  );
+}
+
+// Brass compass with a red and cream needle (the Expedition entry).
+export function compassIcon(size: number | string): string {
+  return svg(
+    '0 0 32 32',
+    `<circle cx="16" cy="17.4" r="13.4" fill="${INK}"/>` +
+      `<circle cx="16" cy="16" r="12.8" fill="#d99a12" stroke="${INK}" stroke-width="2.6"/>` +
+      `<circle cx="16" cy="16" r="9" fill="${HEX.uiCream}" stroke="${INK}" stroke-width="1.8"/>` +
+      `<path d="M16 8.6 L19 16 L13 16 Z" fill="${HEX.uiRed}" stroke="${INK}" stroke-width="1.6" stroke-linejoin="round"/>` +
+      `<path d="M16 23.4 L13 16 L19 16 Z" fill="#c9b48e" stroke="${INK}" stroke-width="1.6" stroke-linejoin="round"/>` +
+      `<circle cx="16" cy="16" r="1.8" fill="${INK}"/>` +
+      `<path d="M8.4 11.8 C9.2 9.8 10.8 8.4 12.6 7.8" fill="none" stroke="#fff3c4" stroke-width="1.8" stroke-linecap="round"/>`,
+    size,
+    'tb-ico',
+  );
+}

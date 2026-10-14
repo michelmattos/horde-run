@@ -3,16 +3,26 @@
 // winding from the first level (bottom) to the boss (top). The page scrolls
 // natively and nothing on it ever moves on its own except the one auto-scroll to
 // the newest unlocked level on show(). The first show() opens with a brief world
-// title card (no story): a tap or a short timeout dismisses it.
+// title card (no story): a tap or a short timeout dismisses it. When the caller handles
+// Expedition runs, a wooden footer plank holds a big yellow Expedition button (badges for
+// a run in progress and an unplayed Daily run); the scroll area ends above it.
 import type { SaveData, WorldDef } from '../contracts.ts';
 import { emptySave, isUnlocked, starCount } from '../core/save.ts';
 import { MAP_NODE_SIZE, MAP_STEP, TITLE_CARD_MS, mapLayout, worldTitle } from './mapLayout.ts';
 import { createSaveSheet } from './saveSheet.ts';
+import { expeditionEntryLook } from './expeditionEntry.ts';
+import type { ExpeditionEntryFlags } from './expeditionEntry.ts';
 import { UI, WOOD_BG, injectUiTheme, outlineShadow } from '../ui/theme.ts';
-import { lockIcon as lockSvg, soldierIcon, starIcon } from '../ui/icons.ts';
+import { compassIcon, lockIcon as lockSvg, soldierIcon, starIcon } from '../ui/icons.ts';
 
 export { mapLayout } from './mapLayout.ts';
 export type { MapLayoutOptions } from './mapLayout.ts';
+export type { ExpeditionEntryFlags } from './expeditionEntry.ts';
+
+// Optional extras for show(): the Expedition button's badges.
+export interface WorldMapExtra {
+  expedition?: ExpeditionEntryFlags;
+}
 
 export interface MapLevel {
   id: string;
@@ -21,7 +31,7 @@ export interface MapLevel {
 }
 
 export interface WorldMap {
-  show(save: SaveData): void;
+  show(save: SaveData, extra?: WorldMapExtra): void;
   hide(): void;
   readonly visible: boolean;
   dispose(): void;
@@ -144,6 +154,23 @@ const CSS = `
   font-size:17px;font-weight:700;box-shadow:0 3px 0 ${UI.ink}}
 .hm-card-hint{order:4;margin:10px 0 0;font-size:16px;font-weight:600;color:#f3dcb0;text-shadow:${outlineShadow(1.4)};animation:hm-hint 1600ms ease-in-out infinite}
 @keyframes hm-hint{0%,100%{opacity:.55}50%{opacity:1}}
+.hm-foot{position:relative;z-index:2;flex:none;background:${WOOD_BG};border-top:4px solid ${UI.ink};
+  box-shadow:inset 0 4px 0 rgba(255,225,180,.18),0 -6px 10px rgba(20,10,2,.4);
+  padding:12px max(16px,env(safe-area-inset-right)) max(10px,calc(env(safe-area-inset-bottom) + 4px)) max(16px,env(safe-area-inset-left))}
+.hm-foot .tb-btn{max-width:${TRACK_MAX_W - 60}px;margin:0 auto 6px;min-height:62px;justify-content:center;gap:12px}
+.hm-exp-ico{flex:none;width:38px;height:38px}
+.hm-exp-ico svg{width:38px;height:38px;display:block}
+.hm-exp-txt{display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:0}
+.hm-exp-txt b{font-size:24px;font-weight:700;line-height:1}
+.hm-exp-txt small{font-size:13px;font-weight:600;line-height:1;opacity:.78;white-space:nowrap}
+.hm-exp-run{position:absolute;top:-14px;right:14px;padding:3px 9px 4px;border-radius:9px;border:3px solid ${UI.ink};
+  background:linear-gradient(#5cbf5f,${UI.green});box-shadow:0 3px 0 ${UI.ink};transform:rotate(3deg);
+  font-size:12px;font-weight:700;letter-spacing:.04em;line-height:1.1;color:#fff;text-shadow:${outlineShadow(1.3)};white-space:nowrap}
+.hm-exp-dot{position:absolute;top:-8px;left:-8px;width:20px;height:20px;box-sizing:border-box;border-radius:50%;border:3px solid ${UI.ink};
+  background:radial-gradient(60% 55% at 35% 30%,#ff9a90,${UI.red} 70%);box-shadow:0 2px 0 ${UI.ink}}
+.hm-exp-run[hidden],.hm-exp-dot[hidden]{display:none}
+.hm-map.hm-has-foot .hm-scroll{padding-bottom:0}
+.hm-map.hm-has-foot .hm-nudge{bottom:calc(max(10px,env(safe-area-inset-bottom)) + 100px)}
 @media (prefers-reduced-motion: reduce){.hm-card{transition:none}.hm-card-hint,.hm-node.hm-current .hm-disc::after{animation:none}}
 `;
 
@@ -212,6 +239,7 @@ export function createWorldMap(
     levels: readonly MapLevel[]; // same order as world.levels
     onPlay(levelId: string): void; // only fires for unlocked levels
     onSaveReplaced(save: SaveData): void; // after a confirmed import (already written to storage)
+    onExpedition?(): void; // shows the Expedition button when given
   },
 ): WorldMap {
   injectStyles();
@@ -245,7 +273,42 @@ export function createWorldMap(
 
   const nudge = el('div', 'hm-nudge');
   nudge.setAttribute('role', 'status');
-  map.append(head, scroll, el('div', 'hm-shade'), nudge);
+  map.append(head, scroll);
+
+  // ----- Expedition footer: a big yellow sticker button over the bottom safe area -----
+  let expBtn: HTMLButtonElement | null = null;
+  let expSub: HTMLElement | null = null;
+  let expRun: HTMLElement | null = null;
+  let expDot: HTMLElement | null = null;
+  const onExpedition = opts.onExpedition;
+  if (onExpedition) {
+    const foot = el('footer', 'hm-foot');
+    expBtn = el('button', 'tb-btn tb-yellow');
+    expBtn.type = 'button';
+    expBtn.dataset.action = 'expedition';
+    const txt = el('span', 'hm-exp-txt');
+    expSub = el('small', '');
+    txt.append(el('b', '', 'Expedition'), expSub);
+    expRun = el('span', 'hm-exp-run', 'Run in progress');
+    expDot = el('span', 'hm-exp-dot');
+    expDot.title = 'Daily ready';
+    expBtn.append(iconSpan('hm-exp-ico', compassIcon(38)), txt, expRun, expDot);
+    expBtn.addEventListener('click', () => onExpedition());
+    foot.append(expBtn);
+    map.append(foot);
+    map.classList.add('hm-has-foot');
+  }
+  const renderExpedition = (flags?: ExpeditionEntryFlags): void => {
+    if (!expBtn || !expSub || !expRun || !expDot) return;
+    const look = expeditionEntryLook(flags);
+    expSub.textContent = look.sub;
+    expRun.hidden = !look.progress;
+    expDot.hidden = !look.daily;
+    expBtn.setAttribute('aria-label', look.aria);
+  };
+  renderExpedition();
+
+  map.append(el('div', 'hm-shade'), nudge);
   root.appendChild(map);
 
   // ----- World title card: shown on the first show() only, gone on a tap or after TITLE_CARD_MS -----
@@ -425,9 +488,10 @@ export function createWorldMap(
   window.addEventListener('resize', onResize);
 
   return {
-    show(next: SaveData) {
+    show(next: SaveData, extra?: WorldMapExtra) {
       save = next;
       visible = true;
+      renderExpedition(extra?.expedition);
       map.classList.add('hm-on');
       layout(); // needs the map displayed to measure width
       render();

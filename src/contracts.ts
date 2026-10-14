@@ -222,3 +222,123 @@ export function starGoalLabels(level: LevelDef): [string, string, string] {
     level.targetTime !== undefined ? `Win in under ${level.targetTime} s` : 'Win the battle',
   ];
 }
+
+// ---------- Milestone 3 additions: Expedition (append-only) ----------
+// A roguelite run (concept §4.2): a seeded branching map of nodes, run HP and gold that
+// carry over between battles, and upgrades that change generated battles through
+// LevelDef transforms plus the optional BattleMods below. All of it is plain data so the
+// run serialises straight into localStorage and every rule stays pure and testable.
+
+// Per-battle rule changes the battle layer (src/game/battle.ts) applies on top of the
+// LevelDef. Absent fields mean "no change". Built by the upgrades layer (src/expedition).
+export interface BattleMods {
+  mobHp?: number; // hp per weight of cannon mobs (sim SpawnOpts.hp; default 1). Gate clones inherit it.
+  mobDamage?: number; // damage per weight of cannon mobs (sim SpawnOpts.damage; default 1)
+  knightEvery?: number; // every Nth cannon mob is fired as a knight instead (>= 2; absent = never)
+  knight?: { hp: number; damage: number; radius: number }; // knight stats (a small UnitKind.Champion)
+  burst?: { shots: number; gap: number }; // each cannon shot becomes `shots` shots `gap` seconds apart
+  shotSpread?: number; // x jitter half-width of a multi-mob shot (default 0.3)
+  startCrowd?: number; // player mobs placed in front of the cannon when the battle starts
+  championEcho?: number; // extra player mobs released with every champion launch
+}
+
+export interface LevelDef {
+  mods?: BattleMods;
+}
+
+export type RunNodeKind = 'battle' | 'elite' | 'rest' | 'shop' | 'boss';
+
+export interface RunNode {
+  id: string; // 'r3c1': row 3, column 1
+  row: number; // 0 = first row (bottom of the map screen); the last row holds the boss
+  col: number; // 0-based index within the row, left to right
+  x: number; // horizontal layout position, 0 (left) .. 1 (right)
+  kind: RunNodeKind;
+  next: string[]; // ids of reachable nodes in row + 1 (empty for the boss)
+}
+
+export interface RunMap {
+  seed: number;
+  rows: number;
+  nodes: RunNode[]; // ordered by row, then col
+}
+
+// What generates one battle of a run (src/game expedition generator input).
+export interface RunBattleSpec {
+  seed: number; // per-node battle seed, derived from the run seed and node id
+  kind: 'battle' | 'elite' | 'boss';
+  index: number; // 0-based battle number along the path: 0..3 for battles/elites, 4 for the boss
+}
+
+export type UpgradeRarity = 'common' | 'rare' | 'epic';
+export type UpgradeCategory = 'gate' | 'mob' | 'cannon' | 'champion' | 'relic';
+// One icon per upgrade, drawn by the UI as an inline SVG sticker.
+export type UpgradeIcon =
+  | 'gate-x2'
+  | 'gate-plus'
+  | 'gate-fork'
+  | 'gate-x3'
+  | 'mob-tough'
+  | 'mob-sharp'
+  | 'mob-knight'
+  | 'mob-reinforce'
+  | 'cannon-rapid'
+  | 'cannon-scatter'
+  | 'cannon-burst'
+  | 'cannon-swivel'
+  | 'champ-charge'
+  | 'champ-rally'
+  | 'champ-big'
+  | 'relic-overcharge'
+  | 'relic-glass'
+  | 'relic-chest'
+  | 'relic-sapper'
+  | 'relic-fort';
+
+export interface UpgradeDef {
+  id: string;
+  name: string; // 'Burst Fire'
+  text: string; // one short rule line: 'Fires bursts of 3 shots, 45% fire rate.'
+  drawback?: string; // trade-off line for relics: 'Enemy defenders +20% HP.'
+  rarity: UpgradeRarity;
+  category: UpgradeCategory;
+  icon: UpgradeIcon;
+  maxStacks: number; // 1 = unique
+}
+
+// Where the player is in the run. 'battle' means a battle on `at` is underway (resuming
+// re-enters it from the start); 'pick' has `offer`; 'shop' has `shop`; 'rest' is at a rest node.
+export type RunPhase = 'map' | 'battle' | 'pick' | 'shop' | 'rest' | 'over';
+
+export interface ShopItem {
+  upgradeId: string;
+  price: number;
+  sold: boolean;
+}
+
+export interface RunStats {
+  battlesWon: number;
+  battlesLost: number;
+  goldEarned: number;
+  hpLost: number;
+  seconds: number; // battle time summed over the run
+}
+
+export interface RunState {
+  version: 1;
+  seed: number;
+  daily?: string; // local date 'YYYY-MM-DD' for a Daily run
+  map: RunMap;
+  at?: string; // id of the current node; absent before the first node is chosen
+  visited: string[]; // node ids entered, in order
+  hp: number; // run base HP (0 ends the run)
+  maxHp: number;
+  gold: number;
+  upgrades: Record<string, number>; // upgrade id -> stacks
+  phase: RunPhase;
+  offer?: string[]; // phase 'pick': three upgrade ids to choose from
+  shop?: { items: ShopItem[]; healPrice: number; healAmount: number; healed: boolean }; // phase 'shop'
+  lastBattle?: { victory: boolean; hpLost: number; gold: number }; // shown after a battle
+  stats: RunStats;
+  outcome: 'active' | 'won' | 'lost';
+}
