@@ -25,6 +25,8 @@ Ground rules (apply to everything you do):
 - Do not git commit, push, or create branches. Do not touch /mnt/project-files. Do not call any mcp__hearthbot__ tools.
 - Placeholder art only: primitives and flat colours (player team blue, enemy team red, gates green for good ops and red for bad ops).
 - Keep code readable: short module-level comments explaining intent, no dead code.
+- Michel's play-test feedback is binding: NO screen shake or camera jitter of any kind (he found it horrible). Feedback for hits should be visual on the units/bases (flashes, particles), never moving the camera.
+- Keep the existing automation hooks working: window.__horde (state, fps, level, spawn, units) and "npm run smoke". If menus are added, the smoke test must still reach a battle (e.g. a URL param like ?level=1-1 that skips menus, or by tapping through).
 `
 
 const TASKS_SCHEMA = {
@@ -102,7 +104,7 @@ const plan = await agent(
 You are planning milestone ${milestone} of the build plan in docs/concept.md section 9. ${extra}
 Look at what already exists in src/ and tests/ and plan only what is missing for this milestone.
 
-Split the work into 3 or 4 tasks that can be built IN PARALLEL by separate agents with NO overlapping files. Each task owns a set of paths (folders or files) and only writes there. src/main.ts and scripts/ belong to the later integration step, so no task owns them. src/contracts.ts is shared and read-only for builders.
+Split the work into 3 to 5 tasks that can be built IN PARALLEL by separate agents with NO overlapping files. Each task owns a set of paths (folders or files) and only writes there. src/main.ts and scripts/ belong to the later integration step, so no task owns them. src/contracts.ts is shared and read-only for builders.
 
 For milestone 1 (core feel prototype) the natural split is:
 - sim: src/sim/** + tests/sim*.test.ts. Data-oriented crowd sim per concept section 8 (typed arrays, spatial hash, movement up the lane with separation, player/enemy cancellation on contact, gates applied once per unit with burst spread, unit cap with stacked weights ~1500 on phone, base damage), deterministic with a seeded RNG it receives. Exposes SimView.
