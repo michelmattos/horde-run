@@ -1,0 +1,25 @@
+{
+  "id": "level-03",
+  "name": "Last Stand",
+  "lane": {"width": 10, "length": 62},
+  "cannon": {"fireRate": 6, "unitsPerShot": 3, "aimLimit": 4},
+  "playerBase": {"hp": 450},
+  "enemyBase": {"hp": 2200, "x": 0, "width": 6},
+  "gates": [
+    {"id": "l3-x3", "op": "mul", "value": 3, "x": -1.6, "z": 18, "width": 3},
+    {"id": "l3-div2", "op": "div", "value": 2, "x": 1.6, "z": 18, "width": 3},
+    {"id": "l3-x2", "op": "mul", "value": 2, "x": 0, "z": 30, "width": 2.5},
+    {"id": "l3-plus2", "op": "add", "value": 2, "x": 2.6, "z": 40, "width": 3}
+  ],
+  "enemyWaves": [
+    {"at": 6, "count": 264, "x": 0, "spread": 3.5},
+    {"at": 16, "count": 271, "x": -1.5, "spread": 3.5},
+    {"at": 26, "count": 277, "x": 1.5, "spread": 3.5},
+    {"at": 36, "count": 284, "x": 0, "spread": 3.5},
+    {"at": 46, "count": 290, "x": -1.5, "spread": 3.5},
+    {"at": 56, "count": 297, "x": 1.5, "spread": 3.5},
+    {"at": 65, "count": 594, "x": 0, "spread": 4.5, "interval": 0.03}
+  ],
+  "enemySpawnRate": {"perSecond": 23, "startAt": 2},
+  "champion": {"chargeNeeded": 300, "hp": 150, "damage": 105}
+}

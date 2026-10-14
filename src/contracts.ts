@@ -112,3 +112,14 @@ export function gateLabel(g: GateDef): string {
       return `÷${g.value}`;
   }
 }
+
+// Shared lane layout (world units). Sim, game and render all use these so the cannon, bases and spawn lines line up.
+export const LAYOUT = {
+  cannonZ: 1.5,        // where the cannon muzzle spawns player units
+  playerBaseZ: 0,      // enemy units reaching z <= this hit the player base
+  playerBaseDepth: 3,  // player base drawn over z in [-3, 0]
+  enemyBaseDepth: 4,   // enemy base drawn over z in [lane.length, lane.length + 4]; player units reaching z >= lane.length hit it
+  enemySpawnInset: 1.5,// enemy units spawn at z = lane.length - 1.5
+  mobRadius: 0.28,
+  championRadius: 1.0,
+} as const;
