@@ -88,106 +88,106 @@
   ],
   "enemyWaves": [
     {
-      "at": 7,
-      "count": 277,
+      "at": 11,
+      "count": 127,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 16,
-      "count": 286,
+      "count": 148,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 25,
-      "count": 295,
+      "count": 184,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 34,
-      "count": 304,
+      "count": 222,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 43,
-      "count": 312,
+      "count": 261,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 52,
-      "count": 321,
+      "count": 295,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 61,
-      "count": 330,
+      "count": 304,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 70,
-      "count": 339,
+      "count": 312,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 79,
-      "count": 348,
+      "count": 320,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 88,
-      "count": 357,
+      "count": 328,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 97,
-      "count": 365,
+      "count": 336,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 106,
-      "count": 374,
+      "count": 344,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 115,
-      "count": 383,
+      "count": 352,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 124,
-      "count": 392,
+      "count": 361,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 133,
-      "count": 401,
+      "count": 369,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 142,
-      "count": 832,
+      "count": 765,
       "x": 0,
       "spread": 4.5,
       "interval": 0.03
     }
   ],
   "enemySpawnRate": {
-    "perSecond": 17.64,
-    "startAt": 2
+    "perSecond": 13.2,
+    "startAt": 12
   },
   "champion": {
     "chargeNeeded": 300,

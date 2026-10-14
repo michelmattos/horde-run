@@ -11,3 +11,7 @@ The design lives in [docs/concept.md](docs/concept.md).
 ## Building with the workflow
 
 `.claude/workflows/build-milestone.js` is a Claude Code workflow that builds one milestone of the concept doc's build plan with parallel agents (one per module), integrates, smoke-tests in a headless phone viewport, reviews and fixes. Run it from Claude Code with the milestone number as its argument.
+
+## Credits
+
+The toy soldier figures (`public/models/army-men.glb`) are built from "Low Poly Soldier with weapons" by Casti_131 (CC0, [OpenGameArt](https://opengameart.org/content/low-poly-soldier-with-weapons)); details in [public/models/CREDITS.md](public/models/CREDITS.md).

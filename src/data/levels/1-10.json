@@ -14,7 +14,7 @@
     "hp": 150
   },
   "enemyBase": {
-    "hp": 2280,
+    "hp": 2000,
     "x": 0,
     "width": 5
   },
@@ -46,93 +46,93 @@
   ],
   "enemyWaves": [
     {
-      "at": 8,
-      "count": 230,
+      "at": 11,
+      "count": 106,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 18,
-      "count": 238,
+      "count": 129,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 28,
-      "count": 246,
+      "count": 162,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 38,
-      "count": 254,
+      "count": 198,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 48,
-      "count": 262,
+      "count": 235,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 58,
-      "count": 270,
+      "count": 248,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 68,
-      "count": 278,
+      "count": 256,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 78,
-      "count": 286,
+      "count": 263,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 88,
-      "count": 294,
+      "count": 270,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 98,
-      "count": 302,
+      "count": 278,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 108,
-      "count": 311,
+      "count": 286,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 118,
-      "count": 319,
+      "count": 293,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 128,
-      "count": 327,
+      "count": 301,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 138,
-      "count": 335,
+      "count": 308,
       "x": -1.5,
       "spread": 3.5
     }
   ],
   "enemySpawnRate": {
-    "perSecond": 22.1,
-    "startAt": 2
+    "perSecond": 18.8,
+    "startAt": 12
   },
   "champion": {
     "chargeNeeded": 300,
@@ -155,8 +155,8 @@
           "amplitude": 2,
           "period": 7
         },
-        "summon": 80,
-        "trickle": 26.0
+        "summon": 68,
+        "trickle": 22.1
       },
       {
         "belowHp": 0.25,
@@ -164,8 +164,8 @@
           "amplitude": 2.5,
           "period": 5
         },
-        "summon": 120,
-        "trickle": 33.8
+        "summon": 102,
+        "trickle": 28.7
       }
     ]
   },

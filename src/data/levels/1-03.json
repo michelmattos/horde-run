@@ -54,26 +54,26 @@
   ],
   "enemyWaves": [
     {
-      "at": 7,
-      "count": 180,
+      "at": 10,
+      "count": 108,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 17,
-      "count": 187,
+      "count": 130,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 27,
-      "count": 194,
+      "count": 160,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 37,
-      "count": 201,
+      "count": 193,
       "x": 0,
       "spread": 3.5
     },
@@ -133,8 +133,8 @@
     }
   ],
   "enemySpawnRate": {
-    "perSecond": 12,
-    "startAt": 2
+    "perSecond": 10.8,
+    "startAt": 8
   },
   "champion": {
     "chargeNeeded": 280,

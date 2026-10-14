@@ -14,6 +14,17 @@
 // Deterministic: the state is the current aim, the last time and what it has seen in
 // events, and the "noise" is a fixed function of time, so the same input sequence
 // gives the same outputs.
+//
+// Profiles: 'precise' (the default) is the skill-scaled bot above. It reacts at once
+// and reads the whole lane, so it overstates what a thumb on a phone can do. 'human'
+// stands in for an average player on a phone and is what the campaign is tuned
+// against: it acts on what it saw ~0.35-0.5 s ago, aims with a slow ±0.6 drift and a
+// slower slew, aims at the middle of a moving gate's (or the
+// strafing boss's) sweep pulled only halfway toward where it will be, sees the far 40% of
+// the lane blurred (gates and defenders there are misplaced by up to ±1 and not led at
+// all), lifts its thumb now and then (short pauses in firing) and launches the
+// champion 1.5-2.5 s after the meter fills. `skill` is ignored by the human profile;
+// `attempt` still shifts its noise in time.
 
 import type { BattleState, DefenderDef, DefenderView, GateDef, InputState, LevelDef, SimEvent, SimView } from '../contracts.ts';
 import { DEFENDER_DEFAULTS, LAYOUT, Team, gateX } from '../contracts.ts';
@@ -33,6 +44,29 @@ const BASE_MARGIN = 0.7; // aim this far inside the strafing base's edge
 const BASE_FALLOFF = 1.5; // and lose all value this far outside it
 const CHAMPION_PATIENCE = 6; // seconds a full meter may wait for a good shot before firing anyway
 
+export type AutoplayProfile = 'precise' | 'human';
+export interface AutoplayOptions {
+  skill?: number; // precise profile only: 0 sloppy .. 1 exact (default 0.7)
+  attempt?: number; // shifts the noise in time: a separate try by the same player
+  profile?: AutoplayProfile; // default 'precise'
+}
+
+// The human profile's limits (see the header).
+const HUMAN = {
+  aimSpeed: 5.5, // world units / s
+  reactionMin: 0.35, // seconds between seeing something and starting to aim for it
+  reactionMax: 0.5,
+  aimError: 0.6, // slow drifting aim error, world units
+  lead: 0.5, // share of a moving gate's (or the boss's) travel it leads
+  viewFrac: 0.6, // near share of the lane (cannon to enemy base) seen well
+  farError: 1, // position error of gates and defenders beyond that
+  liftPeriod: 4.7, // seconds between thumb lifts, roughly
+  liftShare: 0.09, // share of each period with the thumb up (~0.42 s)
+  championDelayMin: 1.5, // seconds after the meter fills before it looks for a shot
+  championDelayMax: 2.5,
+  championPatience: 9,
+};
+
 export type AutoplaySim = { readonly view: SimView; readonly defenders?: readonly DefenderView[] };
 export type Autoplay = (state: BattleState, sim: AutoplaySim, time: number, events?: readonly SimEvent[]) => InputState;
 
@@ -48,11 +82,22 @@ interface Obstacle {
   range: number; // towers: shooting radius; walls: 0
 }
 
-export function createAutoplay(level: LevelDef, opts?: { skill?: number; attempt?: number }): Autoplay {
+// Human profile: how far off it sees a far gate or defender at noise time nt. Each
+// object gets its own phase so they do not all err the same way.
+function farOffset(nt: number, k: number): number {
+  return HUMAN.farError * wobble(0.23 * nt + 2.9 * k + 0.7);
+}
+
+export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autoplay {
+  const human = opts?.profile === 'human';
   const skill = Math.min(1, Math.max(0, opts?.skill ?? 0.7));
   const noiseShift = (opts?.attempt ?? 0) * 11.3; // seconds; a fixed offset per attempt
   const lim = level.cannon.aimLimit;
-  const sloppiness = 1 - skill;
+  const sloppiness = human ? 0 : 1 - skill;
+  const aimSpeed = human ? HUMAN.aimSpeed : AIM_SPEED;
+  const lead = human ? HUMAN.lead : 1;
+  const farZ = human ? LAYOUT.cannonZ + HUMAN.viewFrac * (level.lane.length - LAYOUT.cannonZ) : Infinity;
+  const championPatience = human ? HUMAN.championPatience : CHAMPION_PATIENCE;
   // Gates and defenders sorted by z once, so the chain is evaluated in crossing order.
   const gates = level.gates.slice().sort((a, b) => a.z - b.z);
   const obstacles: Obstacle[] = (level.defenders ?? [])
@@ -75,7 +120,23 @@ export function createAutoplay(level: LevelDef, opts?: { skill?: number; attempt
   let lastBaseX = level.enemyBase.x;
   let baseDir = 1; // sign of the base's x velocity
   let readySince = -1;
+  let intent = 0; // human: where it means to aim, before its aim error
+  let championWait = 0; // human: seconds to wait after the meter fills
   const alive = (o: Obstacle): boolean => standing[o.slot] === 1;
+  // Human reaction delay: recent desired targets, acted on `reaction` seconds late.
+  const seenT: number[] = [];
+  const seenX: number[] = [];
+  // Perceived x of gate i / obstacle o at gate-crossing time tc (now is `time`).
+  // Precise: exactly where a moving gate will be when the stream gets there. Human:
+  // the middle of its sweep, pulled `lead` of the way toward that (and only the middle
+  // of the sweep, misplaced, for a far gate).
+  const gateSeenX = (g: GateDef, i: number, time: number): number => {
+    if (g.z > farZ) return g.x + farOffset(time + noiseShift, i);
+    const exact = gateX(g, time + (g.z - LAYOUT.cannonZ) / MOB_SPEED);
+    return lead === 1 ? exact : g.x + lead * (exact - g.x);
+  };
+  const obstacleX = (o: Obstacle, time: number): number =>
+    o.def.z <= farZ ? o.def.x : o.def.x + farOffset(time + noiseShift, 17 + o.slot);
 
   // Expected crowd multiplier for weight-1 mobs fired at x: every gate on the line
   // applies in z order (clones go on through the later ones too), and a defender
@@ -89,12 +150,12 @@ export function createAutoplay(level: LevelDef, opts?: { skill?: number; attempt
       const o: Obstacle | undefined = obstacles[oi];
       if (o && (!g || o.def.z < g.z)) {
         oi++;
-        if (alive(o) && Math.abs(x - o.def.x) < o.half + BLOCK_MARGIN) c *= BLOCK_FACTOR;
+        if (alive(o) && Math.abs(x - obstacleX(o, time)) < o.half + BLOCK_MARGIN) c *= BLOCK_FACTOR;
         continue;
       }
       gi++;
       if (broken.has(g.id)) continue;
-      const gx = gateX(g, time + (g.z - LAYOUT.cannonZ) / MOB_SPEED);
+      const gx = gateSeenX(g, gi, time);
       const d = Math.abs(x - gx);
       const good = g.op === 'mul' || g.op === 'add';
       if (good ? d > g.width / 2 - GOOD_MARGIN : d > g.width / 2 + TRAP_MARGIN) continue;
@@ -116,7 +177,7 @@ export function createAutoplay(level: LevelDef, opts?: { skill?: number; attempt
     // Towers shoot whatever passes within range; the closer the line, the more it costs.
     for (const o of obstacles) {
       if (o.range === 0 || !alive(o)) continue;
-      const d = Math.abs(x - o.def.x);
+      const d = Math.abs(x - obstacleX(o, time));
       if (d < o.range) c *= 1 - TOWER_COST * (1 - d / o.range);
     }
     return c;
@@ -135,6 +196,11 @@ export function createAutoplay(level: LevelDef, opts?: { skill?: number; attempt
     return x0 + amp * Math.sin(theta + (2 * Math.PI * ahead) / ph.strafe.period);
   }
 
+  // The human leads the strafing base only part of the way from the middle of its sweep.
+  function leadBase(predicted: number): number {
+    return lead === 1 ? predicted : level.enemyBase.x + lead * (predicted - level.enemyBase.x);
+  }
+
   // Share of a stream fired at x that lands on a base predicted at px.
   function hitFactor(x: number, px: number): number {
     const m = Math.abs(x - px) - (level.enemyBase.width / 2 - BASE_MARGIN);
@@ -142,14 +208,15 @@ export function createAutoplay(level: LevelDef, opts?: { skill?: number; attempt
   }
 
   function bestX(state: BattleState, time: number): number {
-    const px = phases.length ? predictBaseX(state, mobTravel) : 0;
+    const px = phases.length ? leadBase(predictBaseX(state, mobTravel)) : 0;
     let best = 0;
     let bestScore = -Infinity;
     for (let x = -lim; x <= lim + 1e-9; x += SAMPLE_STEP) {
       let s = chainScore(x, time);
       if (phases.length) s *= hitFactor(x, px);
-      // Small pull toward the current aim breaks ties without jitter.
-      s -= 0.01 * Math.abs(x - aim);
+      // Small pull toward the current aim (the human's intended aim, so its aim error
+      // does not feed back and wander) breaks ties without jitter.
+      s -= 0.01 * Math.abs(x - intent);
       if (s > bestScore) {
         bestScore = s;
         best = x;
@@ -203,36 +270,63 @@ export function createAutoplay(level: LevelDef, opts?: { skill?: number; attempt
     }
 
     const ready = state.outcome === 'playing' && state.championCharge >= 1;
-    if (ready && readySince < 0) readySince = time;
+    if (ready && readySince < 0) {
+      readySince = time;
+      championWait = human
+        ? HUMAN.championDelayMin + (HUMAN.championDelayMax - HUMAN.championDelayMin) * (0.5 + 0.5 * wobble(time + noiseShift + 5.1))
+        : 0;
+    }
     if (!ready) readySince = -1;
 
     // Champion aiming: a standing wall first, else the boss's predicted position.
     let champTarget = NaN;
     let champTol = 0;
-    if (ready) {
+    if (ready && time - readySince >= championWait) {
       const wall = wallTarget();
       if (wall) {
         champTarget = wall.def.x;
         champTol = Math.max(0.3, wall.half - 0.8);
       } else if (phases.length) {
-        champTarget = predictBaseX(state, champTravel);
+        champTarget = leadBase(predictBaseX(state, champTravel));
         champTol = 0.5;
       }
     }
 
+    if (!human) intent = aim;
     const threat = threatX(sim.view);
     let target = !Number.isNaN(threat) ? threat : !Number.isNaN(champTarget) ? champTarget : bestX(state, time);
-    // Slow periodic sweeps plus jitter, both shrinking as skill rises.
     const nt = time + noiseShift;
-    target += sloppiness * (2.5 * Math.sin((2 * Math.PI * nt) / 7) + 1.5 * wobble(nt));
+    let firing = true;
+    if (human) {
+      // Act on what was wanted `reaction` seconds ago.
+      seenT.push(time);
+      seenX.push(target);
+      const reaction = HUMAN.reactionMin + (HUMAN.reactionMax - HUMAN.reactionMin) * (0.5 + 0.5 * wobble(0.5 * nt + 3.7));
+      let k = 0;
+      while (k + 1 < seenT.length && seenT[k + 1] <= time - reaction) k++;
+      if (k > 0) {
+        seenT.splice(0, k);
+        seenX.splice(0, k);
+      }
+      // Nothing seen long enough ago yet (the opening moments): hold still.
+      if (seenT[0] <= time - reaction) {
+        intent = seenX[0];
+        target = intent + HUMAN.aimError * wobble(0.3 * nt + 1.1);
+      } else target = aim;
+      const lift = nt / HUMAN.liftPeriod + 0.15 * Math.sin(0.29 * nt);
+      firing = lift - Math.floor(lift) >= HUMAN.liftShare;
+    } else {
+      // Slow periodic sweeps plus jitter, both shrinking as skill rises.
+      target += sloppiness * (2.5 * Math.sin((2 * Math.PI * nt) / 7) + 1.5 * wobble(nt));
+    }
     target = Math.min(lim, Math.max(-lim, target));
 
-    const maxStep = AIM_SPEED * dt;
+    const maxStep = aimSpeed * dt;
     aim += Math.min(maxStep, Math.max(-maxStep, target - aim));
 
     const onTarget = Number.isNaN(champTarget) || Math.abs(aim - Math.min(lim, Math.max(-lim, champTarget))) <= champTol;
-    const championPressed = ready && (onTarget || time - readySince >= CHAMPION_PATIENCE);
+    const championPressed = ready && time - readySince >= championWait && (onTarget || time - readySince >= championPatience);
 
-    return { aimX: aim, firing: true, championPressed, paused: false };
+    return { aimX: aim, firing, championPressed, paused: false };
   };
 }
