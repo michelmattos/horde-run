@@ -1,0 +1,152 @@
+{
+  "id": "1-7",
+  "name": "Brittle Gates",
+  "lane": {
+    "width": 10,
+    "length": 60
+  },
+  "cannon": {
+    "fireRate": 6,
+    "unitsPerShot": 3,
+    "aimLimit": 4
+  },
+  "playerBase": {
+    "hp": 330
+  },
+  "enemyBase": {
+    "hp": 1615,
+    "x": 0,
+    "width": 6
+  },
+  "gates": [
+    {
+      "id": "1-7-x3",
+      "op": "mul",
+      "value": 3,
+      "x": -2.2,
+      "z": 18,
+      "width": 3.2,
+      "uses": 900
+    },
+    {
+      "id": "1-7-x2",
+      "op": "mul",
+      "value": 2,
+      "x": 2.2,
+      "z": 18,
+      "width": 3.2
+    },
+    {
+      "id": "1-7-x2b",
+      "op": "mul",
+      "value": 2,
+      "x": 2.2,
+      "z": 34,
+      "width": 3.2,
+      "uses": 1200
+    }
+  ],
+  "defenders": [
+    {
+      "id": "1-7-t",
+      "kind": "tower",
+      "x": -3.8,
+      "z": 28,
+      "hp": 150,
+      "fireRate": 5,
+      "damage": 1,
+      "range": 6
+    }
+  ],
+  "enemyWaves": [
+    {
+      "at": 8,
+      "count": 184,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 18,
+      "count": 188,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 28,
+      "count": 192,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 38,
+      "count": 196,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 48,
+      "count": 201,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 58,
+      "count": 205,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 68,
+      "count": 209,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 78,
+      "count": 213,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 88,
+      "count": 217,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 98,
+      "count": 222,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 108,
+      "count": 226,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 118,
+      "count": 230,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 128,
+      "count": 234,
+      "x": 0,
+      "spread": 3.5
+    }
+  ],
+  "enemySpawnRate": {
+    "perSecond": 10.5,
+    "startAt": 2
+  },
+  "champion": {
+    "chargeNeeded": 300,
+    "hp": 120,
+    "damage": 90
+  },
+  "targetTime": 105,
+  "intro": "Cracked gates break after so many soldiers. Use them up, then switch."
+}

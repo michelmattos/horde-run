@@ -38,17 +38,19 @@ The one addition: **choices before and during battle** (loadout, champion, run u
 
 - **Worlds of ~10 to 20 levels**, each with its own enemy faction, theme and signature mechanic, ending in a boss. Start with one world and add more over time; the six below are a menu, not a commitment.
 - Every few levels introduce one new idea, then remix it (section 5).
-- **3 stars per level** for optional goals (win under X seconds, lose fewer than N units, never use the champion, avoid a gate). Stars unlock later worlds and cosmetics.
-- Optional light story between worlds (a cannon-keeper defending a valley from rival warlords) to give bosses personality.
+- **3 stars per level, the same three goals everywhere** (decided 2026-10-14): 1 star for winning, 1 for finishing with your base above half health, 1 for beating the level's target time. Stars unlock later worlds and cosmetics.
+- **No story** (decided 2026-10-14): each world opens with a title card, nothing more.
+- **Difficulty: moderate** (decided 2026-10-14): early levels are easy, and the last few levels of a world plus its boss should take a retry or two.
+- **Theme: toys** (decided 2026-10-14): your army is plastic toy soldiers fighting across a house, each world a different room with its own toy faction. The table below is a first pass at that, open to renaming.
 
 | World | Faction | Signature mechanic |
 |---|---|---|
-| 1. Green Valley | Goblins | Basics: static gates, simple defenders |
-| 2. Frozen Pass | Ice trolls | Ice lanes (mobs slide), freezing gates |
-| 3. Clockwork City | Automatons | Moving gates, conveyor belts, timed doors |
-| 4. Swamp | Witches | Poison gates (divide), enemy converts your units |
-| 5. Volcano | Fire demons | Lava hazards, explosive barrels you can trigger |
-| 6. Sky Citadel | Final army | Multi-lane battlefields, everything combined |
+| 1. Bedroom Floor | Rival plastic army (other colour) | Basics: static gates, simple defenders |
+| 2. Freezer / Snow Globe | Snowmen and wind-up penguins | Ice lanes (mobs slide), freezing gates |
+| 3. Clockwork Workshop | Wind-up robots | Moving gates, conveyor belts, timed doors |
+| 4. Bathtub | Rubber ducks | Bubble gates (divide), enemy converts your units |
+| 5. Science Fair | Chemistry-set slimes | Baking-soda lava, firecracker barrels you can trigger |
+| 6. Top Shelf Castle | The Toy King's army | Multi-lane battlefields, everything combined |
 
 ### 4.2 Roguelite "Expedition" mode (the long-term replay engine)
 
@@ -82,12 +84,12 @@ Without opponents, the levels must do the surprising. Building blocks, introduce
 
 Each world ends in a multi-phase boss that tests that world's mechanic:
 
-- **Goblin King**: rides a base that strafes across the lane; lead your shots.
-- **Frost Giant**: freezes your gates in phase 2; thaw them with fire mobs.
-- **The Machinist**: rearranges gates every 15 seconds.
-- **Swamp Witch**: poison gates convert your crowd to hers; split your stream to avoid them.
-- **Magma Wyrm**: weak spots open briefly; time your champion.
-- **Final Warlord**: uses your own cannon types against you.
+- **Tin General**: rides a wind-up tank base that strafes across the lane; lead your shots.
+- **Snow Globe Giant**: freezes your gates in phase 2; thaw them with fire mobs.
+- **Jack-in-the-Box**: rearranges gates every 15 seconds.
+- **Giant Rubber Duck**: bubble gates convert your crowd to its side; split your stream to avoid them.
+- **Slime Volcano**: weak spots open briefly; time your champion.
+- **The Toy King**: uses your own cannon types against you.
 
 Bosses return in Expedition and get **Hard** variants for the endgame.
 
@@ -155,7 +157,7 @@ Touch is the primary input. Mouse and keyboard are mapped onto the same actions 
 - **Champion and ultimate as big buttons** in the bottom corners (at least 56 px, clear of the screen edges and the home indicator), filling up as they charge. A second finger can tap them while the first keeps firing (multi-touch tracked by pointer id).
 - **No hover, no right-click, no tiny targets.** Every menu control is at least 48 px, and tooltips become tap-to-inspect.
 - **Browser gestures switched off on the game canvas**: `touch-action: none`, no text selection or long-press menu, no double-tap zoom, no pull-to-refresh or swipe-back during battle.
-- **Haptics** through the Vibration API where the phone supports it (a light tick on gate multiply, a bump on champion launch), with a toggle. iPhone browsers ignore it, so nothing depends on it.
+- **Haptics** through the Vibration API where the phone supports it (a light tick on gate multiply, a bump on champion launch), with a toggle. iPhone browsers ignore it, and Michel plays on an iPhone, so feedback must land through visuals and sound instead.
 - **Pause on interruption**: the game pauses when the tab is hidden, a call comes in, or the phone leaves portrait.
 - **Mouse and keyboard** for desktop play map to the same actions: click-and-drag to fire and aim, Space for the champion, E for the ultimate.
 
@@ -164,11 +166,11 @@ Touch is the primary input. Mouse and keyboard are mapped onto the same actions 
 - **Portrait first**: levels are designed for a tall phone screen. Wider screens show more scenery at the sides, never more lane.
 - **Safe areas**: the HUD stays clear of notches and the home indicator (`env(safe-area-inset-*)`), and the layout uses `100dvh` so the browser's collapsing toolbar doesn't crop the game.
 - **Readable at arm's length**: big gate numbers and high-contrast team colours, legible on a 6-inch screen.
-- Fixed, tilted top-down camera looking up the lane, with light screen shake and zoom-out as the crowd grows.
+- Fixed, tilted top-down camera looking up the lane, with a gentle zoom-out as the crowd grows. **No screen shake, ever** (decided 2026-10-14); big hits read through flashes, particles and sound instead.
 
 ### Phone performance
 
-- **Target 60 fps on a mid-range phone** a few years old, checked on a real device at every milestone, not just on desktop.
+- **Target device: Michel's iPhone 17 Pro Max** (decided 2026-10-14), so Safari/WebKit on iOS is the browser that matters most. Hold a steady 60 fps there (capped, for heat and battery, even though the screen can do 120 Hz), and test in mobile Safari and as a home-screen app at every milestone. iOS can't lock orientation from the web, so leaving portrait pauses and shows a rotate prompt.
 - **Resolution scaling**: render at a capped pixel ratio (e.g. 1.5 instead of 3) through Babylon's hardware scaling, and lower it automatically if frames start running long.
 - **Cheap visuals**: simple materials, baked lighting, no real-time shadows on mobs (a blob shadow at most), pooled particle effects.
 - **Heat and battery**: cap at 60 fps, stop rendering in static menus, and pause fully when hidden.
@@ -186,7 +188,8 @@ Milestones sized for a personal project, each one playable:
 
 ## 10. Open questions
 
-- **Theme**: Mob Control's cartoon-medieval look, or something of your own (sci-fi, animals, toys)?
-- **Where the code lives**: a GitHub repo (recommended, since GitHub Pages gives the phone a URL to load and install from), or just files in this project?
-- **Your phone**: which model? It sets the performance target.
-- **Name**: "Horde Run" is a placeholder.
+- ~~Theme~~ **Decided:** toys (plastic soldiers across a house; see section 4.1).
+- ~~Where the code lives~~ **Decided:** GitHub repo [michelmattos/horde-run](https://github.com/michelmattos/horde-run), live at https://michelmattos.github.io/horde-run/.
+- ~~Your phone~~ **Decided:** iPhone 17 Pro Max (see Phone performance).
+- ~~Name~~ **Decided:** keep "Horde Run".
+- Also decided 2026-10-14: fixed three-goal stars, moderate difficulty, no story (section 4.1), and no screen shake (section 8).

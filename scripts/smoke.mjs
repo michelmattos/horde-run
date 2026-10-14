@@ -1,13 +1,19 @@
 // Smoke test against the production build: serves dist/ with `vite preview`, opens it
-// in a phone-sized headless Chromium (SwiftShader GL), plays ~8 s with a held touch
-// drag, then pushes the crowd past 1000 player units and samples fps. Screenshots go to
-// smoke-play.png and smoke-crowd.png; a JSON summary is printed. Any console error or
-// page error fails the run. Low fps is reported, never failed (software rendering).
+// in a phone-sized headless Chromium (SwiftShader GL). First it checks the world title
+// card (smoke-title.png), taps it away and taps through the menus (world map → level
+// 1-1 card → Play), saving smoke-map.png; then it reloads with ?level=1-1 (which skips
+// the menus) and plays ~8 s with a held touch drag, then pushes the crowd past 1000
+// player units, samples fps and checks the camera zoomed out with the crowd. Last it
+// jumps to the boss (1-10) and plays a few seconds. Screenshots go to smoke-play.png,
+// smoke-crowd.png and smoke-boss.png; a JSON summary is printed. Any console error or
+// page error fails the run. Low fps is reported, never failed (software rendering);
+// fps above the 60 cap fails.
 import { spawn } from 'node:child_process';
 import { chromium } from 'playwright-core';
 
 const PORT = 4173;
-const URL = `http://localhost:${PORT}/horde-run/`;
+const ROOT = `http://localhost:${PORT}/horde-run/`;
+const URL = `${ROOT}?level=1-1`;
 const W = 390;
 const H = 844;
 
@@ -48,7 +54,7 @@ function stopServer() {
 }
 
 try {
-  await waitForServer(URL, 20000);
+  await waitForServer(ROOT, 20000);
 
   browser = await chromium.launch({
     executablePath: process.env.CHROME_PATH || '/opt/pw-browsers/chromium',
@@ -65,6 +71,25 @@ try {
     if (m.type() === 'error') errors.push(`console: ${m.text()}`);
   });
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+
+  // Menu flow: the app boots to the world map behind its title card; tap the card away,
+  // then tap 1-1 and Play on its level card.
+  await page.goto(ROOT, { waitUntil: 'load' });
+  await page.waitForFunction(() => !!window.__horde, null, { timeout: 15000 });
+  const card = page.locator('[data-title-card]');
+  await card.waitFor({ state: 'visible', timeout: 10000 });
+  const titleText = (await card.innerText()).split('\n')[0];
+  await page.screenshot({ path: 'smoke-title.png' });
+  await card.tap();
+  await card.waitFor({ state: 'hidden', timeout: 5000 });
+  await page.waitForSelector('[data-level="1-1"]', { state: 'visible', timeout: 10000 });
+  await sleep(300);
+  await page.screenshot({ path: 'smoke-map.png' });
+  await page.tap('[data-level="1-1"]');
+  await page.getByRole('button', { name: 'Play', exact: true }).tap({ timeout: 5000 });
+  await page.waitForFunction(() => window.__horde.level() === '1-1' && window.__horde.state().time > 0.5, null, {
+    timeout: 15000,
+  });
 
   await page.goto(URL, { waitUntil: 'load' });
   await page.waitForFunction(() => !!window.__horde, null, { timeout: 15000 });
@@ -87,7 +112,7 @@ try {
     await sleep(50);
   }
   await page.screenshot({ path: 'smoke-play.png' });
-  const afterPlay = await page.evaluate(() => ({ state: { ...window.__horde.state() }, units: window.__horde.units() }));
+  const afterPlay = await page.evaluate(() => ({ state: { ...window.__horde.state() }, units: window.__horde.units(), zoom: window.__horde.zoom() }));
   await touch('touchEnd', 0, 0);
 
   // Push the crowd past 1000 player units, topping up while enemies cancel them.
@@ -114,7 +139,21 @@ try {
     peakUnits = Math.max(peakUnits, s.units);
   }
   await page.screenshot({ path: 'smoke-crowd.png' });
-  const final = await page.evaluate(() => ({ state: { ...window.__horde.state() }, level: window.__horde.level() }));
+  const final = await page.evaluate(() => ({ state: { ...window.__horde.state() }, level: window.__horde.level(), zoom: window.__horde.zoom() }));
+
+  // Boss level: jump straight in and fire for a few seconds.
+  await page.evaluate(() => window.__horde.goto('1-10'));
+  await sleep(500);
+  await touch('touchStart', W / 2, y);
+  const bossStart = Date.now();
+  while (Date.now() - bossStart < 5000) {
+    const t = (Date.now() - bossStart) / 1000;
+    await touch('touchMove', Math.round(W / 2 + Math.sin(t * 1.1) * W * 0.2), y);
+    await sleep(50);
+  }
+  await page.screenshot({ path: 'smoke-boss.png' });
+  await touch('touchEnd', 0, 0);
+  const boss = await page.evaluate(() => ({ level: window.__horde.level(), state: { ...window.__horde.state() } }));
 
   const fpsMin = Math.min(...fpsSamples);
   const fpsAvg = fpsSamples.reduce((a, b) => a + b, 0) / fpsSamples.length;
@@ -134,15 +173,23 @@ try {
       peakPlayerUnits: peakPlayer,
       peakSimUnits: peakUnits,
     },
+    camera: { zoomAfterPlay: +afterPlay.zoom.toFixed(3), zoomWithCrowd: +final.zoom.toFixed(3) },
+    titleCard: titleText,
     outcome: final.state.outcome,
     finalTime: +final.state.time.toFixed(2),
-    screenshots: ['smoke-play.png', 'smoke-crowd.png'],
+    boss: { level: boss.level, time: +boss.state.time.toFixed(2), bossPhase: boss.state.bossPhase, enemyBaseX: +(boss.state.enemyBaseX ?? 0).toFixed(2) },
+    screenshots: ['smoke-title.png', 'smoke-map.png', 'smoke-play.png', 'smoke-crowd.png', 'smoke-boss.png'],
     errors,
   };
   console.log(JSON.stringify(summary, null, 2));
 
+  if (final.level !== '1-1') errors.push(`expected level 1-1, got ${final.level}`);
   if (afterPlay.state.time <= 1) errors.push('battle clock did not advance');
   if (peakPlayer < 1000) errors.push(`player units peaked at ${peakPlayer}, expected 1000+`);
+  if (!/World 1 \u00b7 Bedroom Floor/.test(titleText)) errors.push(`title card read "${titleText}"`);
+  if (!(final.zoom >= 0.08 && final.zoom > afterPlay.zoom)) errors.push(`camera did not zoom out with the crowd (${afterPlay.zoom} -> ${final.zoom})`);
+  if (fpsAvg > 62) errors.push(`fps ${fpsAvg.toFixed(1)} is above the 60 fps cap`);
+  if (boss.level !== '1-10' || !(boss.state.time > 2)) errors.push('boss level did not run');
   if (errors.length) {
     console.error(`smoke FAILED:\n  ${errors.join('\n  ')}`);
     exitCode = 1;

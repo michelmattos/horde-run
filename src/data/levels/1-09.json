@@ -1,0 +1,198 @@
+{
+  "id": "1-9",
+  "name": "General's Guard",
+  "lane": {
+    "width": 10,
+    "length": 64
+  },
+  "cannon": {
+    "fireRate": 6,
+    "unitsPerShot": 3,
+    "aimLimit": 4
+  },
+  "playerBase": {
+    "hp": 280
+  },
+  "enemyBase": {
+    "hp": 1540,
+    "x": 0,
+    "width": 6
+  },
+  "gates": [
+    {
+      "id": "1-9-x3",
+      "op": "mul",
+      "value": 3,
+      "x": 0,
+      "z": 16,
+      "width": 3.4,
+      "move": {
+        "amplitude": 1.7,
+        "period": 4.5
+      }
+    },
+    {
+      "id": "1-9-minus3",
+      "op": "sub",
+      "value": 3,
+      "x": -3.3,
+      "z": 30,
+      "width": 2.6
+    },
+    {
+      "id": "1-9-x2",
+      "op": "mul",
+      "value": 2,
+      "x": 1,
+      "z": 36,
+      "width": 3.4
+    }
+  ],
+  "defenders": [
+    {
+      "id": "1-9-wall",
+      "kind": "wall",
+      "x": 1,
+      "z": 26,
+      "hp": 250,
+      "width": 4
+    },
+    {
+      "id": "1-9-t1",
+      "kind": "tower",
+      "x": -3.8,
+      "z": 22,
+      "hp": 180,
+      "fireRate": 5,
+      "damage": 1,
+      "range": 6
+    },
+    {
+      "id": "1-9-t2",
+      "kind": "tower",
+      "x": 3.8,
+      "z": 44,
+      "hp": 180,
+      "fireRate": 5,
+      "damage": 1,
+      "range": 6
+    },
+    {
+      "id": "1-9-wall2",
+      "kind": "wall",
+      "x": -2.5,
+      "z": 48,
+      "hp": 400,
+      "width": 3
+    }
+  ],
+  "enemyWaves": [
+    {
+      "at": 7,
+      "count": 277,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 16,
+      "count": 286,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 25,
+      "count": 295,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 34,
+      "count": 304,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 43,
+      "count": 312,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 52,
+      "count": 321,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 61,
+      "count": 330,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 70,
+      "count": 339,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 79,
+      "count": 348,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 88,
+      "count": 357,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 97,
+      "count": 365,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 106,
+      "count": 374,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 115,
+      "count": 383,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 124,
+      "count": 392,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 133,
+      "count": 401,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 142,
+      "count": 832,
+      "x": 0,
+      "spread": 4.5,
+      "interval": 0.03
+    }
+  ],
+  "enemySpawnRate": {
+    "perSecond": 17.64,
+    "startAt": 2
+  },
+  "champion": {
+    "chargeNeeded": 300,
+    "hp": 140,
+    "damage": 100
+  },
+  "targetTime": 120
+}

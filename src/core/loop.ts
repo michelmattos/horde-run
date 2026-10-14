@@ -34,3 +34,38 @@ export function createFixedStep(hz: number = SIM_HZ, maxStepsPerFrame: number = 
     },
   };
 }
+
+// Frame cap (concept §8 "Heat and battery"): the render loop draws at most ~60 frames a
+// second even on a 120 Hz ProMotion screen. requestAnimationFrame still fires every
+// display refresh; tick() says which of those callbacks may draw. A callback that comes
+// sooner than one 60 Hz frame after the last drawn frame (less a little slack for
+// timer jitter, well under half of a 120 Hz frame) is skipped. On a 60 Hz screen every
+// frame draws; on 120 Hz every other one. Returns the seconds since the last drawn
+// frame, or -1 to skip this one.
+export const FRAME_CAP_HZ = 60;
+const FRAME_SLACK_MS = 3;
+
+export interface FrameCap {
+  tick(nowMs: number): number;
+  reset(): void; // the next tick always draws (after a stop, a resize or a menu)
+}
+
+export function createFrameCap(hz: number = FRAME_CAP_HZ, slackMs: number = FRAME_SLACK_MS): FrameCap {
+  const minGap = 1000 / hz - slackMs;
+  let last = -1;
+  return {
+    tick(nowMs) {
+      if (last < 0 || nowMs < last) {
+        last = nowMs;
+        return 0;
+      }
+      const gap = nowMs - last;
+      if (gap < minGap) return -1;
+      last = nowMs;
+      return gap / 1000;
+    },
+    reset() {
+      last = -1;
+    },
+  };
+}

@@ -1,0 +1,124 @@
+{
+  "id": "1-2",
+  "name": "Pick a Door",
+  "lane": {
+    "width": 10,
+    "length": 56
+  },
+  "cannon": {
+    "fireRate": 6,
+    "unitsPerShot": 3,
+    "aimLimit": 4
+  },
+  "playerBase": {
+    "hp": 300
+  },
+  "enemyBase": {
+    "hp": 1700,
+    "x": 0,
+    "width": 6
+  },
+  "gates": [
+    {
+      "id": "1-2-x2",
+      "op": "mul",
+      "value": 2,
+      "x": -2.2,
+      "z": 20,
+      "width": 3.4
+    },
+    {
+      "id": "1-2-plus2",
+      "op": "add",
+      "value": 2,
+      "x": 2.2,
+      "z": 20,
+      "width": 3.4
+    }
+  ],
+  "enemyWaves": [
+    {
+      "at": 8,
+      "count": 120,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 19,
+      "count": 127,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 30,
+      "count": 134,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 41,
+      "count": 141,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 52,
+      "count": 148,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 63,
+      "count": 155,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 74,
+      "count": 162,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 85,
+      "count": 169,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 96,
+      "count": 176,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 107,
+      "count": 183,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 118,
+      "count": 190,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 129,
+      "count": 197,
+      "x": 1.5,
+      "spread": 3.5
+    }
+  ],
+  "enemySpawnRate": {
+    "perSecond": 9,
+    "startAt": 2
+  },
+  "champion": {
+    "chargeNeeded": 260,
+    "hp": 100,
+    "damage": 80
+  },
+  "targetTime": 85,
+  "intro": "Two doors: +2 gives every soldier two friends, x2 only doubles it. Pick the better one."
+}

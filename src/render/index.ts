@@ -6,11 +6,13 @@ import { Scene } from '@babylonjs/core/scene';
 import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
-import type { BattleState, LevelDef, SimEvent, SimView } from '../contracts.ts';
+import type { BattleState, DefenderView, LevelDef, SimEvent, SimView } from '../contracts.ts';
+import { DEFENDER_DEFAULTS } from '../contracts.ts';
 import { PALETTE } from './palette.ts';
 import { LevelVisuals } from './level.ts';
 import { CrowdRenderer } from './crowd.ts';
 import { Effects } from './effects.ts';
+import { DefenderVisuals } from './defenders.ts';
 import { Cannon } from './cannon.ts';
 import { CameraRig } from './cameraRig.ts';
 import { ResolutionScaler } from './resolution.ts';
@@ -23,6 +25,9 @@ export interface RenderFrame {
   time: number; // battle/sim time in seconds
   dt: number; // real seconds since last rendered frame
   events: readonly SimEvent[]; // all sim events produced since the last frame
+  // Live defender state (sim.defenders), read this frame only. Omitted: defenders stand at full HP.
+  // The enemy base x comes from battle.enemyBaseX (falls back to level.enemyBase.x).
+  defenders?: readonly DefenderView[];
 }
 
 // CSS px the HUD covers at the top and bottom of the canvas, safe-area insets included.
@@ -40,10 +45,8 @@ export interface GameRenderer {
   loadLevel(level: LevelDef): void;
   frame(f: RenderFrame): void;
   dispose(): void;
+  readonly cameraZoom: number; // current crowd zoom-out (0 = framed view, up to ZOOM_MAX); for debugging
 }
-
-const SHAKE_BASE_HIT = 0.12;
-const SHAKE_CHAMPION = 0.25;
 
 let activeScaler: ResolutionScaler | null = null;
 
@@ -68,6 +71,7 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
   scene.activeCamera = rig.camera;
   const crowd = new CrowdRenderer(scene);
   const effects = new Effects(scene);
+  const defenders = new DefenderVisuals(scene);
   const cannon = new Cannon(scene);
 
   const scaler = new ResolutionScaler(window.devicePixelRatio || 1);
@@ -97,25 +101,42 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
   const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(onResize) : null;
   observer?.observe(canvas);
 
+  // Sim events → flashes, pops and pooled particles. Nothing here may move the camera.
   const handleEvents = (events: readonly SimEvent[]): void => {
     if (!level) return;
     for (let i = 0; i < events.length; i++) {
       const e = events[i];
       switch (e.type) {
-        case 'gate': {
+        case 'gate':
           level.pulseGate(e.gateId, e.added);
-          const width = gateWidth(level.level, e.gateId);
-          effects.gateBurst(e.x, e.z, width, e.added > 0);
+          if (e.usesLeft !== undefined) level.setGateUses(e.gateId, e.usesLeft);
+          effects.gateBurst(e.x, e.z, level.gateWidth(e.gateId), e.added > 0);
           break;
-        }
+        case 'gateBroken':
+          effects.gateShards(e.x, e.z, level.gateWidth(e.gateId), level.breakGate(e.gateId));
+          break;
         case 'unitsClash':
           effects.dust(e.x, e.z);
           break;
         case 'baseHit':
-          if (level.flashBaseAt(e.z) === 'enemy') rig.addShake(SHAKE_BASE_HIT);
+          level.flashBaseAt(e.z);
           break;
-        case 'championLaunched':
-          rig.addShake(SHAKE_CHAMPION);
+        case 'baseMiss':
+          effects.missPuff(e.x, e.z);
+          break;
+        case 'defenderShot':
+          effects.dart(e.x, e.z, e.tx, e.tz);
+          break;
+        case 'defenderHit':
+          defenders.hit(e.id);
+          break;
+        case 'defenderDestroyed':
+          defenders.destroyed(e.id);
+          effects.debris(e.x, e.z, e.kind === 'wall', defenderWidth(level.level, e.id));
+          break;
+        case 'bossPhase':
+          level.bossPhase();
+          effects.phaseRing(e.x, e.z + 1.5, level.level.enemyBase.width);
           break;
         default:
           break;
@@ -125,13 +146,17 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
 
   return {
     scene,
+    get cameraZoom() {
+      return rig.zoomAmount;
+    },
 
     loadLevel(def: LevelDef): void {
       level?.dispose();
       level = new LevelVisuals(scene, def);
+      defenders.load(def.defenders);
       cannon.setFireRate(def.cannon.fireRate);
       effects.clear();
-      rig.resetEffects();
+      rig.resetZoom();
       scaler.warmUp(); // shader compiles and uploads after a load are not a steady frame time
       reframe();
     },
@@ -140,10 +165,11 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
       const dt = Math.min(Math.max(f.dt, 0), 0.1);
       handleEvents(f.events);
       level?.update(f.time, dt, f.battle);
+      defenders.update(f.defenders, dt);
       cannon.update(f.cannonX, f.time, f.battle.outcome === 'playing');
       crowd.update(f.view, f.time);
       effects.update(dt);
-      rig.update(dt, f.battle.playerUnits);
+      rig.update(dt, f.battle.playerUnits); // gentle crowd zoom-out; the camera never shakes
       if (scaler.sample(f.dt)) {
         engine.setHardwareScalingLevel(scaler.scalingLevel);
         reframe();
@@ -159,12 +185,13 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
       level?.dispose();
       level = null;
       if (activeScaler === scaler) activeScaler = null;
-      scene.dispose(); // takes crowd, effects, cannon, light and camera with it
+      scene.dispose(); // takes crowd, effects, defenders, cannon, light and camera with it
     },
   };
 }
 
-function gateWidth(level: LevelDef, id: string): number {
-  for (const g of level.gates) if (g.id === id) return g.width;
-  return 2;
+function defenderWidth(level: LevelDef, id: string): number {
+  const d = level.defenders?.find((x) => x.id === id);
+  if (!d) return DEFENDER_DEFAULTS.towerWidth;
+  return d.width ?? (d.kind === 'wall' ? DEFENDER_DEFAULTS.wallWidth : DEFENDER_DEFAULTS.towerWidth);
 }

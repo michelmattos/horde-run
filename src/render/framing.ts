@@ -123,3 +123,27 @@ function pullBack(pitch: number, t: number, at: Solved, want: number, aspect: nu
     z: at.z - extra * Math.cos(pitch),
   };
 }
+
+// ---------- Crowd zoom-out ----------
+// As the player's crowd grows the view widens a little (up to +15% fov tangent), so a
+// big army fits without the lane leaving the screen. Eased exponentially toward the
+// target: no steps, no shake, no oscillation. The camera position never changes.
+export const ZOOM_MAX = 0.15; // up to +15% wider view
+export const ZOOM_FULL_UNITS = 900; // crowd size at which the zoom-out is complete
+export const ZOOM_RATE = 1.5; // 1/s, exponential smoothing
+
+export function crowdZoomTarget(playerUnits: number): number {
+  const x = Math.min(1, Math.max(0, playerUnits / ZOOM_FULL_UNITS));
+  return ZOOM_MAX * x * x * (3 - 2 * x); // smoothstep
+}
+
+// Moves `zoom` toward the crowd's target over dt seconds; never overshoots.
+export function easeZoom(zoom: number, playerUnits: number, dt: number): number {
+  const target = crowdZoomTarget(playerUnits);
+  return zoom + (target - zoom) * (1 - Math.exp(-ZOOM_RATE * Math.max(0, dt)));
+}
+
+// Vertical fov widened by `zoom` (0 = the framed fov).
+export function zoomedFov(fov: number, zoom: number): number {
+  return 2 * Math.atan(Math.tan(fov / 2) * (1 + zoom));
+}

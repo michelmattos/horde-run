@@ -1,0 +1,197 @@
+{
+  "id": "1-8",
+  "name": "Under the Bed",
+  "lane": {
+    "width": 10,
+    "length": 62
+  },
+  "cannon": {
+    "fireRate": 6,
+    "unitsPerShot": 3,
+    "aimLimit": 4
+  },
+  "playerBase": {
+    "hp": 340
+  },
+  "enemyBase": {
+    "hp": 2500,
+    "x": 0,
+    "width": 6
+  },
+  "gates": [
+    {
+      "id": "1-8-x2",
+      "op": "mul",
+      "value": 2,
+      "x": -1.5,
+      "z": 14,
+      "width": 3
+    },
+    {
+      "id": "1-8-div2",
+      "op": "div",
+      "value": 2,
+      "x": 2.5,
+      "z": 14,
+      "width": 3
+    },
+    {
+      "id": "1-8-x2b",
+      "op": "mul",
+      "value": 2,
+      "x": -1.5,
+      "z": 26,
+      "width": 3
+    },
+    {
+      "id": "1-8-minus4",
+      "op": "sub",
+      "value": 4,
+      "x": 2,
+      "z": 26,
+      "width": 2.6
+    },
+    {
+      "id": "1-8-plus1",
+      "op": "add",
+      "value": 1,
+      "x": 0,
+      "z": 40,
+      "width": 3
+    }
+  ],
+  "defenders": [
+    {
+      "id": "1-8-t1",
+      "kind": "tower",
+      "x": 3.8,
+      "z": 20,
+      "hp": 150,
+      "fireRate": 5,
+      "damage": 1,
+      "range": 6
+    },
+    {
+      "id": "1-8-t2",
+      "kind": "tower",
+      "x": -3.8,
+      "z": 34,
+      "hp": 150,
+      "fireRate": 5,
+      "damage": 1,
+      "range": 6
+    },
+    {
+      "id": "1-8-t3",
+      "kind": "tower",
+      "x": 3.8,
+      "z": 46,
+      "hp": 150,
+      "fireRate": 5,
+      "damage": 1,
+      "range": 6
+    }
+  ],
+  "enemyWaves": [
+    {
+      "at": 7,
+      "count": 213,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 16,
+      "count": 221,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 25,
+      "count": 229,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 34,
+      "count": 237,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 43,
+      "count": 245,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 52,
+      "count": 253,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 61,
+      "count": 261,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 70,
+      "count": 269,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 79,
+      "count": 277,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 88,
+      "count": 285,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 97,
+      "count": 293,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 106,
+      "count": 301,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 115,
+      "count": 309,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 124,
+      "count": 317,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 133,
+      "count": 325,
+      "x": 1.5,
+      "spread": 3.5
+    }
+  ],
+  "enemySpawnRate": {
+    "perSecond": 14.95,
+    "startAt": 2
+  },
+  "champion": {
+    "chargeNeeded": 300,
+    "hp": 130,
+    "damage": 95
+  },
+  "targetTime": 100
+}

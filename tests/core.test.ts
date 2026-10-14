@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRng, seedFromString } from '../src/core/rng.ts';
-import { createFixedStep } from '../src/core/loop.ts';
+import { createFixedStep, createFrameCap } from '../src/core/loop.ts';
 import { AIM_GAIN, createInputCore, relativeAim } from '../src/core/input.ts';
 import { SIM_DT } from '../src/contracts.ts';
 
@@ -180,4 +180,26 @@ test('input: sensitivity is read live from settings', () => {
   c.down(2, 0, 600, 400, 800, 'touch', false);
   c.move(2, 40, 400);
   assert.ok(Math.abs(c.aimX - 3 * a) < 1e-9);
+});
+
+test('frame cap: 120 Hz rAF draws every other frame, 60 Hz draws every frame', () => {
+  const at120 = (cap: ReturnType<typeof createFrameCap>, frames: number) => {
+    let drawn = 0;
+    for (let i = 0; i <= frames; i++) if (cap.tick(i * (1000 / 120)) >= 0) drawn++;
+    return drawn;
+  };
+  assert.equal(at120(createFrameCap(), 240), 121); // 2 s at 120 Hz → ~60 fps (plus the first frame)
+
+  const cap = createFrameCap();
+  let drawn = 0;
+  for (let i = 0; i <= 120; i++) if (cap.tick(i * (1000 / 60) + (i % 2 ? 0.8 : -0.8)) >= 0) drawn++; // jittery 60 Hz
+  assert.equal(drawn, 121);
+
+  // dt spans the skipped frame, so the sim does not run in slow motion.
+  const c = createFrameCap();
+  assert.equal(c.tick(1000), 0);
+  assert.equal(c.tick(1008.3), -1);
+  assert.ok(Math.abs(c.tick(1016.7) - 0.0167) < 1e-6);
+  c.reset();
+  assert.equal(c.tick(1020), 0, 'after a reset the next frame draws at once');
 });
