@@ -79,6 +79,7 @@ class InstanceBatch {
 export class CrowdRenderer {
   private readonly mob: InstanceBatch;
   private readonly champion: InstanceBatch;
+  private readonly championTrim: InstanceBatch;
   private readonly material: StandardMaterial;
 
   constructor(scene: Scene) {
@@ -91,6 +92,7 @@ export class CrowdRenderer {
 
     this.mob = new InstanceBatch(this.buildMob(scene));
     this.champion = new InstanceBatch(this.buildChampion(scene));
+    this.championTrim = new InstanceBatch(this.buildChampionTrim(scene));
   }
 
   private finish(mesh: Mesh): Mesh {
@@ -111,18 +113,36 @@ export class CrowdRenderer {
     return this.finish(mesh);
   }
 
-  // Champion: a chunky 8-sided body with a box 'helmet' and crest, radius LAYOUT.championRadius.
+  // Champion ('Brute'): a chunky 8-sided body with a squat head, radius LAYOUT.championRadius.
+  // Its gold helmet, crest and shoulder plates live in a second batch (buildChampionTrim)
+  // drawn with the same matrices, so team colour and gold stay separate at one extra draw call.
   private buildChampion(scene: Scene): Mesh {
     const r = LAYOUT.championRadius;
-    const body = CreateCylinderVertexData({ height: CHAMPION_HEIGHT * 0.7, diameterTop: r * 1.5, diameterBottom: r * 2, tessellation: 8 });
-    body.transform(Matrix.Translation(0, CHAMPION_HEIGHT * 0.35, 0));
-    const helmet = CreateBoxVertexData({ width: r * 1.3, height: CHAMPION_HEIGHT * 0.3, depth: r * 1.3 });
-    helmet.transform(Matrix.Translation(0, CHAMPION_HEIGHT * 0.85, 0));
-    const crest = CreateBoxVertexData({ width: r * 0.25, height: CHAMPION_HEIGHT * 0.15, depth: r * 1.1 });
-    crest.transform(Matrix.Translation(0, CHAMPION_HEIGHT * 1.05, 0));
-    body.merge([helmet, crest]);
+    const h = CHAMPION_HEIGHT;
+    const body = CreateCylinderVertexData({ height: h * 0.68, diameterTop: r * 1.8, diameterBottom: r * 1.6, tessellation: 8 });
+    body.transform(Matrix.Translation(0, h * 0.34, 0));
+    const head = CreateBoxVertexData({ width: r * 0.9, height: h * 0.24, depth: r * 0.9 });
+    head.transform(Matrix.Translation(0, h * 0.78, 0));
+    body.merge([head]);
     const mesh = new Mesh('champion', scene);
     body.applyToMesh(mesh);
+    return this.finish(mesh);
+  }
+
+  private buildChampionTrim(scene: Scene): Mesh {
+    const r = LAYOUT.championRadius;
+    const h = CHAMPION_HEIGHT;
+    const helmet = CreateBoxVertexData({ width: r * 1.05, height: h * 0.16, depth: r * 1.05 });
+    helmet.transform(Matrix.Translation(0, h * 0.88, 0));
+    const crest = CreateBoxVertexData({ width: r * 0.22, height: h * 0.14, depth: r * 0.95 });
+    crest.transform(Matrix.Translation(0, h * 1.02, 0));
+    const left = CreateBoxVertexData({ width: r * 0.6, height: h * 0.12, depth: r * 0.9 });
+    left.transform(Matrix.Translation(-r * 0.8, h * 0.66, 0));
+    const right = CreateBoxVertexData({ width: r * 0.6, height: h * 0.12, depth: r * 0.9 });
+    right.transform(Matrix.Translation(r * 0.8, h * 0.66, 0));
+    helmet.merge([crest, left, right]);
+    const mesh = new Mesh('championTrim', scene);
+    helmet.applyToMesh(mesh);
     return this.finish(mesh);
   }
 
@@ -130,8 +150,13 @@ export class CrowdRenderer {
     const n = view.count;
     this.mob.ensureCapacity(n);
     this.champion.ensureCapacity(n);
+    this.championTrim.ensureCapacity(n);
     this.mob.count = 0;
     this.champion.count = 0;
+    this.championTrim.count = 0;
+    const gr = PALETTE.gold.r;
+    const gg = PALETTE.gold.g;
+    const gb = PALETTE.gold.b;
     const { posX, posZ, team, kind, radius } = view;
     const pr = PALETTE.player.r;
     const pg = PALETTE.player.g;
@@ -147,14 +172,17 @@ export class CrowdRenderer {
       const batch = isChampion ? this.champion : this.mob;
       if (team[i] === Team.Player) batch.write(posX[i], bob, posZ[i], s, pr, pg, pb);
       else batch.write(posX[i], bob, posZ[i], s, er, eg, eb);
+      if (isChampion) this.championTrim.write(posX[i], bob, posZ[i], s, gr, gg, gb);
     }
     this.mob.commit();
     this.champion.commit();
+    this.championTrim.commit();
   }
 
   dispose(): void {
     this.mob.mesh.dispose();
     this.champion.mesh.dispose();
+    this.championTrim.mesh.dispose();
     this.material.dispose();
   }
 }

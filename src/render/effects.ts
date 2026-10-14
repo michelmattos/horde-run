@@ -1,6 +1,7 @@
-// Pooled one-shot effects: an expanding ring where units pass a gate and a small dust
-// puff where the two crowds clash. A fixed set of meshes is reused round-robin, so
-// spawning an effect never allocates.
+// Pooled one-shot effects. Gate rings and clash dust are reused meshes; arrows, debris,
+// puffs and the boss phase ring come from fixed particle/tracer pools drawn as two
+// thin-instance batches. Spawning an effect never allocates, and no effect ever
+// touches the camera: all hit feedback lives on the units, gates, bases and defenders.
 import type { Scene } from '@babylonjs/core/scene';
 import type { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { CreateTorus } from '@babylonjs/core/Meshes/Builders/torusBuilder';
@@ -9,12 +10,21 @@ import type { StandardMaterial } from '@babylonjs/core/Materials/standardMateria
 import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { PALETTE } from './palette.ts';
 import { unlitMaterial } from './materials.ts';
+import { PropBatch, instanceLitMaterial, instanceUnlitMaterial, unitMesh } from './instances.ts';
+import { ParticlePool, TracerPool, mulberry32 } from './fxLogic.ts';
 
 const RING_COUNT = 8;
 const PUFF_COUNT = 8;
 const RING_LIFE = 0.4;
 const PUFF_LIFE = 0.35;
 const PUFF_MIN_INTERVAL = 0.06; // clash events arrive by the dozen; throttle the puffs
+const PARTICLES = 192;
+const TRACERS = 24;
+const ARROW_TIME = 0.15;
+const ARROW_LEN = 0.9;
+const ARROW_FROM_Y = 2.4; // tower battlement height
+const ARROW_TO_Y = 0.5;
+const GRAVITY = 18;
 
 interface Fx {
   mesh: Mesh;
@@ -33,6 +43,12 @@ export class Effects {
   private readonly ringGood: StandardMaterial;
   private readonly ringBad: StandardMaterial;
   private readonly puffMat: StandardMaterial;
+  private readonly instMats: StandardMaterial[];
+  private readonly particles = new ParticlePool(PARTICLES);
+  private readonly tracers = new TracerPool(TRACERS);
+  private readonly chunkBatch: PropBatch;
+  private readonly arrowBatch: PropBatch;
+  private readonly rand = mulberry32(0x9e3779b9);
 
   constructor(scene: Scene) {
     this.ringGood = unlitMaterial(scene, 'fxRingGood', new Color3(0.6, 1, 0.7));
@@ -52,6 +68,12 @@ export class Effects {
       mesh.material = this.puffMat;
       this.puffs.push(this.idle(mesh));
     }
+
+    const lit = instanceLitMaterial(scene, 'fxChunkMat');
+    const unlit = instanceUnlitMaterial(scene, 'fxArrowMat');
+    this.instMats = [lit, unlit];
+    this.chunkBatch = new PropBatch(unitMesh(scene, 'fxChunks', 'box'), lit, PARTICLES);
+    this.arrowBatch = new PropBatch(unitMesh(scene, 'fxArrows', 'box'), unlit, TRACERS);
   }
 
   private idle(mesh: Mesh): Fx {
@@ -77,6 +99,69 @@ export class Effects {
     this.start(fx, PUFF_LIFE, 0.6, 1.8);
   }
 
+  // A tower's arrow flies to (tx, tz); a tiny red puff marks where it lands.
+  arrow(x: number, z: number, tx: number, tz: number): void {
+    this.tracers.spawn(x, z, tx, tz, ARROW_TIME);
+  }
+
+  // Red chunks thrown out of a destroyed defender; walls throw more, wider.
+  debris(x: number, z: number, wall: boolean, width: number): void {
+    const n = wall ? 14 : 10;
+    const spread = wall ? width * 0.5 : 0.5;
+    const e = PALETTE.enemy;
+    const d = PALETTE.enemyDark;
+    for (let i = 0; i < n; i++) {
+      const dark = i % 3 === 0;
+      const a = this.rand() * Math.PI * 2;
+      const sp = 2 + this.rand() * 3;
+      this.particles.spawn(
+        x + (this.rand() * 2 - 1) * spread, 0.6 + this.rand() * 1.2, z + (this.rand() - 0.5) * 0.6,
+        Math.cos(a) * sp, 4 + this.rand() * 4, Math.sin(a) * sp,
+        0.7 + this.rand() * 0.3, 0.22 + this.rand() * 0.18,
+        dark ? d.r : e.r, dark ? d.g : e.g, dark ? d.b : e.b,
+        GRAVITY,
+      );
+    }
+  }
+
+  // Units that ran past the enemy base: a small grey puff just beyond the lane end.
+  missPuff(x: number, z: number): void {
+    this.burst(x, z + 0.4, 5, 0.6, 1.2, 0.35, 0.18, 0.62, 0.64, 0.68, 0.4);
+  }
+
+  // Gate shards when a one-use gate breaks (green for good ops, red for bad).
+  gateShards(x: number, z: number, width: number, good: boolean): void {
+    const c = good ? PALETTE.gateGood : PALETTE.gateBad;
+    for (let i = 0; i < 10; i++) {
+      const px = x + (this.rand() * 2 - 1) * width * 0.5;
+      this.particles.spawn(px, 0.4 + this.rand() * 1.2, z, (px - x) * 1.5, 2 + this.rand() * 3, (this.rand() - 0.3) * 2, 0.5, 0.16, c.r, c.g, c.b, GRAVITY);
+    }
+  }
+
+  // Boss phase change: a bright ring of gold and red sparks bursting out of the base.
+  phaseRing(x: number, z: number, width: number): void {
+    const n = 28;
+    const r = width * 0.35;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const gold = i % 2 === 0;
+      this.particles.spawn(
+        x + Math.cos(a) * r, 1.6, z + Math.sin(a) * r * 0.6,
+        Math.cos(a) * 7, 3, Math.sin(a) * 4,
+        0.6, 0.3,
+        gold ? 2.2 : 2.0, gold ? 1.7 : 0.5, 0.4, // colours above 1 overdrive the flat shading so sparks glow
+        6,
+      );
+    }
+  }
+
+  private burst(x: number, z: number, n: number, speed: number, up: number, life: number, size: number, r: number, g: number, b: number, y: number): void {
+    for (let i = 0; i < n; i++) {
+      const a = this.rand() * Math.PI * 2;
+      this.particles.spawn(x, y, z, Math.cos(a) * speed, up * this.rand(), Math.sin(a) * speed, life, size, r, g, b, 0);
+    }
+  }
+
   private start(fx: Fx, life: number, from: number, to: number): void {
     fx.life = life;
     fx.maxLife = life;
@@ -89,6 +174,32 @@ export class Effects {
     this.sincePuff += dt;
     this.tick(this.rings, dt);
     this.tick(this.puffs, dt);
+
+    const t = this.tracers;
+    t.step(dt);
+    const e = PALETTE.enemy;
+    for (let i = 0; i < t.endedCount; i++) this.burst(t.endedX[i], t.endedZ[i], 4, 1.2, 1.5, 0.25, 0.14, e.r * 1.2, e.g, e.b, 0.4);
+    this.arrowBatch.begin();
+    for (let i = 0; i < t.capacity; i++) {
+      if (!t.isLive(i)) continue;
+      const k = t.progress(i);
+      const dx = t.x1[i] - t.x0[i];
+      const dz = t.z1[i] - t.z0[i];
+      const y = ARROW_FROM_Y + (ARROW_TO_Y - ARROW_FROM_Y) * k + 0.8 * k * (1 - k);
+      const yaw = Math.atan2(dx, dz);
+      this.arrowBatch.write(t.x0[i] + dx * k, y, t.z0[i] + dz * k, 0.11, 0.11, ARROW_LEN, yaw, 1, 0.9, 0.6);
+    }
+    this.arrowBatch.commit();
+
+    const p = this.particles;
+    p.step(dt);
+    this.chunkBatch.begin();
+    for (let i = 0; i < p.capacity; i++) {
+      if (!p.isLive(i)) continue;
+      const s = p.size[i] * (0.35 + 0.65 * p.remaining(i));
+      this.chunkBatch.write(p.px[i], p.py[i], p.pz[i], s, s, s, p.px[i] * 3, p.r[i], p.g[i], p.b[i]);
+    }
+    this.chunkBatch.commit();
   }
 
   private tick(list: Fx[], dt: number): void {
@@ -110,6 +221,12 @@ export class Effects {
   clear(): void {
     for (const fx of this.rings) this.reset(fx);
     for (const fx of this.puffs) this.reset(fx);
+    this.particles.clear();
+    this.tracers.clear();
+    this.chunkBatch.begin();
+    this.chunkBatch.commit();
+    this.arrowBatch.begin();
+    this.arrowBatch.commit();
   }
 
   private reset(fx: Fx): void {
@@ -120,8 +237,8 @@ export class Effects {
   dispose(): void {
     for (const fx of this.rings) fx.mesh.dispose();
     for (const fx of this.puffs) fx.mesh.dispose();
-    this.ringGood.dispose();
-    this.ringBad.dispose();
-    this.puffMat.dispose();
+    this.chunkBatch.dispose();
+    this.arrowBatch.dispose();
+    for (const m of [this.ringGood, this.ringBad, this.puffMat, ...this.instMats]) m.dispose();
   }
 }

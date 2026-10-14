@@ -1,0 +1,160 @@
+{
+  "id": "1-4",
+  "name": "Arrow Tower",
+  "lane": {
+    "width": 10,
+    "length": 58
+  },
+  "cannon": {
+    "fireRate": 6,
+    "unitsPerShot": 3,
+    "aimLimit": 4
+  },
+  "playerBase": {
+    "hp": 320
+  },
+  "enemyBase": {
+    "hp": 1700,
+    "x": 0,
+    "width": 6
+  },
+  "gates": [
+    {
+      "id": "1-4-x2",
+      "op": "mul",
+      "value": 2,
+      "x": 0,
+      "z": 16,
+      "width": 3.2
+    },
+    {
+      "id": "1-4-x2b",
+      "op": "mul",
+      "value": 2,
+      "x": 0,
+      "z": 36,
+      "width": 3.2
+    }
+  ],
+  "defenders": [
+    {
+      "id": "1-4-tl",
+      "kind": "tower",
+      "x": -3.8,
+      "z": 26,
+      "hp": 150,
+      "fireRate": 5,
+      "damage": 1,
+      "range": 6
+    },
+    {
+      "id": "1-4-tr",
+      "kind": "tower",
+      "x": 3.8,
+      "z": 26,
+      "hp": 150,
+      "fireRate": 5,
+      "damage": 1,
+      "range": 6
+    }
+  ],
+  "enemyWaves": [
+    {
+      "at": 8,
+      "count": 150,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 18,
+      "count": 157,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 28,
+      "count": 164,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 38,
+      "count": 171,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 48,
+      "count": 178,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 58,
+      "count": 185,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 68,
+      "count": 192,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 78,
+      "count": 199,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 88,
+      "count": 206,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 98,
+      "count": 213,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 108,
+      "count": 220,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 118,
+      "count": 227,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 128,
+      "count": 234,
+      "x": 0,
+      "spread": 3.5
+    }
+  ],
+  "enemySpawnRate": {
+    "perSecond": 10,
+    "startAt": 2
+  },
+  "champion": {
+    "chargeNeeded": 280,
+    "hp": 110,
+    "damage": 85
+  },
+  "goals": [
+    {
+      "type": "noChampion"
+    },
+    {
+      "type": "time",
+      "seconds": 100
+    }
+  ],
+  "intro": "Arrow towers shoot your mobs as they pass. Mobs that reach a tower damage it."
+}

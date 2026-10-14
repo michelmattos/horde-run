@@ -2,11 +2,17 @@
 import { Color3, Color4 } from '@babylonjs/core/Maths/math.color';
 
 export const PALETTE = {
-  clear: Color4.FromHexString('#1b2433ff'),
-  lane: Color3.FromHexString('#4b5a70'),
-  laneStripe: Color3.FromHexString('#5a6a82'),
-  rail: Color3.FromHexString('#8b9bb4'),
-  scenery: Color3.FromHexString('#141b27'),
+  // World 1 'Green Valley': a slate road through grassy hills, wooden rails.
+  clear: Color4.FromHexString('#9fc7d9ff'),
+  lane: Color3.FromHexString('#56606e'),
+  laneStripe: Color3.FromHexString('#66717f'),
+  rail: Color3.FromHexString('#8a6a46'),
+  scenery: Color3.FromHexString('#3f7a3a'),
+  treeTrunk: Color3.FromHexString('#6b4a2e'),
+  leafDark: Color3.FromHexString('#2f6b34'),
+  leafLight: Color3.FromHexString('#4f9a46'),
+  gold: Color3.FromHexString('#f5c542'),
+  goblinSkin: Color3.FromHexString('#b9524a'),
   player: Color3.FromHexString('#3b82f6'),
   enemy: Color3.FromHexString('#ef4444'),
   playerDark: Color3.FromHexString('#1e40af'),

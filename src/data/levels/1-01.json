@@ -1,0 +1,119 @@
+{
+  "id": "1-1",
+  "name": "First Charge",
+  "lane": {
+    "width": 10,
+    "length": 55
+  },
+  "cannon": {
+    "fireRate": 6,
+    "unitsPerShot": 3,
+    "aimLimit": 4
+  },
+  "playerBase": {
+    "hp": 300
+  },
+  "enemyBase": {
+    "hp": 1550,
+    "x": 0,
+    "width": 6
+  },
+  "gates": [
+    {
+      "id": "1-1-x2",
+      "op": "mul",
+      "value": 2,
+      "x": 0,
+      "z": 18,
+      "width": 4
+    }
+  ],
+  "enemyWaves": [
+    {
+      "at": 8,
+      "count": 60,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 20,
+      "count": 66,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 32,
+      "count": 72,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 44,
+      "count": 78,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 56,
+      "count": 84,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 68,
+      "count": 90,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 80,
+      "count": 96,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 92,
+      "count": 102,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 104,
+      "count": 108,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 116,
+      "count": 114,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 128,
+      "count": 120,
+      "x": -1.5,
+      "spread": 3.5
+    }
+  ],
+  "enemySpawnRate": {
+    "perSecond": 7,
+    "startAt": 2
+  },
+  "champion": {
+    "chargeNeeded": 240,
+    "hp": 90,
+    "damage": 75
+  },
+  "goals": [
+    {
+      "type": "time",
+      "seconds": 85
+    },
+    {
+      "type": "baseHp",
+      "minFraction": 0.75
+    }
+  ],
+  "intro": "Drag to aim the cannon. Fire through the x2 gate to double your crowd."
+}

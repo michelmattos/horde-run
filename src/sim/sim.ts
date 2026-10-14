@@ -4,9 +4,12 @@
 //
 // Units are discs on the XZ plane. A mob's health IS its weight (weight = ceil(hp)),
 // so cancellation by min(hpA, hpB) is 1:1 by weight and a stacked mob simply has more hp.
+//
+// Milestone 2 adds enemy defenders (towers shoot, walls soak), one-use gates that break
+// after a crossing-weight budget, and a movable enemy base (boss levels strafe it).
 
-import type { LevelDef, SimEvent, SimView } from '../contracts.ts';
-import { LAYOUT, Team, UnitKind, gateX } from '../contracts.ts';
+import type { DefenderKind, DefenderView, LevelDef, SimEvent, SimView } from '../contracts.ts';
+import { DEFENDER_DEFAULTS, LAYOUT, Team, UnitKind, gateX } from '../contracts.ts';
 import { SpatialGrid } from './grid.ts';
 
 export interface SpawnOpts {
@@ -28,6 +31,10 @@ export interface Sim {
   spawn(team: Team, kind: UnitKind, x: number, z: number, count: number, opts?: SpawnOpts): void;
   step(dt: number, events: SimEvent[]): void;
   totals(): { player: number; enemy: number };
+  // Live defenders in level order; destroyed ones stay with hp 0. Mutated in place.
+  readonly defenders: readonly DefenderView[];
+  // Moves the enemy base centre (boss strafing). Defaults to level.enemyBase.x.
+  setEnemyBaseX(x: number): void;
 }
 
 // Mutable so tuning code can tweak it live; tests read it.
@@ -39,6 +46,8 @@ export const SIM_TUNING = {
 };
 
 const MAX_GATES = 32;
+const MAX_DEFENDERS = 16;
+const CHAMPION_HIT_INTERVAL = 0.5; // seconds between a held champion's blows on a defender
 const DEAD_EPS = 1e-4; // hp at or below this counts as dead (absorbs float dust)
 const MAX_PUSH = 0.08; // per-step cap on separation correction (world units)
 const STEER_ZONE = 6; // player units steer toward the enemy base span in the last N units
@@ -53,9 +62,22 @@ function stackedRadius(base: number, w: number): number {
   return w <= 1 ? base : base * Math.min(2.2, 1 + 0.22 * Math.log2(w));
 }
 
+// Mutable defender record; exposed read-only through Sim.defenders.
+interface Defender {
+  id: string;
+  kind: DefenderKind;
+  x: number;
+  z: number;
+  width: number;
+  depth: number;
+  hp: number;
+  maxHp: number;
+}
+
 class CrowdSim implements Sim {
   readonly view: SimView;
   readonly unitBudget: number;
+  readonly defenders: readonly DefenderView[];
 
   private readonly level: LevelDef;
   private readonly rand: () => number;
@@ -80,19 +102,39 @@ class CrowdSim implements Sim {
   private readonly passed: Uint32Array; // gate bitmask
   private readonly pushX: Float32Array;
   private readonly pushZ: Float32Array;
+  private readonly atkT: Float32Array; // champion: seconds until its next blow on a defender
+  private readonly held: Uint8Array; // champion held by a defender this step (no forward push)
 
   private readonly grid: SpatialGrid;
   private readonly gateXs: Float64Array;
   private readonly gateAdded: Float64Array;
   private readonly gateHits: Int32Array;
   private readonly gateSumX: Float64Array;
+  private readonly gateUses: Float64Array; // remaining crossing weight; Infinity = unlimited
+  private readonly gateBroken: Uint8Array;
   private clashes = 0;
+
+  private readonly defs: Defender[];
+  private readonly defRange: Float64Array; // towers only
+  private readonly defPeriod: Float64Array; // seconds between shots
+  private readonly defDamage: Float64Array;
+  private readonly defCd: Float64Array; // seconds until the tower may fire again
+  private readonly defDmgStep: Float64Array; // damage taken this step (for defenderHit)
+  private readonly defDead: Uint8Array; // defenderDestroyed already reported
+  private defMinZ = Infinity; // z extent of all footprints, a cheap prefilter
+  private defMaxZ = -Infinity;
+  private baseX: number;
 
   constructor(level: LevelDef, rand: () => number, opts?: SimOptions) {
     if (level.gates.length > MAX_GATES) {
       throw new Error(`Level "${level.id}" has ${level.gates.length} gates; the sim supports at most ${MAX_GATES}.`);
     }
+    const defDefs = level.defenders ?? [];
+    if (defDefs.length > MAX_DEFENDERS) {
+      throw new Error(`Level "${level.id}" has ${defDefs.length} defenders; the sim supports at most ${MAX_DEFENDERS}.`);
+    }
     this.level = level;
+    this.baseX = level.enemyBase.x;
     this.rand = rand;
     this.unitBudget = opts?.unitBudget ?? 1500;
     const cap = opts?.capacity ?? this.unitBudget + 512;
@@ -113,6 +155,8 @@ class CrowdSim implements Sim {
     this.passed = new Uint32Array(cap);
     this.pushX = new Float32Array(cap);
     this.pushZ = new Float32Array(cap);
+    this.atkT = new Float32Array(cap);
+    this.held = new Uint8Array(cap);
 
     const hw = level.lane.width / 2;
     this.grid = new SpatialGrid(-hw, hw, LAYOUT.playerBaseZ - 2, level.lane.length + 2, 2 * LAYOUT.mobRadius, cap);
@@ -122,6 +166,29 @@ class CrowdSim implements Sim {
     this.gateAdded = new Float64Array(g);
     this.gateHits = new Int32Array(g);
     this.gateSumX = new Float64Array(g);
+    this.gateUses = new Float64Array(g);
+    this.gateBroken = new Uint8Array(g);
+    for (let k = 0; k < g; k++) this.gateUses[k] = level.gates[k].uses ?? Infinity;
+
+    const dc = defDefs.length;
+    this.defRange = new Float64Array(dc);
+    this.defPeriod = new Float64Array(dc);
+    this.defDamage = new Float64Array(dc);
+    this.defCd = new Float64Array(dc);
+    this.defDmgStep = new Float64Array(dc);
+    this.defDead = new Uint8Array(dc);
+    this.defs = defDefs.map((d, k) => {
+      const tower = d.kind === 'tower';
+      const width = d.width ?? (tower ? DEFENDER_DEFAULTS.towerWidth : DEFENDER_DEFAULTS.wallWidth);
+      const depth = tower ? width : DEFENDER_DEFAULTS.wallDepth;
+      this.defRange[k] = tower ? (d.range ?? DEFENDER_DEFAULTS.range) : 0;
+      this.defPeriod[k] = tower ? 1 / (d.fireRate ?? DEFENDER_DEFAULTS.fireRate) : 0;
+      this.defDamage[k] = tower ? (d.damage ?? DEFENDER_DEFAULTS.damage) : 0;
+      this.defMinZ = Math.min(this.defMinZ, d.z - depth / 2);
+      this.defMaxZ = Math.max(this.defMaxZ, d.z + depth / 2);
+      return { id: d.id, kind: d.kind, x: d.x, z: d.z, width, depth, hp: d.hp, maxHp: d.hp };
+    });
+    this.defenders = this.defs;
 
     const self = this;
     this.view = {
@@ -140,6 +207,10 @@ class CrowdSim implements Sim {
 
   get time(): number {
     return this._time;
+  }
+
+  setEnemyBaseX(x: number): void {
+    this.baseX = x;
   }
 
   totals(): { player: number; enemy: number } {
@@ -211,6 +282,7 @@ class CrowdSim implements Sim {
     this.hpPer[i] = hpPer;
     this.dmgPer[i] = dmgPer;
     this.passed[i] = mask;
+    this.atkT[i] = 0;
     if (kind === UnitKind.Champion) {
       this.w[i] = 1;
       this.weight[i] = 1;
@@ -265,9 +337,12 @@ class CrowdSim implements Sim {
   step(dt: number, events: SimEvent[]): void {
     this._time += dt;
     this.move(dt);
+    this.defenderContacts(dt);
     this.interact(events);
     this.applyPushes();
     this.applyGates(events);
+    this.towersFire(dt, events);
+    this.defenderEvents(events);
     this.baseHits(events);
     this.compact();
   }
@@ -275,8 +350,10 @@ class CrowdSim implements Sim {
   private move(dt: number): void {
     const { posX, posZ, prevZ, team, kind, radius } = this;
     const len = this.level.lane.length;
-    const eb = this.level.enemyBase;
-    const steerFrom = len - STEER_ZONE;
+    const halfW = this.level.enemyBase.width / 2;
+    const bx = this.baseX;
+    // A strafing (boss) base must be led by the player, so the funnel is off there.
+    const steerFrom = this.level.boss ? Infinity : len - STEER_ZONE;
     for (let i = 0; i < this.n; i++) {
       const z = posZ[i];
       prevZ[i] = z;
@@ -286,9 +363,9 @@ class CrowdSim implements Sim {
         if (z > steerFrom) {
           // Funnel toward the enemy base so units near the end don't miss it.
           const r = radius[i];
-          let lo = eb.x - eb.width / 2 + r;
-          let hi = eb.x + eb.width / 2 - r;
-          if (lo > hi) lo = hi = eb.x;
+          let lo = bx - halfW + r;
+          let hi = bx + halfW - r;
+          if (lo > hi) lo = hi = bx;
           const x = posX[i];
           const maxStep = speed * STEER_FACTOR * dt;
           if (x < lo) posX[i] = Math.min(lo, x + maxStep);
@@ -297,6 +374,139 @@ class CrowdSim implements Sim {
       } else {
         const speed = kind[i] === UnitKind.Champion ? SIM_TUNING.championSpeed : SIM_TUNING.enemySpeed;
         posZ[i] = z - speed * dt;
+      }
+    }
+  }
+
+  // ---------- Defenders ----------
+
+  // Does unit i (disc) overlap defender d's footprint?
+  private touches(i: number, d: Defender): boolean {
+    const r = this.radius[i];
+    const dx = this.posX[i] - d.x;
+    const dz = this.posZ[i] - d.z;
+    if (d.kind === 'tower') {
+      const rs = r + d.width / 2;
+      return dx * dx + dz * dz < rs * rs;
+    }
+    // Wall: distance from the disc centre to the closest point of the rectangle.
+    const hx = d.width / 2;
+    const hz = d.depth / 2;
+    const ox = dx < -hx ? dx + hx : dx > hx ? dx - hx : 0;
+    const oz = dz < -hz ? dz + hz : dz > hz ? dz - hz : 0;
+    return ox * ox + oz * oz < r * r;
+  }
+
+  private damageDefender(k: number, amount: number): void {
+    const d = this.defs[k];
+    const dealt = amount < d.hp ? amount : d.hp;
+    d.hp -= dealt;
+    if (d.hp <= DEAD_EPS) d.hp = 0;
+    this.defDmgStep[k] += dealt;
+  }
+
+  // Player units touching a live defender: mobs cancel against it like against an enemy
+  // crowd (min of both hp); champions stop and strike every CHAMPION_HIT_INTERVAL.
+  // Enemy units ignore defenders.
+  private defenderContacts(dt: number): void {
+    const dc = this.defs.length;
+    if (dc === 0) return;
+    this.defDmgStep.fill(0);
+    this.held.fill(0);
+    const { posZ, prevZ, team, kind, hp, radius, atkT } = this;
+    const zLo = this.defMinZ - LAYOUT.championRadius * 2.2;
+    const zHi = this.defMaxZ + LAYOUT.championRadius * 2.2;
+    for (let i = 0; i < this.n; i++) {
+      if (team[i] !== Team.Player || hp[i] <= DEAD_EPS) continue;
+      const z = posZ[i];
+      if (z + radius[i] < zLo || z - radius[i] > zHi) continue;
+      const champ = kind[i] === UnitKind.Champion;
+      let held = false;
+      for (let k = 0; k < dc; k++) {
+        const d = this.defs[k];
+        if (d.hp <= 0 || !this.touches(i, d)) continue;
+        if (champ) {
+          held = true;
+          this.held[i] = 1;
+          posZ[i] = prevZ[i]; // stays put until the defender breaks
+          atkT[i] -= dt;
+          if (atkT[i] <= 0) {
+            atkT[i] += CHAMPION_HIT_INTERVAL;
+            this.damageDefender(k, this.dmgPer[i]);
+          }
+          break;
+        }
+        const before = this.defs[k].hp;
+        this.damageDefender(k, hp[i]);
+        hp[i] -= before - this.defs[k].hp;
+        if (hp[i] <= DEAD_EPS) break;
+      }
+      if (champ && !held) atkT[i] = 0;
+    }
+  }
+
+  // Each ready tower shoots the nearest live player unit within range (grid query).
+  private towersFire(dt: number, events: SimEvent[]): void {
+    const dc = this.defs.length;
+    if (dc === 0) return;
+    const { grid, posX, posZ, team, hp } = this;
+    const head = grid.head;
+    const next = grid.next;
+    const cols = grid.cols;
+    const rows = grid.rows;
+    for (let k = 0; k < dc; k++) {
+      const d = this.defs[k];
+      if (d.kind !== 'tower' || d.hp <= 0) continue;
+      let cd = this.defCd[k] - dt;
+      if (cd > 0) {
+        this.defCd[k] = cd;
+        continue;
+      }
+      const range = this.defRange[k];
+      const kc = Math.ceil(range / grid.cellSize);
+      const cx = grid.cellX(d.x);
+      const cz = grid.cellZ(d.z);
+      const x0 = cx - kc < 0 ? 0 : cx - kc;
+      const x1 = cx + kc >= cols ? cols - 1 : cx + kc;
+      const z0 = cz - kc < 0 ? 0 : cz - kc;
+      const z1 = cz + kc >= rows ? rows - 1 : cz + kc;
+      let best = -1;
+      let bestD2 = range * range;
+      for (let gz = z0; gz <= z1; gz++) {
+        const rowBase = gz * cols;
+        for (let gx = x0; gx <= x1; gx++) {
+          for (let j = head[rowBase + gx]; j >= 0; j = next[j]) {
+            if (team[j] !== Team.Player || hp[j] <= DEAD_EPS) continue;
+            const dx = posX[j] - d.x;
+            const dz = posZ[j] - d.z;
+            const d2 = dx * dx + dz * dz;
+            if (d2 <= bestD2) {
+              bestD2 = d2;
+              best = j;
+            }
+          }
+        }
+      }
+      if (best < 0) {
+        this.defCd[k] = 0; // ready, waiting for a target
+        continue;
+      }
+      cd += this.defPeriod[k];
+      this.defCd[k] = cd > 0 ? cd : 0;
+      hp[best] -= this.defDamage[k]; // compact() turns lost hp into lost weight
+      events.push({ type: 'defenderShot', id: d.id, x: d.x, z: d.z, tx: posX[best], tz: posZ[best] });
+    }
+  }
+
+  // One defenderHit per damaged defender per step, then defenderDestroyed exactly once.
+  private defenderEvents(events: SimEvent[]): void {
+    for (let k = 0; k < this.defs.length; k++) {
+      const d = this.defs[k];
+      const dmg = this.defDmgStep[k];
+      if (dmg > 0) events.push({ type: 'defenderHit', id: d.id, damage: dmg, x: d.x, z: d.z });
+      if (d.hp <= 0 && !this.defDead[k]) {
+        this.defDead[k] = 1;
+        events.push({ type: 'defenderDestroyed', id: d.id, kind: d.kind, x: d.x, z: d.z });
       }
     }
   }
@@ -393,11 +603,13 @@ class CrowdSim implements Sim {
   }
 
   private applyPushes(): void {
-    const { posX, posZ, pushX, pushZ, radius } = this;
+    const { posX, posZ, pushX, pushZ, radius, held } = this;
     const cap2 = MAX_PUSH * MAX_PUSH;
     for (let i = 0; i < this.n; i++) {
       let px = pushX[i];
       let pz = pushZ[i];
+      // A champion held at a defender must not be shoved into it by the crowd behind.
+      if (held[i] && pz > 0) pz = 0;
       const l2 = px * px + pz * pz;
       if (l2 > cap2) {
         const s = MAX_PUSH / Math.sqrt(l2);
@@ -429,7 +641,7 @@ class CrowdSim implements Sim {
       const pz = prevZ[i];
       for (let g = 0; g < gc; g++) {
         if (hp[i] <= DEAD_EPS) break;
-        if ((passed[i] >>> g) & 1) continue;
+        if (this.gateBroken[g] || (passed[i] >>> g) & 1) continue;
         const gate = gates[g];
         if (!(pz < gate.z && gate.z <= z)) continue;
         if (Math.abs(posX[i] - this.gateXs[g]) > gate.width / 2) continue;
@@ -438,9 +650,16 @@ class CrowdSim implements Sim {
     }
     for (let g = 0; g < gc; g++) {
       const hits = this.gateHits[g];
-      if (hits > 0) {
-        events.push({ type: 'gate', gateId: gates[g].id, x: this.gateSumX[g] / hits, z: gates[g].z, added: this.gateAdded[g] });
+      if (hits === 0) continue;
+      const gate = gates[g];
+      const x = this.gateSumX[g] / hits;
+      if (gate.uses === undefined) {
+        events.push({ type: 'gate', gateId: gate.id, x, z: gate.z, added: this.gateAdded[g] });
+        continue;
       }
+      const usesLeft = Math.max(0, Math.floor(this.gateUses[g]));
+      events.push({ type: 'gate', gateId: gate.id, x, z: gate.z, added: this.gateAdded[g], usesLeft });
+      if (this.gateBroken[g]) events.push({ type: 'gateBroken', gateId: gate.id, x: this.gateXs[g], z: gate.z });
     }
   }
 
@@ -450,6 +669,15 @@ class CrowdSim implements Sim {
     this.gateHits[g]++;
     this.gateSumX[g] += this.posX[i];
     const w = this.w[i];
+    // One-use gates spend the crossing unit's weight from their budget; the unit that
+    // empties it still gets the full effect.
+    if (this.gateUses[g] !== Infinity) {
+      this.gateUses[g] -= w;
+      if (this.gateUses[g] <= 0) {
+        this.gateUses[g] = 0;
+        this.gateBroken[g] = 1;
+      }
+    }
     const v = gate.value;
     switch (gate.op) {
       case 'mul':
@@ -501,9 +729,15 @@ class CrowdSim implements Sim {
   }
 
   // Units reaching the far end hit the opposing base. Aggregated to one event per base per step.
+  // On boss levels a player unit arriving outside the base span is lost (baseMiss).
   private baseHits(events: SimEvent[]): void {
     const len = this.level.lane.length;
     const baseZ = LAYOUT.playerBaseZ;
+    const strafing = this.level.boss !== undefined;
+    const halfW = this.level.enemyBase.width / 2;
+    const bx = this.baseX;
+    let misses = 0;
+    let missX = 0;
     let pDmg = 0;
     let pHits = 0;
     let pX = 0;
@@ -516,6 +750,12 @@ class CrowdSim implements Sim {
       const dmg = kind[i] === UnitKind.Champion ? this.dmgPer[i] : this.dmgPer[i] * this.w[i];
       if (team[i] === Team.Player) {
         if (posZ[i] < len) continue;
+        if (strafing && Math.abs(posX[i] - bx) > halfW + this.radius[i]) {
+          misses++;
+          missX += posX[i];
+          hp[i] = 0;
+          continue;
+        }
         eDmg += dmg;
         eHits++;
         eX += posX[i];
@@ -528,6 +768,7 @@ class CrowdSim implements Sim {
       hp[i] = 0;
     }
     if (eHits > 0) events.push({ type: 'baseHit', team: Team.Enemy, damage: eDmg, x: eX / eHits, z: len });
+    if (misses > 0) events.push({ type: 'baseMiss', x: missX / misses, z: len, count: misses });
     if (pHits > 0) events.push({ type: 'baseHit', team: Team.Player, damage: pDmg, x: pX / pHits, z: baseZ });
   }
 
@@ -563,6 +804,7 @@ class CrowdSim implements Sim {
     this.dmgPer[to] = this.dmgPer[from];
     this.baseRad[to] = this.baseRad[from];
     this.passed[to] = this.passed[from];
+    this.atkT[to] = this.atkT[from];
   }
 }
 

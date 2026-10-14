@@ -1,0 +1,155 @@
+{
+  "id": "1-5",
+  "name": "Shifting Gate",
+  "lane": {
+    "width": 10,
+    "length": 60
+  },
+  "cannon": {
+    "fireRate": 6,
+    "unitsPerShot": 3,
+    "aimLimit": 4
+  },
+  "playerBase": {
+    "hp": 320
+  },
+  "enemyBase": {
+    "hp": 2400,
+    "x": 0,
+    "width": 6
+  },
+  "gates": [
+    {
+      "id": "1-5-x3",
+      "op": "mul",
+      "value": 3,
+      "x": 0,
+      "z": 20,
+      "width": 3,
+      "move": {
+        "amplitude": 2.2,
+        "period": 5
+      }
+    },
+    {
+      "id": "1-5-plus1",
+      "op": "add",
+      "value": 1,
+      "x": 3,
+      "z": 38,
+      "width": 3
+    }
+  ],
+  "defenders": [
+    {
+      "id": "1-5-t",
+      "kind": "tower",
+      "x": -3.6,
+      "z": 32,
+      "hp": 150,
+      "fireRate": 5,
+      "damage": 1,
+      "range": 6
+    }
+  ],
+  "enemyWaves": [
+    {
+      "at": 8,
+      "count": 180,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 18,
+      "count": 187,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 28,
+      "count": 194,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 38,
+      "count": 201,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 48,
+      "count": 208,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 58,
+      "count": 215,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 68,
+      "count": 222,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 78,
+      "count": 229,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 88,
+      "count": 236,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 98,
+      "count": 243,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 108,
+      "count": 250,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 118,
+      "count": 257,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 128,
+      "count": 264,
+      "x": 0,
+      "spread": 3.5
+    }
+  ],
+  "enemySpawnRate": {
+    "perSecond": 12,
+    "startAt": 2
+  },
+  "champion": {
+    "chargeNeeded": 300,
+    "hp": 120,
+    "damage": 90
+  },
+  "goals": [
+    {
+      "type": "maxMobs",
+      "mobs": 1500
+    },
+    {
+      "type": "baseHp",
+      "minFraction": 0.5
+    }
+  ],
+  "intro": "This gate slides. Lead it: aim where it will be when your mobs get there."
+}

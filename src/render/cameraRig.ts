@@ -1,6 +1,6 @@
-// Fixed, tilted lane camera. Framing comes from computeFraming on every resize; per
-// frame we only add a smooth zoom-out as the player's crowd grows. No screen shake:
-// Michel found it unpleasant on the phone.
+// Fixed, tilted lane camera. Framing comes from computeFraming on every resize and
+// level load; the camera never moves during play (no shake, no crowd zoom): Michel
+// found camera motion unpleasant on the phone, so hit feedback lives on the units.
 import type { Scene } from '@babylonjs/core/scene';
 import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
@@ -9,15 +9,11 @@ import { LAYOUT } from '../contracts.ts';
 import { computeFraming } from './framing.ts';
 import type { Framing } from './framing.ts';
 
-const ZOOM_MAX = 0.15; // up to +15% wider view
-const ZOOM_FULL_UNITS = 900; // crowd size at which the zoom-out is complete
-const ZOOM_RATE = 1.5; // 1/s, exponential smoothing
 const LANE_MARGIN = 0.6;
 
 export class CameraRig {
   readonly camera: FreeCamera;
   private framing: Framing = { pitch: 1, fov: 1, y: 30, z: -20 };
-  private zoom = 0;
 
   constructor(scene: Scene) {
     this.camera = new FreeCamera('laneCamera', new Vector3(0, 30, -20), scene);
@@ -46,23 +42,9 @@ export class CameraRig {
     this.apply();
   }
 
-  resetEffects(): void {
-    this.zoom = 0;
-  }
-
-  update(dt: number, playerUnits: number): void {
-    const target = ZOOM_MAX * smoothstep(Math.min(1, Math.max(0, playerUnits / ZOOM_FULL_UNITS)));
-    this.zoom += (target - this.zoom) * (1 - Math.exp(-ZOOM_RATE * dt));
-    this.apply();
-  }
-
   private apply(): void {
     const f = this.framing;
-    this.camera.fov = 2 * Math.atan(Math.tan(f.fov / 2) * (1 + this.zoom));
+    this.camera.fov = f.fov;
     this.camera.position.set(0, f.y, f.z);
   }
-}
-
-function smoothstep(x: number): number {
-  return x * x * (3 - 2 * x);
 }

@@ -1,0 +1,165 @@
+{
+  "id": "1-6",
+  "name": "Stone Wall",
+  "lane": {
+    "width": 10,
+    "length": 60
+  },
+  "cannon": {
+    "fireRate": 6,
+    "unitsPerShot": 3,
+    "aimLimit": 4
+  },
+  "playerBase": {
+    "hp": 330
+  },
+  "enemyBase": {
+    "hp": 2600,
+    "x": 0,
+    "width": 6
+  },
+  "gates": [
+    {
+      "id": "1-6-x2",
+      "op": "mul",
+      "value": 2,
+      "x": 0,
+      "z": 14,
+      "width": 4
+    },
+    {
+      "id": "1-6-x3",
+      "op": "mul",
+      "value": 3,
+      "x": 0,
+      "z": 34,
+      "width": 3
+    },
+    {
+      "id": "1-6-minus2",
+      "op": "sub",
+      "value": 2,
+      "x": 3.5,
+      "z": 20,
+      "width": 3
+    }
+  ],
+  "defenders": [
+    {
+      "id": "1-6-wall",
+      "kind": "wall",
+      "x": 0,
+      "z": 26,
+      "hp": 400,
+      "width": 5
+    },
+    {
+      "id": "1-6-wall2",
+      "kind": "wall",
+      "x": -3.5,
+      "z": 44,
+      "hp": 200,
+      "width": 3
+    }
+  ],
+  "enemyWaves": [
+    {
+      "at": 8,
+      "count": 180,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 18,
+      "count": 187,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 28,
+      "count": 194,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 38,
+      "count": 201,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 48,
+      "count": 208,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 58,
+      "count": 215,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 68,
+      "count": 222,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 78,
+      "count": 229,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 88,
+      "count": 236,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 98,
+      "count": 243,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 108,
+      "count": 250,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 118,
+      "count": 257,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 128,
+      "count": 264,
+      "x": 0,
+      "spread": 3.5
+    }
+  ],
+  "enemySpawnRate": {
+    "perSecond": 12,
+    "startAt": 2
+  },
+  "champion": {
+    "chargeNeeded": 220,
+    "hp": 120,
+    "damage": 90
+  },
+  "goals": [
+    {
+      "type": "time",
+      "seconds": 105
+    },
+    {
+      "type": "avoidGate",
+      "gateId": "1-6-minus2"
+    }
+  ],
+  "intro": "Walls soak up mobs. A champion smashes them: launch it straight at the wall."
+}

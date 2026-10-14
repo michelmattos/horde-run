@@ -5,6 +5,8 @@
 // Button hits are tested on DOM pointerdown against the same CSS-px rects (and
 // registered as blocked regions with the input), so a second finger can press
 // CHAMPION while the first keeps firing, independent of scene picking.
+// Feedback is colour, alpha and scale pops on HUD widgets only: nothing here
+// moves the camera or the screen.
 import type { Scene } from '@babylonjs/core/scene';
 import type { Observer } from '@babylonjs/core/Misc/observable';
 import type { AbstractEngine } from '@babylonjs/core/Engines/abstractEngine';
@@ -16,9 +18,18 @@ import { TextBlock } from '@babylonjs/gui/2D/controls/textBlock';
 import type { BattleState } from '../contracts.ts';
 import type { Input } from '../core/input.ts';
 import { readSafeAreaInsets } from './safeArea.ts';
+import { hudStarStyle, mixHex, pipLit, popScale } from './uiLogic.ts';
+import type { GoalState } from './uiLogic.ts';
+
+// Optional per-level extras. goals: star 1 = win, then the level's two goals.
+export interface HudInfo {
+  bossName?: string;
+  bossPhases?: number;
+  goals?: readonly GoalState[];
+}
 
 export interface Hud {
-  update(state: BattleState, levelName: string): void;
+  update(state: BattleState, levelName: string, info?: HudInfo): void;
   setVisible(v: boolean): void;
   dispose(): void;
 }
@@ -33,7 +44,16 @@ const PAUSE_S = 48;
 const HIT_SLOP = 8;
 const FONT = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
 
-const TOP_ROWS = 12 + 22 + 22; // pause row / enemy bar / level text, below the top inset
+const BAR_H = 20; // enemy bar, tall enough to carry the boss name
+const ROW2_Y = BAR_H + 6; // level name / stars / enemy count row, below the bar
+const ROW2_H = 22;
+const STAR_W = 18;
+const MAX_PIPS = 6;
+const PIP_D = 8;
+const PHASE_PULSE_MS = 450;
+const STAR_POP_MS = 350;
+// Top margin + the taller of (pause button, enemy bar + level row), below the top inset.
+const TOP_ROWS = 12 + Math.max(PAUSE_S, ROW2_Y + ROW2_H);
 const CLEAR = 14; // gap kept between the HUD and the battlefield framing
 
 // CSS px of the canvas the HUD covers at the top and bottom (safe-area insets included),
@@ -91,6 +111,36 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
 
   // ----- Controls -----
   const enemyBar = bar('enemy-hp', ENEMY);
+  // Boss extras live inside the enemy bar: bold name on the left, phase pips on the right.
+  const bossText = new TextBlock('boss-name', '');
+  bossText.color = 'white';
+  bossText.fontFamily = FONT;
+  bossText.fontWeight = '900';
+  bossText.fontSize = 12;
+  bossText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+  bossText.paddingLeftInPixels = 8;
+  bossText.outlineWidth = 3;
+  bossText.outlineColor = 'rgba(0,0,0,0.7)';
+  bossText.isVisible = false;
+  enemyBar.track.addControl(bossText);
+  const pips: Ellipse[] = [];
+  for (let i = 0; i < MAX_PIPS; i++) {
+    const p = new Ellipse('boss-pip');
+    p.widthInPixels = p.heightInPixels = PIP_D;
+    p.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+    p.color = 'white';
+    p.thickness = 1.5;
+    p.isVisible = false;
+    enemyBar.track.addControl(p);
+    pips.push(p);
+  }
+  const stars: TextBlock[] = [];
+  for (let i = 0; i < 3; i++) {
+    const t = label('goal-star', 17, Control.HORIZONTAL_ALIGNMENT_CENTER);
+    t.text = '\u2605';
+    t.isVisible = false;
+    stars.push(t);
+  }
   const levelText = label('level', 14, Control.HORIZONTAL_ALIGNMENT_LEFT);
   const enemyText = label('enemy-count', 14, Control.HORIZONTAL_ALIGNMENT_RIGHT);
   enemyText.color = '#ffc2c2';
@@ -133,7 +183,7 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
   champText.outlineColor = 'rgba(0,0,0,0.6)';
   champ.addControl(champText);
 
-  for (const c of [enemyBar.track, levelText, enemyText, playerBar.track, playerText, pause, champ]) root.addControl(c);
+  for (const c of [enemyBar.track, levelText, enemyText, ...stars, playerBar.track, playerText, pause, champ]) root.addControl(c);
 
   // ----- Layout (CSS px) -----
   let cssW = 0;
@@ -147,6 +197,7 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
   let pauseX = 0;
   let pauseY = 0;
   let layoutDirty = true;
+  let hasGoals = false;
 
   const relayout = (): void => {
     layoutDirty = false;
@@ -172,9 +223,12 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
 
     const ebX = pauseX + PAUSE_S + 12;
     enemyBarW = Math.max(40, cssW - right - ebX);
-    place(enemyBar.track, ebX, top + 4, enemyBarW, 16);
-    place(levelText, ebX, top + 22, enemyBarW * 0.65, 22);
-    place(enemyText, ebX + enemyBarW * 0.35, top + 22, enemyBarW * 0.65, 22);
+    place(enemyBar.track, ebX, top + 4, enemyBarW, BAR_H);
+    // Goal stars lead the level row; the name follows them.
+    const starsW = hasGoals ? STAR_W * 3 + 6 : 0;
+    for (let i = 0; i < 3; i++) place(stars[i], ebX + i * STAR_W, top + ROW2_Y, STAR_W, ROW2_H);
+    place(levelText, ebX + starsW, top + ROW2_Y, Math.max(20, enemyBarW * 0.65 - starsW), ROW2_H);
+    place(enemyText, ebX + enemyBarW * 0.35, top + ROW2_Y, enemyBarW * 0.65, ROW2_H);
 
     champCx = cssW - right - CHAMP_D / 2;
     champCy = cssH - bottom - CHAMP_D / 2;
@@ -234,12 +288,84 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
   let lastCharge = -1;
   let wasFull = false;
   let wasScaled = false;
+  let lastBoss = '';
+  let lastPips = -1;
+  let lastPhase = -1;
+  let phasePulseAt = -1e9;
+  let pulsing = false;
+  const lastGoals: (GoalState | '')[] = ['', '', ''];
+  const starPopAt = [-1e9, -1e9, -1e9];
+  let starsPopping = false;
 
   const frac = (hp: number, max: number): number => (max > 0 ? Math.min(1, Math.max(0, hp / max)) : 0);
 
   return {
-    update(state, levelName) {
+    update(state, levelName, info) {
+      const goals = info?.goals;
+      const wantGoals = !!goals && goals.length > 0;
+      if (wantGoals !== hasGoals) {
+        hasGoals = wantGoals;
+        for (const st of stars) st.isVisible = wantGoals;
+        layoutDirty = true;
+      }
       if (layoutDirty) relayout();
+      const now = performance.now();
+
+      // ----- Boss name and phase pips -----
+      const boss = info?.bossName ?? '';
+      if (boss !== lastBoss) {
+        lastBoss = boss;
+        bossText.text = boss.toUpperCase();
+        bossText.isVisible = boss !== '';
+        lastPhase = -1;
+      }
+      const nPips = boss ? Math.min(MAX_PIPS, Math.max(0, info?.bossPhases ?? 0)) : 0;
+      const phase = state.bossPhase ?? 0;
+      if (nPips !== lastPips || phase !== lastPhase) {
+        // Pulse only when the boss moves on to a later phase (a retry resets quietly).
+        if (lastPhase >= 0 && phase > lastPhase && nPips === lastPips) phasePulseAt = now;
+        lastPips = nPips;
+        lastPhase = phase;
+        for (let i = 0; i < MAX_PIPS; i++) {
+          const p = pips[i];
+          p.isVisible = i < nPips;
+          p.leftInPixels = -(6 + (nPips - 1 - i) * (PIP_D + 4));
+          p.background = pipLit(i, phase) ? 'white' : 'transparent';
+        }
+      }
+      const pulseT = now - phasePulseAt;
+      if (pulseT < PHASE_PULSE_MS) {
+        pulsing = true;
+        const s = popScale(pulseT, PHASE_PULSE_MS, 1.35);
+        enemyBar.track.scaleY = s;
+        enemyBar.track.scaleX = 1 + (s - 1) * 0.06;
+        enemyBar.fill.background = mixHex(ENEMY, '#ffffff', (s - 1) / 0.35);
+      } else if (pulsing) {
+        pulsing = false;
+        enemyBar.track.scaleX = enemyBar.track.scaleY = 1;
+        enemyBar.fill.background = ENEMY;
+      }
+
+      // ----- Goal stars: gold while alive, grey once failed (with a pop) -----
+      if (goals) {
+        for (let i = 0; i < 3; i++) {
+          const g: GoalState = goals[i] ?? 'pending';
+          if (g === lastGoals[i]) continue;
+          if (g === 'failed' && lastGoals[i] !== '') starPopAt[i] = now;
+          lastGoals[i] = g;
+          const look = hudStarStyle(g);
+          stars[i].color = look.color;
+          stars[i].alpha = look.alpha;
+        }
+      }
+      if (starsPopping || starPopAt.some((t) => now - t < STAR_POP_MS)) {
+        starsPopping = false;
+        for (let i = 0; i < 3; i++) {
+          const s = popScale(now - starPopAt[i], STAR_POP_MS, 1.6);
+          stars[i].scaleX = stars[i].scaleY = s;
+          if (s !== 1) starsPopping = true;
+        }
+      }
 
       if (levelName !== lastLevel) {
         lastLevel = levelName;
@@ -284,7 +410,6 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
         champText.outlineWidth = full ? 0 : 3;
       }
       // Pulse while ready, shrink briefly on press; otherwise leave the GUI untouched.
-      const now = performance.now();
       const pressed = now < pressFlashUntil;
       if (full || pressed) {
         const s = pressed ? 0.9 : 1 + 0.05 * Math.sin(now * 0.008);

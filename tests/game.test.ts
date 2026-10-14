@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createBattle } from '../src/game/battle.ts';
 import type { BattleSim } from '../src/game/battle.ts';
-import { LEVELS, getLevel, levelCount, validateLevel } from '../src/game/levels.ts';
+import { LEVELS, WORLDS, getLevel, getLevelById, getWorld, levelCount, levelIndexById, validateLevel, validateWorld } from '../src/game/levels.ts';
 import { createAutoplay } from '../src/game/autoplay.ts';
 import { LAYOUT, SIM_DT, SIM_HZ, Team, UnitKind } from '../src/contracts.ts';
 import type { InputState, LevelDef, SimEvent, SimView } from '../src/contracts.ts';
@@ -270,29 +270,71 @@ test('battles are independent (no module-level state)', () => {
 
 // ---------- Levels ----------
 
-test('all shipped levels validate and form the milestone set', () => {
-  assert.equal(levelCount(), 3);
-  assert.equal(LEVELS[0].name, 'First Push');
-  for (const l of LEVELS) assert.deepEqual(validateLevel(JSON.parse(JSON.stringify(l)), l.id), l);
+test('all shipped levels validate and form World 1', () => {
+  assert.equal(levelCount(), 10);
+  assert.deepEqual(
+    LEVELS.map((l) => l.id),
+    ['1-1', '1-2', '1-3', '1-4', '1-5', '1-6', '1-7', '1-8', '1-9', '1-10'],
+  );
+  assert.equal(LEVELS[0].name, 'First Charge');
+  for (const l of LEVELS) {
+    assert.deepEqual(validateLevel(JSON.parse(JSON.stringify(l)), l.id), l);
+    assert.equal(l.lane.width, 10);
+    assert.equal(l.goals?.length, 2, `${l.id} goals`);
+  }
   const gates = LEVELS.flatMap((l) => l.gates);
   assert.ok(gates.some((g) => g.op === 'mul' && g.value === 2));
   assert.ok(gates.some((g) => g.op === 'mul' && g.value === 3));
   assert.ok(gates.some((g) => g.op === 'add'));
   assert.ok(gates.some((g) => g.op === 'sub' || g.op === 'div'));
-  assert.equal(gates.filter((g) => g.move).length, 1);
+  assert.ok(gates.some((g) => g.move));
+  assert.ok(gates.some((g) => g.uses));
   for (const g of gates) assert.ok(g.width >= 2.5 && g.width <= 4, `${g.id} width`);
+  const defenders = LEVELS.flatMap((l) => l.defenders ?? []);
+  assert.ok(defenders.some((d) => d.kind === 'tower') && defenders.some((d) => d.kind === 'wall'));
+  // Goal variety across the world.
+  assert.equal(new Set(LEVELS.flatMap((l) => l.goals!.map((g) => g.type))).size, 5);
+  const boss = LEVELS[9].boss;
+  assert.ok(boss && boss.name === 'Goblin King' && boss.phases.length === 3);
+  assert.ok(LEVELS.slice(0, 9).every((l) => !l.boss));
+});
+
+test('the World 1 file lists every level in order and validates', () => {
+  assert.equal(WORLDS.length, 1);
+  const w = getWorld('w1');
+  assert.ok(w);
+  assert.deepEqual({ ...w, levels: undefined }, { id: 'w1', name: 'Green Valley', faction: 'Goblins', levels: undefined });
+  assert.deepEqual(w.levels, LEVELS.map((l) => l.id));
+  assert.equal(getWorld('w9'), undefined);
+  const bad = (mutate: (o: any) => void, pattern: RegExp) => {
+    const o = JSON.parse(JSON.stringify(w));
+    mutate(o);
+    assert.throws(() => validateWorld(o, 'w.json'), (e: Error) => /w\.json/.test(e.message) && pattern.test(e.message));
+  };
+  bad((o) => delete o.faction, /faction/);
+  bad((o) => (o.levels = []), /levels/);
+  bad((o) => o.levels.push('9-9'), /levels\[10\].*not a shipped level/);
+  bad((o) => o.levels.push('1-1'), /levels\[10\].*twice/);
+});
+
+test('levels by id', () => {
+  assert.equal(getLevelById('1-4'), LEVELS[3]);
+  assert.equal(getLevelById('nope'), undefined);
+  assert.equal(levelIndexById('1-10'), 9);
+  assert.equal(levelIndexById('1-1'), 0);
+  assert.equal(levelIndexById('level-01'), -1);
 });
 
 test('getLevel wraps safely', () => {
   assert.equal(getLevel(0), LEVELS[0]);
-  assert.equal(getLevel(3), LEVELS[0]);
-  assert.equal(getLevel(-1), LEVELS[2]);
+  assert.equal(getLevel(10), LEVELS[0]);
+  assert.equal(getLevel(-1), LEVELS[9]);
   assert.equal(getLevel(1.7), LEVELS[1]);
   assert.equal(getLevel(Number.NaN), LEVELS[0]);
 });
 
 test('validateLevel rejects bad input with a message naming source and field', () => {
-  const good = () => JSON.parse(JSON.stringify(LEVELS[0]));
+  const good = () => JSON.parse(JSON.stringify(LEVELS[2]));
   const bad = (mutate: (l: any) => void, pattern: RegExp) => {
     const l = good();
     mutate(l);

@@ -1,0 +1,155 @@
+{
+  "id": "1-3",
+  "name": "Watch Your Step",
+  "lane": {
+    "width": 10,
+    "length": 58
+  },
+  "cannon": {
+    "fireRate": 6,
+    "unitsPerShot": 3,
+    "aimLimit": 4
+  },
+  "playerBase": {
+    "hp": 320
+  },
+  "enemyBase": {
+    "hp": 1700,
+    "x": 0,
+    "width": 6
+  },
+  "gates": [
+    {
+      "id": "1-3-div2",
+      "op": "div",
+      "value": 2,
+      "x": -3,
+      "z": 18,
+      "width": 3
+    },
+    {
+      "id": "1-3-x3",
+      "op": "mul",
+      "value": 3,
+      "x": 0,
+      "z": 18,
+      "width": 2.6
+    },
+    {
+      "id": "1-3-minus3",
+      "op": "sub",
+      "value": 3,
+      "x": 3,
+      "z": 18,
+      "width": 3
+    },
+    {
+      "id": "1-3-plus1",
+      "op": "add",
+      "value": 1,
+      "x": -2.5,
+      "z": 34,
+      "width": 3
+    }
+  ],
+  "enemyWaves": [
+    {
+      "at": 7,
+      "count": 180,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 17,
+      "count": 187,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 27,
+      "count": 194,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 37,
+      "count": 201,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 47,
+      "count": 208,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 57,
+      "count": 215,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 67,
+      "count": 222,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 77,
+      "count": 229,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 87,
+      "count": 236,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 97,
+      "count": 243,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 107,
+      "count": 250,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 117,
+      "count": 257,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 127,
+      "count": 264,
+      "x": 0,
+      "spread": 3.5
+    }
+  ],
+  "enemySpawnRate": {
+    "perSecond": 12,
+    "startAt": 2
+  },
+  "champion": {
+    "chargeNeeded": 280,
+    "hp": 110,
+    "damage": 85
+  },
+  "goals": [
+    {
+      "type": "avoidGate",
+      "gateId": "1-3-div2"
+    },
+    {
+      "type": "baseHp",
+      "minFraction": 0.6
+    }
+  ],
+  "intro": "Red gates are traps: ÷ halves your mobs and - wipes them out. Thread the x3."
+}

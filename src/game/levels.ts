@@ -1,15 +1,27 @@
 // Level loading: the shipped levels are JSON files (src/data/levels) validated once at
 // module load, so a typo in level data fails loudly with the file and field named
-// instead of producing a silently broken battle.
+// instead of producing a silently broken battle. Worlds (src/data/worlds) list their
+// level ids in play order and are checked against the shipped levels the same way.
 
-import type { EnemyWaveDef, GateDef, GateOp, LevelDef } from '../contracts.ts';
-import { LAYOUT } from '../contracts.ts';
-import l1 from '../data/levels/level-01.json' with { type: 'json' };
-import l2 from '../data/levels/level-02.json' with { type: 'json' };
-import l3 from '../data/levels/level-03.json' with { type: 'json' };
+import type { BossDef, DefenderDef, DefenderKind, EnemyWaveDef, GateDef, GateOp, LevelDef, StarGoal, WorldDef } from '../contracts.ts';
+import { DEFENDER_DEFAULTS, LAYOUT } from '../contracts.ts';
+import l01 from '../data/levels/1-01.json' with { type: 'json' };
+import l02 from '../data/levels/1-02.json' with { type: 'json' };
+import l03 from '../data/levels/1-03.json' with { type: 'json' };
+import l04 from '../data/levels/1-04.json' with { type: 'json' };
+import l05 from '../data/levels/1-05.json' with { type: 'json' };
+import l06 from '../data/levels/1-06.json' with { type: 'json' };
+import l07 from '../data/levels/1-07.json' with { type: 'json' };
+import l08 from '../data/levels/1-08.json' with { type: 'json' };
+import l09 from '../data/levels/1-09.json' with { type: 'json' };
+import l10 from '../data/levels/1-10.json' with { type: 'json' };
+import w1 from '../data/worlds/world-1.json' with { type: 'json' };
 
 const MAX_GATES = 32; // the sim tracks gates crossed in a 32-bit mask
+const MAX_DEFENDERS = 16; // the sim's fixed defender capacity
 const GATE_OPS: readonly GateOp[] = ['mul', 'add', 'sub', 'div'];
+const DEFENDER_KINDS: readonly DefenderKind[] = ['tower', 'wall'];
+const GOAL_TYPES: readonly StarGoal['type'][] = ['time', 'baseHp', 'noChampion', 'avoidGate', 'maxMobs'];
 
 type Obj = Record<string, unknown>;
 
@@ -52,6 +64,12 @@ function arr(o: Obj, key: string, source: string): unknown[] {
   return v;
 }
 
+function posInt(o: Obj, key: string, source: string, path: string): number {
+  const v = pos(o, key, source, path);
+  if (!Number.isInteger(v)) fail(source, `${path}${key}`, `must be an integer (got ${v})`);
+  return v;
+}
+
 function validateGate(raw: unknown, i: number, lane: LevelDef['lane'], source: string): GateDef {
   const p = `gates[${i}].`;
   const o = obj(raw, source, `gates[${i}]`);
@@ -67,6 +85,7 @@ function validateGate(raw: unknown, i: number, lane: LevelDef['lane'], source: s
     fail(source, `${p}z`, `must be inside (${LAYOUT.cannonZ}, ${lane.length}) (got ${z})`);
   }
   const gate: GateDef = { id, op, value, x, z, width };
+  if (o.uses !== undefined) gate.uses = posInt(o, 'uses', source, p);
   let reach = 0;
   if (o.move !== undefined) {
     const m = obj(o.move, source, `${p}move`);
@@ -80,6 +99,79 @@ function validateGate(raw: unknown, i: number, lane: LevelDef['lane'], source: s
     fail(source, `${p}x`, `puts the gate (width ${width}${reach ? `, swing ${reach}` : ''}) outside the lane of width ${lane.width}`);
   }
   return gate;
+}
+
+function validateDefender(raw: unknown, i: number, lane: LevelDef['lane'], source: string): DefenderDef {
+  const p = `defenders[${i}].`;
+  const o = obj(raw, source, `defenders[${i}]`);
+  const id = str(o, 'id', source, p);
+  const kind = o.kind as DefenderKind;
+  if (!DEFENDER_KINDS.includes(kind)) fail(source, `${p}kind`, `must be one of ${DEFENDER_KINDS.join('/')} (got ${JSON.stringify(o.kind)})`);
+  const d: DefenderDef = { id, kind, x: num(o, 'x', source, p), z: num(o, 'z', source, p), hp: pos(o, 'hp', source, p) };
+  if (o.width !== undefined) d.width = pos(o, 'width', source, p);
+  for (const key of ['range', 'fireRate', 'damage'] as const) {
+    if (o[key] === undefined) continue;
+    if (kind !== 'tower') fail(source, `${p}${key}`, 'is only allowed on towers');
+    d[key] = pos(o, key, source, p);
+  }
+  const width = d.width ?? (kind === 'tower' ? DEFENDER_DEFAULTS.towerWidth : DEFENDER_DEFAULTS.wallWidth);
+  const depth = kind === 'tower' ? width : DEFENDER_DEFAULTS.wallDepth;
+  if (Math.abs(d.x) + width / 2 > lane.width / 2 + 1e-9) fail(source, `${p}x`, `puts the ${kind} (width ${width}) outside the lane of width ${lane.width}`);
+  const zMin = LAYOUT.cannonZ + 2;
+  const zMax = lane.length - LAYOUT.enemySpawnInset;
+  if (d.z - depth / 2 < zMin || d.z + depth / 2 > zMax) fail(source, `${p}z`, `must keep the ${kind} inside [${zMin}, ${zMax}] (got ${d.z})`);
+  return d;
+}
+
+function validateBoss(raw: unknown, source: string): BossDef {
+  const o = obj(raw, source, 'boss');
+  const name = str(o, 'name', source, 'boss.');
+  if (!Array.isArray(o.phases) || o.phases.length === 0) fail(source, 'boss.phases', 'must be a non-empty array');
+  const phases = (o.phases as unknown[]).map((r, i) => {
+    const p = `boss.phases[${i}].`;
+    const ph = obj(r, source, `boss.phases[${i}]`);
+    const belowHp = pos(ph, 'belowHp', source, p);
+    if (belowHp > 1) fail(source, `${p}belowHp`, `must be <= 1 (got ${belowHp})`);
+    const st = obj(ph.strafe, source, `${p}strafe`);
+    const phase: BossDef['phases'][number] = {
+      belowHp,
+      strafe: { amplitude: nonNeg(st, 'amplitude', source, `${p}strafe.`), period: pos(st, 'period', source, `${p}strafe.`) },
+    };
+    if (ph.trickle !== undefined) phase.trickle = pos(ph, 'trickle', source, p);
+    if (ph.summon !== undefined) phase.summon = posInt(ph, 'summon', source, p);
+    return phase;
+  });
+  if (phases[0].belowHp !== 1) fail(source, 'boss.phases[0].belowHp', `must be 1 (got ${phases[0].belowHp})`);
+  for (let i = 1; i < phases.length; i++) {
+    if (!(phases[i].belowHp < phases[i - 1].belowHp)) fail(source, `boss.phases[${i}].belowHp`, 'must be strictly below the previous phase');
+  }
+  return { name, phases };
+}
+
+function validateGoal(raw: unknown, i: number, gates: GateDef[], source: string): StarGoal {
+  const p = `goals[${i}].`;
+  const o = obj(raw, source, `goals[${i}]`);
+  const type = o.type as StarGoal['type'];
+  switch (type) {
+    case 'time':
+      return { type, seconds: pos(o, 'seconds', source, p) };
+    case 'baseHp': {
+      const minFraction = pos(o, 'minFraction', source, p);
+      if (minFraction > 1) fail(source, `${p}minFraction`, `must be <= 1 (got ${minFraction})`);
+      return { type, minFraction };
+    }
+    case 'noChampion':
+      return { type };
+    case 'avoidGate': {
+      const gateId = str(o, 'gateId', source, p);
+      if (!gates.some((g) => g.id === gateId)) fail(source, `${p}gateId`, `"${gateId}" is not a gate of this level`);
+      return { type, gateId };
+    }
+    case 'maxMobs':
+      return { type, mobs: posInt(o, 'mobs', source, p) };
+    default:
+      fail(source, `${p}type`, `must be one of ${GOAL_TYPES.join('/')} (got ${JSON.stringify(o.type)})`);
+  }
 }
 
 function validateWave(raw: unknown, i: number, source: string): EnemyWaveDef {
@@ -147,14 +239,98 @@ export function validateLevel(raw: unknown, source: string): LevelDef {
     const r = obj(o.enemySpawnRate, source, 'enemySpawnRate');
     level.enemySpawnRate = { perSecond: pos(r, 'perSecond', source, 'enemySpawnRate.'), startAt: nonNeg(r, 'startAt', source, 'enemySpawnRate.') };
   }
+
+  if (o.defenders !== undefined) {
+    const raw = arr(o, 'defenders', source);
+    if (raw.length > MAX_DEFENDERS) fail(source, 'defenders', `has ${raw.length} entries; at most ${MAX_DEFENDERS} allowed`);
+    const defenders = raw.map((d, i) => validateDefender(d, i, lane, source));
+    const ids = new Set<string>();
+    defenders.forEach((d, i) => {
+      if (ids.has(d.id)) fail(source, `defenders[${i}].id`, `"${d.id}" is not unique`);
+      ids.add(d.id);
+    });
+    level.defenders = defenders;
+  }
+
+  if (o.boss !== undefined) {
+    const boss = validateBoss(o.boss, source);
+    const maxAmp = Math.max(...boss.phases.map((ph) => ph.strafe.amplitude));
+    if (Math.abs(enemyBase.x) + maxAmp + enemyBase.width / 2 > lane.width / 2 + 1e-9) {
+      fail(source, 'boss.phases', `strafe amplitude ${maxAmp} swings the base (width ${enemyBase.width}) outside the lane of width ${lane.width}`);
+    }
+    level.boss = boss;
+  }
+
+  if (o.goals !== undefined) level.goals = arr(o, 'goals', source).map((g, i) => validateGoal(g, i, gates, source));
+  if (o.intro !== undefined) level.intro = str(o, 'intro', source, '');
+  return level;
+}
+
+// Shipped levels must also carry exactly two star goals.
+function shippedLevel(raw: unknown, source: string): LevelDef {
+  const level = validateLevel(raw, source);
+  if (level.goals?.length !== 2) fail(source, 'goals', `must have exactly 2 entries on a shipped level (got ${level.goals?.length ?? 0})`);
   return level;
 }
 
 export const LEVELS: readonly LevelDef[] = Object.freeze([
-  validateLevel(l1, 'level-01.json'),
-  validateLevel(l2, 'level-02.json'),
-  validateLevel(l3, 'level-03.json'),
+  shippedLevel(l01, '1-01.json'),
+  shippedLevel(l02, '1-02.json'),
+  shippedLevel(l03, '1-03.json'),
+  shippedLevel(l04, '1-04.json'),
+  shippedLevel(l05, '1-05.json'),
+  shippedLevel(l06, '1-06.json'),
+  shippedLevel(l07, '1-07.json'),
+  shippedLevel(l08, '1-08.json'),
+  shippedLevel(l09, '1-09.json'),
+  shippedLevel(l10, '1-10.json'),
 ]);
+
+{
+  const seen = new Set<string>();
+  for (const l of LEVELS) {
+    if (seen.has(l.id)) fail(`${l.id}`, 'id', 'is used by more than one shipped level');
+    seen.add(l.id);
+  }
+}
+
+// A world: id, name, faction and its level ids in play order. With `knownLevels`,
+// every listed id must name one of them.
+export function validateWorld(raw: unknown, source: string, knownLevels: readonly LevelDef[] = LEVELS): WorldDef {
+  const o = obj(raw, source, 'world');
+  const world: WorldDef = {
+    id: str(o, 'id', source, ''),
+    name: str(o, 'name', source, ''),
+    faction: str(o, 'faction', source, ''),
+    levels: [],
+  };
+  const list = arr(o, 'levels', source);
+  if (list.length === 0) fail(source, 'levels', 'must not be empty');
+  const seen = new Set<string>();
+  list.forEach((v, i) => {
+    if (typeof v !== 'string' || v.length === 0) fail(source, `levels[${i}]`, 'must be a non-empty string');
+    if (seen.has(v)) fail(source, `levels[${i}]`, `"${v}" is listed twice`);
+    if (!knownLevels.some((l) => l.id === v)) fail(source, `levels[${i}]`, `"${v}" is not a shipped level`);
+    seen.add(v);
+    world.levels.push(v);
+  });
+  return world;
+}
+
+export const WORLDS: readonly WorldDef[] = Object.freeze([validateWorld(w1, 'world-1.json')]);
+
+export function getWorld(id: string): WorldDef | undefined {
+  return WORLDS.find((w) => w.id === id);
+}
+
+export function getLevelById(id: string): LevelDef | undefined {
+  return LEVELS.find((l) => l.id === id);
+}
+
+// Index into LEVELS (as used by getLevel), or -1 for an unknown id.
+export function levelIndexById(id: string): number {
+  return LEVELS.findIndex((l) => l.id === id);
+}
 
 export function levelCount(): number {
   return LEVELS.length;

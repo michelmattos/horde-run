@@ -1,0 +1,182 @@
+{
+  "id": "1-10",
+  "name": "Goblin King",
+  "lane": {
+    "width": 10,
+    "length": 62
+  },
+  "cannon": {
+    "fireRate": 6,
+    "unitsPerShot": 3,
+    "aimLimit": 4
+  },
+  "playerBase": {
+    "hp": 250
+  },
+  "enemyBase": {
+    "hp": 3800,
+    "x": 0,
+    "width": 5
+  },
+  "gates": [
+    {
+      "id": "1-10-x3",
+      "op": "mul",
+      "value": 3,
+      "x": 0,
+      "z": 16,
+      "width": 3.2
+    },
+    {
+      "id": "1-10-x2",
+      "op": "mul",
+      "value": 2,
+      "x": -2,
+      "z": 30,
+      "width": 3
+    },
+    {
+      "id": "1-10-x2b",
+      "op": "mul",
+      "value": 2,
+      "x": 2,
+      "z": 30,
+      "width": 3
+    }
+  ],
+  "enemyWaves": [
+    {
+      "at": 8,
+      "count": 200,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 18,
+      "count": 207,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 28,
+      "count": 214,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 38,
+      "count": 221,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 48,
+      "count": 228,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 58,
+      "count": 235,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 68,
+      "count": 242,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 78,
+      "count": 249,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 88,
+      "count": 256,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 98,
+      "count": 263,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 108,
+      "count": 270,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 118,
+      "count": 277,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 128,
+      "count": 284,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 138,
+      "count": 291,
+      "x": -1.5,
+      "spread": 3.5
+    }
+  ],
+  "enemySpawnRate": {
+    "perSecond": 17,
+    "startAt": 2
+  },
+  "champion": {
+    "chargeNeeded": 300,
+    "hp": 140,
+    "damage": 110
+  },
+  "boss": {
+    "name": "Goblin King",
+    "phases": [
+      {
+        "belowHp": 1,
+        "strafe": {
+          "amplitude": 1.5,
+          "period": 9
+        }
+      },
+      {
+        "belowHp": 0.6,
+        "strafe": {
+          "amplitude": 2,
+          "period": 7
+        },
+        "summon": 80,
+        "trickle": 20
+      },
+      {
+        "belowHp": 0.25,
+        "strafe": {
+          "amplitude": 2.5,
+          "period": 5
+        },
+        "summon": 120,
+        "trickle": 26
+      }
+    ]
+  },
+  "goals": [
+    {
+      "type": "time",
+      "seconds": 145
+    },
+    {
+      "type": "noChampion"
+    }
+  ],
+  "intro": "The Goblin King rides his base across the lane. Lead your shots!"
+}

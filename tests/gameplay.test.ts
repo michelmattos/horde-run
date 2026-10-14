@@ -46,12 +46,12 @@ function stream(level: LevelDef, aimX: number, fireSeconds: number) {
 
 test('a held stream through a x2 gate doubles exactly (each unit triggers it once)', () => {
   const level = quiet(LEVELS[0]);
-  const gate = level.gates.find((g) => g.id === 'l1-x2');
+  const gate = level.gates.find((g) => g.id === '1-1-x2');
   assert.ok(gate && gate.op === 'mul' && gate.value === 2 && !gate.move);
   const r = stream(level, gate.x, 10); // aim through the middle of the x2 gate
   const fired = 10 * level.cannon.fireRate * level.cannon.unitsPerShot;
   assert.equal(r.left, 0);
-  assert.deepEqual(r.added, { 'l1-x2': fired });
+  assert.deepEqual(r.added, { '1-1-x2': fired });
   assert.equal(r.baseDamage, 2 * fired);
 });
 
