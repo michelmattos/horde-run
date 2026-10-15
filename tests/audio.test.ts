@@ -270,6 +270,8 @@ test('songs stay in key: pitched notes use only their scale', () => {
     menu: scale('F', major),
     battle: scale('C', major),
     boss: scale('A', [0, 2, 3, 5, 7, 8, 10, 11]), // A minor, with the raised G# of E major
+    battle2: scale('E', [0, 2, 3, 5, 7, 8, 10, 11]), // E minor, with the D# of B7
+    boss2: scale('D', [0, 2, 3, 5, 7, 8, 10, 11]), // D minor, with the C# of A major
   };
   for (const song of Object.values(SONGS)) {
     for (const p of song.parts) {

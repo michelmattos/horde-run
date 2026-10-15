@@ -1,6 +1,6 @@
 // The toy-box band that plays the music (and the musical stings): a music box, a
 // glockenspiel, a marimba, a pizzicato bass, a tuba, a toy trumpet, a reed organ and a
-// marching kit. Each is a few sines, a filtered saw or square, or filtered noise under
+// marching kit, plus sleigh bells for World 2's freezer. Each is a few sines, a filtered saw or square, or filtered noise under
 // gain envelopes; no samples. Brightness stays low on purpose: lowpassed saws, no bare
 // squares, and bell partials kept short so long loops never tire the ear.
 import { midiHz, noise, tone } from './dsp.ts';
@@ -18,7 +18,8 @@ export type InstrumentId =
   | 'kick'
   | 'timpani'
   | 'shaker'
-  | 'cymbal';
+  | 'cymbal'
+  | 'sleighBells';
 
 /** Plays one note: `midi` pitch at time `t` for `dur` seconds, velocity 0..1. */
 export type Instrument = (k: Kit, t: number, midi: number, vel: number, dur: number) => void;
@@ -159,6 +160,22 @@ const cymbal: Instrument = (k, t, _m, v) => {
   noise(k, t, { attack: 0.002, decay: 0.3, peak: 0.05 * v, filter: { type: 'bandpass', freq: 3600, q: 1 } });
 };
 
+// Sleigh bells: a jingle of small bells, each a short pair of high inharmonic partials
+// a few milliseconds apart, over a whisper of bright noise. Accents ring a little longer.
+const sleighBells: Instrument = (k, t, _m, v) => {
+  const ring = 0.08 + 0.1 * v;
+  for (const [at, f] of [
+    [0, 4200],
+    [0.006, 5300],
+    [0.013, 4750],
+    [0.021, 6100],
+  ]) {
+    tone(k, t + at, { f0: f, attack: 0.001, decay: ring, peak: 0.035 * v });
+    tone(k, t + at, { f0: f * 1.48, attack: 0.001, decay: ring * 0.5, peak: 0.015 * v });
+  }
+  noise(k, t, { attack: 0.002, decay: 0.06, peak: 0.06 * v, filter: { type: 'highpass', freq: 7000 } });
+};
+
 export const INSTRUMENTS: Readonly<Record<InstrumentId, Instrument>> = {
   musicBox,
   glock,
@@ -172,4 +189,5 @@ export const INSTRUMENTS: Readonly<Record<InstrumentId, Instrument>> = {
   timpani,
   shaker,
   cymbal,
+  sleighBells,
 };

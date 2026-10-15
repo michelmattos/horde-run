@@ -440,7 +440,8 @@ function beginBattle(def: LevelDef, seed: number, loadout?: BattleLoadout): void
   screens.hide();
   hideMeta();
   level = def;
-  audio.setMusic(def.boss ? 'boss' : 'battle');
+  const freezer = def.theme === 'freezer';
+  audio.setMusic(def.boss ? (freezer ? 'boss2' : 'boss') : freezer ? 'battle2' : 'battle');
   const rng = createRng(seed);
   const rand = (): number => rng.next();
   const s = createSim(level, rand);
