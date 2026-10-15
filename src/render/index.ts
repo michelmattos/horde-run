@@ -66,6 +66,10 @@ export interface GameRenderer {
   readonly cameraZoom: number; // current crowd zoom-out (0 = framed view, up to ZOOM_MAX); for debugging
   stats(): RenderStats; // last rendered frame's cost; for debugging and the smoke test
   contextRestored(): void; // the WebGL context came back: resize, refit, re-warm before drawing
+  // Resolves once the loaded level can draw its finished picture: environment and floor
+  // textures in, every material and the shadow map compiled. Frames must keep rendering
+  // meanwhile (shaders compile as they are drawn).
+  whenReady(): Promise<void>;
 }
 
 let activeScaler: ResolutionScaler | null = null;
@@ -271,6 +275,11 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
 
     stats(): RenderStats {
       return { ...lastStats };
+    },
+
+    async whenReady(): Promise<void> {
+      await Promise.all([look.ready, level?.ready]);
+      await scene.whenReadyAsync(true);
     },
 
     contextRestored(): void {
