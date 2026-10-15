@@ -83,7 +83,7 @@ const CSS = `
 .hr-fight span{font-size:32px;letter-spacing:.02em}
 
 /* ----- Picker sheet ----- */
-.hr-sheet-wrap{position:fixed;inset:0;z-index:13;display:none;flex-direction:column;justify-content:flex-end}
+.hr-sheet-wrap{position:fixed;inset:0;height:var(--app-h);z-index:13;display:none;flex-direction:column;justify-content:flex-end}
 .hr-sheet-wrap.hr-on{display:flex}
 .hr-sheet-bg{position:absolute;inset:0;border:0;padding:0;margin:0;cursor:pointer}
 .hr-sheet{position:relative;width:100%;max-width:520px;margin:0 auto;max-height:86dvh;display:flex;flex-direction:column;border-radius:26px 26px 0 0;

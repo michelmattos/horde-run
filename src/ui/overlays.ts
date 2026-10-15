@@ -7,7 +7,7 @@
 // Play, Retry or Next acts on the very first frame. Nothing here moves the screen.
 // Styles are injected once with hr- scoped classes on top of the shared theme.
 // The result card can add a coin tally that counts up after the stars and a 'New!'
-// sticker row for unlocks. The settings panel (haptics, sound, volume, sensitivity)
+// sticker row for unlocks. The settings panel (sound, music and effects volume, haptics, sensitivity)
 // lives on the pause card and, through showSettings, on its own card for the menus;
 // every change is saved and reported through onSettingsChanged so audio follows live.
 import { clampSensitivity, clampVolume, saveSettings } from '../core/settings.ts';
@@ -87,7 +87,7 @@ export interface Overlays {
 const THUMB = 36; // slider thumb diameter, px
 
 const CSS = `
-.hr-ov{position:fixed;inset:0;z-index:10;display:none;align-items:center;justify-content:center;overflow-y:auto;
+.hr-ov{position:fixed;inset:0;height:var(--app-h);z-index:10;display:none;align-items:center;justify-content:center;overflow-y:auto;
   padding:max(28px,calc(env(safe-area-inset-top) + 20px)) max(16px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));
   font-family:var(--tb-font);font-variant-numeric:tabular-nums;color:${UI.ink};
   -webkit-user-select:none;user-select:none;touch-action:manipulation;box-sizing:border-box}
@@ -398,16 +398,21 @@ export function createOverlays(root: HTMLElement, settings: Settings, opts: Over
   };
   const haptics = toggleRow('Haptics');
   const sound = toggleRow('Sound');
-  const volume = sliderRow(
-    'Volume',
-    { min: 0, max: 1, step: 0.05 },
-    (v) => {
-      settings.volume = clampVolume(v);
-      volume.val.textContent = `${Math.round(settings.volume * 100)}%`;
-      changed(false);
-    },
-    () => changed(true),
-  );
+  const volumeRow = (label: string, key: 'musicVolume' | 'sfxVolume'): ReturnType<typeof sliderRow> => {
+    const r = sliderRow(
+      label,
+      { min: 0, max: 1, step: 0.05 },
+      (v) => {
+        settings[key] = clampVolume(v);
+        r.val.textContent = `${Math.round(settings[key] * 100)}%`;
+        changed(false);
+      },
+      () => changed(true),
+    );
+    return r;
+  };
+  const musicVol = volumeRow('Music', 'musicVolume');
+  const sfxVol = volumeRow('Effects', 'sfxVolume');
   const sens = sliderRow(
     'Sensitivity',
     { min: 0.5, max: 2, step: 0.05 },
@@ -419,14 +424,19 @@ export function createOverlays(root: HTMLElement, settings: Settings, opts: Over
     () => changed(true),
   );
   const panel = el('div', 'hr-settings');
-  panel.append(sound.row, volume.row, haptics.row, sens.row);
+  panel.append(sound.row, musicVol.row, sfxVol.row, haptics.row, sens.row);
 
   const syncSettings = (): void => {
     haptics.set(settings.haptics);
     sound.set(settings.sound);
-    volume.row.classList.toggle('hr-dim', !settings.sound);
-    volume.input.value = String(settings.volume);
-    volume.val.textContent = `${Math.round(settings.volume * 100)}%`;
+    for (const [r, v] of [
+      [musicVol, settings.musicVolume],
+      [sfxVol, settings.sfxVolume],
+    ] as const) {
+      r.row.classList.toggle('hr-dim', !settings.sound);
+      r.input.value = String(v);
+      r.val.textContent = `${Math.round(v * 100)}%`;
+    }
     sens.input.value = String(settings.sensitivity);
     sens.val.textContent = `${settings.sensitivity.toFixed(2)}x`;
   };
