@@ -57,6 +57,7 @@ import {
 } from '../look/index.ts';
 import type { ModelInfo, PreviewOptions, PreviewResult } from '../look/model.ts';
 import { computeFraming } from '../framing.ts';
+import { iceSurfaceTexture } from './icePatch.ts';
 
 export const info: ModelInfo = {
   key: 'gate',
@@ -67,7 +68,7 @@ export const info: ModelInfo = {
   height: 3.6,
   triangleBudget: 3000,
   gameZ: 30,
-  variants: ['row', 'single', 'tight'],
+  variants: ['row', 'single', 'tight', 'frozen'],
 };
 
 export interface GateOptions {
@@ -77,6 +78,11 @@ export interface GateOptions {
   usesLeft: number; // -1 = unlimited
   maxSpan?: number; // slot width the whole gate (card included) must fit in; see gateSlots()
   layer?: number; // 0..2 small card depth offset so neighbouring cards never z-fight
+  // World 2: a freezing gate (GateDef.freeze) wears a snowflake badge while it is not
+  // frozen; any gate that can freeze (freezing, or on a boss level whose phases freeze
+  // every gate) gets its ice sheet built up front so freezing never stalls a frame.
+  freezing?: boolean;
+  freezable?: boolean;
 }
 
 export interface GateModel {
@@ -85,6 +91,10 @@ export interface GateModel {
   setLabelTilt(pitch: number): void;
   pulse(k: number, strong: boolean): void;
   setBreak(scale: number, alpha: number): void;
+  // World 2 frozen state: ice cover 0 (none) .. 1 (fully iced over: the sheet grows up
+  // from the floor and shrinks back down as it melts), and how cracked it is (0..3).
+  setFrozen(k: number): void;
+  setCracks(stage: number): void;
   dispose(): void;
 }
 
@@ -916,6 +926,30 @@ export function createGate(scene: Scene, look: Look, opts: GateOptions): GateMod
     badge.isPickable = false;
   }
 
+  // World 2: snowflake badge (freezing gates) and the ice sheet (gates that can freeze).
+  const freezable = !!(opts.freezable || opts.freezing);
+  let snowBadge: Mesh | null = null;
+  if (opts.freezing) {
+    snowBadge = buildMesh(scene, 'gateSnowBadge', badgeData(SNOW_BADGE_R, BADGE_T), snowBadgeMaterial(scene, look));
+    snowBadge.parent = pivot;
+    snowBadge.position.set(cw / 2 - SNOW_BADGE_R * 0.3, ch - SNOW_BADGE_R * 0.25, D.cardD / 2 + BADGE_T / 2 + 0.012);
+  }
+  let ice: GateIce | null = null;
+  if (freezable) {
+    ice = buildGateIce(
+      scene,
+      look,
+      L.beamW + 0.3,
+      D.postTop + 0.24,
+      cw,
+      ch,
+      opts.label.length * 31 + Math.round(width * 7),
+    );
+    ice.root.parent = root;
+    ice.shell.parent = pivot;
+    ice.shell.position.set(0, ch / 2, D.cardD / 2 + 0.05);
+  }
+
   look.addShadowCaster(frame);
   look.addShadowCaster(card);
   look.addShadowCaster(struts);
@@ -937,6 +971,8 @@ export function createGate(scene: Scene, look: Look, opts: GateOptions): GateMod
 
   const meshes: Mesh[] = [frame, film, card, struts];
   if (badge) meshes.push(badge);
+  if (snowBadge) meshes.push(snowBadge);
+  let frozen = 0;
   return {
     root,
     setLabel,
@@ -961,14 +997,370 @@ export function createGate(scene: Scene, look: Look, opts: GateOptions): GateMod
       card.visibility = a;
       struts.visibility = a;
       if (badge) badge.visibility = a;
+      if (snowBadge) snowBadge.visibility = a;
       film.visibility = FILM_REST * a;
       root.setEnabled(a > 0 && scale > 0);
+    },
+    setFrozen(k: number): void {
+      const f = Math.max(0, Math.min(1.1, k));
+      if (f === frozen || !ice) return;
+      frozen = f;
+      const on = f > 0.001;
+      ice.root.setEnabled(on);
+      ice.shell.setEnabled(on);
+      if (on) {
+        ice.root.scaling.y = Math.max(0.01, f);
+        ice.slab.visibility = Math.min(1, f * 1.4);
+        ice.shell.visibility = Math.min(1, Math.max(0, f - 0.3) / 0.7);
+      }
+      // A frozen gate gives nothing: its film dims under the ice; the badge hides.
+      if (!broken) film.visibility = on ? FILM_REST * 0.35 : FILM_REST;
+      if (snowBadge) snowBadge.setEnabled(!on);
+    },
+    setCracks(stage: number): void {
+      ice?.setCracks(stage);
     },
     dispose(): void {
       for (const m of meshes) look.removeShadowCaster(m);
       root.dispose();
       cardMat.dispose(true, true);
       badgeMat?.dispose(true, true);
+      ice?.dispose();
+    },
+  };
+}
+
+// ---------- World 2: ice sheet, snowflake badge, fork signpost ----------
+
+const SNOW_BADGE_R = 0.46;
+const ICE_T = 0.34;
+
+// Snowflake token (shared by every freezing gate): an icy blue disc with a white
+// six-armed flake and an ink ring, on the same brass-rimmed token as the uses badge.
+function snowBadgeMaterial(scene: Scene, look: Look): PBRMaterial {
+  return look.material('gate-snow-badge', () => {
+    const tex = new DynamicTexture(
+      'gateSnowBadgeTex',
+      { width: BADGE_TEX, height: BADGE_TEX },
+      scene,
+      true,
+      Texture.TRILINEAR_SAMPLINGMODE,
+    );
+    tex.wrapU = Texture.CLAMP_ADDRESSMODE;
+    tex.wrapV = Texture.CLAMP_ADDRESSMODE;
+    const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
+    const S = BADGE_TEX;
+    const c = S / 2;
+    ctx.fillStyle = '#cfd8de';
+    ctx.fillRect(0, 0, S, S);
+    ctx.beginPath();
+    ctx.arc(c, c, S * 0.445, 0, Math.PI * 2);
+    ctx.fillStyle = HEX.ink;
+    ctx.fill();
+    const face = ctx.createRadialGradient(c * 0.8, c * 0.7, 4, c, c, S * 0.42);
+    face.addColorStop(0, '#7fc4f0');
+    face.addColorStop(1, '#2f6fd6');
+    ctx.beginPath();
+    ctx.arc(c, c, S * 0.415, 0, Math.PI * 2);
+    ctx.fillStyle = face;
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineCap = 'round';
+    for (let a = 0; a < 6; a++) {
+      const ang = (a * Math.PI) / 3 + Math.PI / 2;
+      const ex = c + Math.cos(ang) * S * 0.3;
+      const ey = c + Math.sin(ang) * S * 0.3;
+      ctx.lineWidth = S * 0.065;
+      ctx.beginPath();
+      ctx.moveTo(c, c);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+      ctx.lineWidth = S * 0.05;
+      for (const s of [-1, 1]) {
+        const bx = c + Math.cos(ang) * S * 0.19;
+        const by = c + Math.sin(ang) * S * 0.19;
+        const ba = ang + s * 0.8;
+        ctx.beginPath();
+        ctx.moveTo(bx, by);
+        ctx.lineTo(bx + Math.cos(ba) * S * 0.1, by + Math.sin(ba) * S * 0.1);
+        ctx.stroke();
+      }
+    }
+    tex.update(true);
+    const m = new PBRMaterial('gate-snow-badge', scene);
+    m.albedoTexture = tex;
+    m.emissiveTexture = tex;
+    m.emissiveColor = Color3.White();
+    m.emissiveIntensity = 0.25;
+    m.metallic = 0.15;
+    m.roughness = 0.35;
+    m.clearCoat.isEnabled = true;
+    m.clearCoat.intensity = 0.5;
+    return m;
+  });
+}
+
+// Shared clear-ice material for frozen gates (scratches and bubbles from the ice texture).
+function gateIceMaterial(scene: Scene, look: Look): PBRMaterial {
+  return look.material('ice-gate', () => {
+    const m = new PBRMaterial('ice-gate', scene);
+    m.albedoColor = lin('#b9def2');
+    m.albedoTexture = iceSurfaceTexture(scene, look);
+    m.alpha = 0.78;
+    m.transparencyMode = PBRMaterial.PBRMATERIAL_ALPHABLEND;
+    m.forceDepthWrite = true;
+    m.metallic = 0;
+    m.roughness = 0.1;
+    m.clearCoat.isEnabled = true;
+    m.clearCoat.intensity = 1;
+    m.clearCoat.roughness = 0.04;
+    m.environmentIntensity = 1.7;
+    m.useRadianceOverAlpha = true;
+    m.useSpecularOverAlpha = true;
+    return m;
+  });
+}
+
+// A thick lumpy sheet of ice (bottom at y = 0, front +Z), frosted white at its edges.
+function iceSheetData(w: number, h: number, t: number, seed: number): VertexData {
+  const vd = roundedBox(w, h, t, Math.min(0.14, t * 0.45), 2);
+  const p = vd.positions as number[];
+  let s = seed;
+  const rnd = (): number => {
+    s = (s * 16807) % 2147483647;
+    return s / 2147483647;
+  };
+  const ph = [rnd() * 6, rnd() * 6, rnd() * 6];
+  const c = new Float32Array((p.length / 3) * 4);
+  const frost = lin('#eef6fb');
+  const clear = lin('#a8d4ec');
+  for (let i = 0; i < p.length; i += 3) {
+    const x = p[i];
+    const y = p[i + 1];
+    // Uneven surface: bulges in depth, a wavy top edge like poured, frozen water.
+    p[i + 2] += Math.sin(x * 2.3 + ph[0]) * Math.sin(y * 1.9 + ph[1]) * 0.035 * Math.sign(p[i + 2]);
+    if (y > h / 2 - 0.2) p[i + 1] += Math.sin(x * 3.1 + ph[2]) * 0.07;
+    p[i + 1] += h / 2;
+    const ex = Math.abs(x) > w / 2 - 0.16 ? 1 : 0;
+    const ey = Math.abs(y) > h / 2 - 0.16 ? 1 : 0;
+    const f = Math.min(1, (ex + ey) * 0.55 + Math.max(0, 0.35 - (y + h / 2) / h));
+    const k = i / 3;
+    c[k * 4] = clear.r + (frost.r - clear.r) * f;
+    c[k * 4 + 1] = clear.g + (frost.g - clear.g) * f;
+    c[k * 4 + 2] = clear.b + (frost.b - clear.b) * f;
+    c[k * 4 + 3] = 1;
+  }
+  vd.positions = p;
+  const normals: number[] = [];
+  VertexData.ComputeNormals(p, vd.indices as number[], normals);
+  vd.normals = normals;
+  vd.colors = c;
+  return vd;
+}
+
+// Crack lines on the sheet's front for stages 1-3 (cumulative): jagged white strokes
+// radiating from where the crowd hits it (low, near the middle), longer and branching
+// with every stage.
+function crackData(w: number, h: number, stage: number, seed: number): VertexData {
+  let s = seed + 1;
+  const rnd = (): number => {
+    s = (s * 48271) % 2147483647;
+    return s / 2147483647;
+  };
+  const parts: VertexData[] = [];
+  const white = lin('#f4fbff');
+  const z = ICE_T / 2 + 0.02;
+  const stroke = (x0: number, y0: number, x1: number, y1: number, wd: number): void => {
+    const len = Math.hypot(x1 - x0, y1 - y0);
+    if (len < 0.02) return;
+    const seg = paint(place(roundedBox(wd, len, 0.025, wd * 0.4, 1), { y: len / 2 }), white);
+    place(seg, { rz: -Math.atan2(x1 - x0, y1 - y0) });
+    place(seg, { x: x0, y: y0, z });
+    parts.push(seg);
+  };
+  const walk = (x: number, y: number, ang: number, n: number, wd: number, depth: number): void => {
+    let a = ang;
+    for (let i = 0; i < n; i++) {
+      a += (rnd() - 0.5) * 0.9;
+      const l = 0.12 + rnd() * 0.14;
+      const nx = Math.max(-w / 2 + 0.1, Math.min(w / 2 - 0.1, x + Math.sin(a) * l));
+      const ny = Math.max(0.1, Math.min(h - 0.1, y + Math.cos(a) * l));
+      stroke(x, y, nx, ny, wd);
+      x = nx;
+      y = ny;
+      if (depth < 1 && rnd() < 0.25) walk(x, y, a + (rnd() < 0.5 ? 1 : -1), Math.floor(n / 2), wd * 0.7, depth + 1);
+    }
+  };
+  const cx = (rnd() - 0.5) * w * 0.3;
+  const cy = 0.7 + rnd() * 0.3;
+  const rays = [3, 6, 10][Math.max(0, Math.min(2, stage - 1))];
+  for (let r = 0; r < rays; r++) {
+    const a = (r / rays) * Math.PI * 2 + rnd() * 0.4;
+    walk(cx, cy, a, 3 + stage * 2, 0.045 - r * 0.0015, 0);
+  }
+  if (stage >= 3) {
+    // A ring crack round the impact point: the sheet is about to give.
+    for (let k = 0; k < 10; k++) {
+      const a0 = (k / 10) * Math.PI * 2;
+      const a1 = ((k + 1) / 10) * Math.PI * 2;
+      const r0 = 0.42 + rnd() * 0.08;
+      stroke(cx + Math.sin(a0) * r0, cy + Math.cos(a0) * r0, cx + Math.sin(a1) * r0, cy + Math.cos(a1) * r0, 0.035);
+    }
+  }
+  return mergeParts(parts);
+}
+
+interface GateIce {
+  root: TransformNode; // the sheet over the arch (scaled in y to grow / melt)
+  slab: Mesh;
+  shell: Mesh; // frost over the sign card (parented to the card pivot by the caller)
+  setCracks(stage: number): void;
+  dispose(): void;
+}
+
+function buildGateIce(scene: Scene, look: Look, w: number, h: number, cw: number, ch: number, seed: number): GateIce {
+  const mat = gateIceMaterial(scene, look);
+  const root = new TransformNode('gateIce', scene);
+  const slab = buildMesh(scene, 'gateIceSheet', iceSheetData(w, h, ICE_T, seed), mat);
+  slab.parent = root;
+  slab.alphaIndex = 3;
+  const shell = buildMesh(
+    scene,
+    'gateIceShell',
+    place(iceSheetData(cw + 0.16, ch + 0.14, 0.09, seed + 5), { y: -(ch + 0.14) / 2 }),
+    mat,
+  );
+  shell.alphaIndex = 3;
+  const frameMat = look.material('gate-frame', () =>
+    plasticMaterial(scene, null, { name: 'gate-frame', roughness: 0.36, clearcoat: 0.4, clearcoatRoughness: 0.12 }),
+  );
+  const cracks = [1, 2, 3].map((st) => {
+    const m = buildMesh(scene, `gateIceCracks${st}`, crackData(w, h, st, seed), frameMat);
+    m.parent = root;
+    m.setEnabled(false);
+    return m;
+  });
+  look.addShadowCaster(slab);
+  root.setEnabled(false);
+  shell.setEnabled(false);
+  let stage = 0;
+  return {
+    root,
+    slab,
+    shell,
+    setCracks(st: number): void {
+      const n = Math.max(0, Math.min(3, Math.floor(st)));
+      if (n === stage) return;
+      stage = n;
+      cracks.forEach((m, i) => m.setEnabled(i === n - 1));
+    },
+    dispose(): void {
+      look.removeShadowCaster(slab);
+      shell.dispose();
+      root.dispose();
+    },
+  };
+}
+
+// Fork signpost between two fork gates (GateDef.fork): a popsicle-stick post on a little
+// snow mound holding two blue arrow boards with cream arrows, one pointing each way.
+// Authored facing +Z; level.ts turns it by PI like the gates. One draw call (the gates'
+// shared frame material, vertex colours); casts a shadow.
+export interface ForkSignModel {
+  root: TransformNode;
+  dispose(): void;
+}
+
+function extrudeArrow(len: number, hgt: number, t: number, c: Color3, z: number): VertexData {
+  const head = Math.min(len * 0.4, hgt * 0.9);
+  const pts: [number, number][] = [
+    [0, -hgt / 2],
+    [len - head, -hgt / 2],
+    [len, 0],
+    [len - head, hgt / 2],
+    [0, hgt / 2],
+  ];
+  const pos: number[] = [];
+  const nrm: number[] = [];
+  const idx: number[] = [];
+  for (const [side, zz] of [
+    [1, z + t / 2],
+    [-1, z - t / 2],
+  ] as const) {
+    const b = pos.length / 3;
+    for (const [x, y] of pts) {
+      pos.push(x, y, zz);
+      nrm.push(0, 0, side);
+    }
+    for (let i = 1; i < pts.length - 1; i++) idx.push(b, b + i, b + i + 1);
+  }
+  for (let i = 0; i < pts.length; i++) {
+    const [x0, y0] = pts[i];
+    const [x1, y1] = pts[(i + 1) % pts.length];
+    const nx = y1 - y0;
+    const ny = -(x1 - x0);
+    const l = Math.hypot(nx, ny) || 1;
+    const b = pos.length / 3;
+    pos.push(x0, y0, z + t / 2, x1, y1, z + t / 2, x1, y1, z - t / 2, x0, y0, z - t / 2);
+    for (let k = 0; k < 4; k++) nrm.push(nx / l, ny / l, 0);
+    idx.push(b, b + 1, b + 2, b, b + 2, b + 3);
+  }
+  const vd = new VertexData();
+  vd.positions = pos;
+  vd.normals = nrm;
+  vd.indices = idx;
+  fixWinding(vd);
+  return paint(vd, c);
+}
+
+export function createForkSign(scene: Scene, look: Look, span: number): ForkSignModel {
+  const wood = lin('#e3c591');
+  const blue = lin(HEX.toyBlue);
+  const cream = lin('#f6eedb');
+  const snow = lin('#eaf0f4');
+  const parts: VertexData[] = [];
+  parts.push(
+    paint(
+      lathe(
+        [
+          [0, 0.16],
+          [0.2, 0.14],
+          [0.36, 0.06],
+          [0.42, 0],
+        ],
+        14,
+      ),
+      snow,
+    ),
+  );
+  parts.push(paint(place(roundedBox(0.17, 2.3, 0.07, 0.07, 2), { y: 1.15 }), wood));
+  const len = Math.max(0.9, Math.min(1.35, span / 2 + 0.7));
+  for (const [dir, y, tilt] of [
+    [1, 1.95, 0.06],
+    [-1, 1.55, -0.05],
+  ] as const) {
+    const board = mergeParts([
+      extrudeArrow(len, 0.34, 0.06, blue, 0.07),
+      place(extrudeArrow(len * 0.7, 0.14, 0.02, cream, 0.11), { x: len * 0.18 }),
+    ]);
+    place(board, { x: -0.05, rz: tilt });
+    if (dir < 0) place(board, { ry: Math.PI });
+    place(board, { y });
+    parts.push(board);
+  }
+  const root = new TransformNode('forkSign', scene);
+  const frameMat = look.material('gate-frame', () =>
+    plasticMaterial(scene, null, { name: 'gate-frame', roughness: 0.36, clearcoat: 0.4, clearcoatRoughness: 0.12 }),
+  );
+  const mesh = buildMesh(scene, 'forkSign', shadeAO(mergeParts(parts), -1), frameMat);
+  mesh.parent = root;
+  look.addShadowCaster(mesh);
+  look.receiveShadows(mesh);
+  return {
+    root,
+    dispose(): void {
+      look.removeShadowCaster(mesh);
+      root.dispose();
     },
   };
 }
@@ -977,9 +1369,27 @@ export function createGate(scene: Scene, look: Look, opts: GateOptions): GateMod
 export function preview(scene: Scene, look: Look, opts: PreviewOptions): PreviewResult {
   const root = new TransformNode('gatePreview', scene);
   const f = computeFraming({ aspect: 1170 / 2532, laneWidth: 10, nearZ: 1.5, farZ: 59, margin: 0.6 });
-  type Spec = { label: string; good: boolean; uses: number; x: number; width: number; z?: number };
-  const specs: Spec[] =
-    opts.variant === 'single'
+  type Spec = {
+    label: string;
+    good: boolean;
+    uses: number;
+    x: number;
+    width: number;
+    z?: number;
+    ice?: number; // World 2: -1 freezing (badge), 0..3 frozen with that crack stage
+  };
+  const frozen = opts.variant === 'frozen';
+  const specs: Spec[] = frozen
+    ? [
+        // World 2: a freezing gate (badge), a fresh frozen one, cracked ones, a fork pair.
+        { label: 'x2', good: true, uses: -1, x: -5.4, width: 3, ice: -1 },
+        { label: '+10', good: true, uses: -1, x: -1.8, width: 3, ice: 0 },
+        { label: 'x3', good: true, uses: -1, x: 1.8, width: 3, ice: 2 },
+        { label: '+5', good: true, uses: -1, x: 5.4, width: 3, ice: 3 },
+        { label: 'x2', good: true, uses: -1, x: -2.6, width: 3.4, z: -7 },
+        { label: '+20', good: true, uses: -1, x: 2.6, width: 3.4, z: -7 },
+      ]
+    : opts.variant === 'single'
       ? [{ label: '÷2', good: false, uses: 12, x: 0, width: 4.2 }]
       : opts.variant === 'tight'
         ? [
@@ -1008,15 +1418,28 @@ export function preview(scene: Scene, look: Look, opts: PreviewOptions): Preview
       usesLeft: s.uses,
       maxSpan: slots[i].maxSpan,
       layer: slots[i].layer,
+      freezing: s.ice === -1,
+      freezable: s.ice !== undefined,
     });
     g.root.parent = root;
     g.root.position.set(s.x, 0, s.z ?? 0);
     g.setLabelTilt(f.pitch);
+    if (s.ice !== undefined && s.ice >= 0) {
+      g.setFrozen(1);
+      g.setCracks(s.ice);
+    }
     return g;
   });
+  let sign: ForkSignModel | null = null;
+  if (frozen) {
+    sign = createForkSign(scene, look, 5.2 - 3.4);
+    sign.root.parent = root;
+    sign.root.position.set(0, 0, -7);
+  }
   return {
     root,
     update(time) {
+      if (frozen) return;
       // Pulse each gate in turn (0.6 s apart), like units crossing.
       const period = 0.6 * gates.length;
       gates.forEach((g, i) => {
@@ -1027,6 +1450,7 @@ export function preview(scene: Scene, look: Look, opts: PreviewOptions): Preview
     },
     dispose() {
       for (const g of gates) g.dispose();
+      sign?.dispose();
       root.dispose();
     },
   };

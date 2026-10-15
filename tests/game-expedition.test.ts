@@ -1,12 +1,12 @@
 // Expedition battle generator: deterministic per spec, always a valid level, room left
-// for the gates run upgrades add, elites harder than battles, the Tin General as the
-// boss, and a reduced balance check against the 'human' autoplay profile. The full
+// for the gates run upgrades add, elites harder than battles, the Tin General (or the
+// Snow Globe Giant, tests/expedition-w2.test.ts) as the boss, and a reduced balance check against the 'human' autoplay profile. The full
 // tuning table (20+ seeds per row) is in RUN_BATTLE_TARGETS' comment in expedition.ts;
 // here a few fixed seeds guard the curve: the first battle is an easy win, a late
 // battle and an elite can go either way, and the boss falls to a typical mid-run build.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { generateRunBattle, RUN_BATTLE_TARGETS, RUN_FREE_BANDS } from '../src/game/expedition.ts';
+import { composeRunBoss, generateRunBattle, RUN_BATTLE_TARGETS, RUN_FREE_BANDS } from '../src/game/expedition.ts';
 import { LEVELS, getLevelById, validateLevel } from '../src/game/levels.ts';
 import { cardsClash } from '../src/game/gateSpacing.ts';
 import { applyUpgrades } from '../src/expedition/index.ts';
@@ -129,9 +129,9 @@ test('battles scale with index and elites are harder than battles at the same in
   }
 });
 
-test('the boss is the Tin General with the phases of 1-10', () => {
+test('the Tin General run boss has the phases of 1-10', () => {
   const src = getLevelById('1-10')!;
-  const boss = generateRunBattle({ seed: 2024, kind: 'boss', index: 4 });
+  const boss = composeRunBoss({ seed: 2024, kind: 'boss', index: 4 }, 'tinGeneral');
   assert.equal(boss.name, 'Tin General');
   assert.equal(boss.boss?.name, src.boss?.name);
   assert.equal(boss.boss?.phases.length, src.boss?.phases.length);
@@ -164,11 +164,18 @@ test('balance (reduced): first battle easy, late battles and elites a coin toss,
   // land on each side, so a shift in either direction breaks this test.
   checkWin(battle(8, 'battle', 3), 'battle 3, seed 8');
   assert.equal(battle(7, 'battle', 3).outcome, 'defeat', 'battle 3, seed 7 should be lost');
-  checkWin(battle(4, 'elite', 1), 'elite 1, seed 4');
-  assert.equal(battle(0, 'elite', 1).outcome, 'defeat', 'elite 1, seed 0 should be lost');
+  checkWin(battle(8, 'elite', 1), 'elite 1, seed 8');
+  assert.equal(battle(1, 'elite', 1).outcome, 'defeat', 'elite 1, seed 1 should be lost');
 
-  const boss = (k: number): PlayResult =>
-    play(midRun(generateRunBattle({ seed: 5000 + k * 7919, kind: 'boss', index: 4 })), 'human', k);
-  checkWin(boss(4), 'boss with a mid-run build, attempt 4');
-  assert.equal(boss(2).outcome, 'defeat', 'boss with a mid-run build, attempt 2 should be lost');
+  // Both run bosses, the same build: each falls to it about half the time.
+  const bosses = [
+    { model: 'tinGeneral', win: 4, loss: 2 },
+    { model: 'snowGlobeGiant', win: 1, loss: 4 },
+  ] as const;
+  for (const { model, win, loss } of bosses) {
+    const boss = (k: number): PlayResult =>
+      play(midRun(composeRunBoss({ seed: 5000 + k * 7919, kind: 'boss', index: 4 }, model)), 'human', k);
+    checkWin(boss(win), `${model} with a mid-run build, attempt ${win}`);
+    assert.equal(boss(loss).outcome, 'defeat', `${model} with a mid-run build, attempt ${loss} should be lost`);
+  }
 });

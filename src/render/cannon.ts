@@ -1,7 +1,8 @@
 // The player's cannon: the green plastic toy field cannon (models/cannon.ts, the 'popgun')
 // or a loadout variant (models/cannonVariants.ts: the 'repeater' gatling or the
-// 'blunderbuss') at the player base. It follows the game's clamped cannonX (the wooden
-// wheels roll as it slides) and kicks on every shot: the barrel recoils and the carriage
+// 'blunderbuss'; World 2's 'snowball-launcher', models/snowballLauncher.ts, whose
+// throwing arm is the recoil part: it flings up on every shot) at the player base. It
+// follows the game's clamped cannonX (the wooden wheels roll as it slides) and kicks on every shot: the barrel recoils and the carriage
 // tips about its trail spade; the repeater's barrel cluster spins while it fires. Nothing
 // here moves the camera.
 import type { Scene } from '@babylonjs/core/scene';
@@ -10,6 +11,7 @@ import type { Look } from './look/index.ts';
 import { WHEEL_RADIUS, createCannon } from './models/cannon.ts';
 import type { CannonModel } from './models/cannon.ts';
 import { createCannonVariant } from './models/cannonVariants.ts';
+import { createSnowballLauncher } from './models/snowballLauncher.ts';
 import type { CannonId } from './crowdLogic.ts';
 
 // The cannon is the player's main tool: drawn 1.4x, with the carriage and wheels widened
@@ -40,7 +42,12 @@ export class Cannon {
   }
 
   private build(id: CannonId): CannonModel & { setSpin?(rad: number): void } {
-    const m = id === 'popgun' ? createCannon(this.scene, this.look) : createCannonVariant(this.scene, this.look, id);
+    const m =
+      id === 'popgun'
+        ? createCannon(this.scene, this.look)
+        : id === 'snowball-launcher'
+          ? createSnowballLauncher(this.scene, this.look)
+          : createCannonVariant(this.scene, this.look, id);
     m.root.scaling.set(CANNON_SCALE * CANNON_WIDEN, CANNON_SCALE, CANNON_SCALE);
     m.root.position.set(this.lastX, 0, ROOT_Z);
     m.setWheelSpin(this.spin);

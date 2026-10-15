@@ -4,7 +4,8 @@
 // towers, a wind-up ratchet for the tank; the stings (victory, defeat, boss phase, coins,
 // unlocks) are played by the music's own band (instruments.ts) so they sit with it.
 // Recorded impacts (samples.ts) replace the recipes for knocks and crashes once loaded. Nothing harsh: no square waves without a lowpass, short
-// attacks but never clicks, and every peak sits well under 1.
+// attacks but never clicks, and every peak sits well under 1. World 2's freezer adds
+// glassy ice: crystal pings and crackles, soft snow thumps, wind made of swept noise.
 //
 // Recipes write into any BaseAudioContext, so the same code pre-renders a sound once
 // into an AudioBuffer (OfflineAudioContext) and, as a fallback, plays it live.
@@ -34,6 +35,41 @@ function boom(k: Kit, t: number, peak: number): void {
   noise(k, t, { decay: 0.04, peak: peak * 0.3, filter: { type: 'bandpass', freq: 1700, q: 1.5 } });
 }
 
+// A crackle of ice crystals: short high pings at fixed, irregular offsets (recipes are
+// pre-rendered once, so the pattern is fixed rather than random), rising if `rise`.
+function crystals(k: Kit, t: number, n: number, span: number, f0: number, peak: number, rise = 1.0): void {
+  const offs = [0, 0.37, 0.11, 0.83, 0.58, 0.24, 0.69, 0.95, 0.46, 0.15, 0.77, 0.31];
+  for (let i = 0; i < n; i++) {
+    const o = offs[i % offs.length];
+    const f = f0 * (1 + 0.6 * o) * (1 + (rise - 1) * (i / Math.max(1, n - 1)));
+    tone(k, t + o * span, { f0: f, attack: 0.001, decay: 0.05 + 0.04 * (1 - o), peak: peak * (0.7 + 0.3 * o) });
+  }
+}
+
+// A soft snow thump: a low sine drop and a muffled, lowpassed crunch.
+function snowThump(k: Kit, t: number, peak: number, f = 140): void {
+  tone(k, t, { f0: f, f1: f * 0.38, glide: 0.18, attack: 0.004, decay: 0.24, peak });
+  noise(k, t, { attack: 0.003, decay: 0.2, peak: peak * 0.75, filter: { type: 'lowpass', freq: 1300, freq1: 300 } });
+  noise(k, t, { attack: 0.001, decay: 0.05, peak: peak * 0.25, filter: { type: 'highpass', freq: 3500 } });
+}
+
+const NOTE = {
+  A3: 220,
+  C4: 261.63,
+  Ds4: 311.13,
+  E4: 329.63,
+  F4: 349.23,
+  Fs4: 369.99,
+  G4: 392,
+  C5: 523.25,
+  E5: 659.25,
+  G5: 783.99,
+  B5: 987.77,
+  C6: 1046.5,
+  E6: 1318.51,
+  G6: 1567.98,
+  C7: 2093,
+} as const;
 const C6 = 1046.5;
 
 export const RECIPES: Readonly<Record<string, Recipe>> = {
@@ -315,6 +351,172 @@ export const RECIPES: Readonly<Record<string, Recipe>> = {
     play(k, t) {
       [72, 76, 79].forEach((m, i) => INSTRUMENTS.marimba(k, t + i * 0.07, m, 0.8, 0.1));
       INSTRUMENTS.glock(k, t + 0.24, 84, 1, 0.3);
+    },
+  },
+  // ----- World 2: the freezer -----
+  // A gate icing over: a rising crackle of crystals, a glassy whoosh and a cold bell chord.
+  gateFreeze: {
+    dur: 0.65,
+    play(k, t) {
+      crystals(k, t, 10, 0.3, 2200, 0.16, 1.5);
+      noise(k, t, {
+        attack: 0.06,
+        decay: 0.3,
+        peak: 0.35,
+        filter: { type: 'bandpass', freq: 1800, freq1: 6000, q: 1.5 },
+      });
+      for (const f of [NOTE.E6, NOTE.B5 * 2]) tone(k, t + 0.28, { f0: f, attack: 0.002, decay: 0.32, peak: 0.12 });
+    },
+  },
+  // Units chipping frozen ice: a tiny tick and two glassy pings.
+  iceChip: {
+    dur: 0.12,
+    play(k, t) {
+      noise(k, t, { attack: 0.001, decay: 0.03, peak: 0.45, filter: { type: 'highpass', freq: 3000 } });
+      tone(k, t, { f0: 2650, attack: 0.001, decay: 0.06, peak: 0.16 });
+      tone(k, t + 0.012, { f0: 3970, attack: 0.001, decay: 0.04, peak: 0.08 });
+    },
+  },
+  // The ice letting go: a falling glassy tone and two water plips.
+  gateThaw: {
+    dur: 0.55,
+    play(k, t) {
+      tone(k, t, { type: 'triangle', f0: 1760, f1: 660, glide: 0.3, attack: 0.004, decay: 0.32, peak: 0.22 });
+      noise(k, t, {
+        attack: 0.02,
+        decay: 0.25,
+        peak: 0.2,
+        filter: { type: 'bandpass', freq: 3200, freq1: 900, q: 1.2 },
+      });
+      tone(k, t + 0.16, { f0: 900, f1: 1500, glide: 0.04, attack: 0.002, decay: 0.07, peak: 0.24 });
+      tone(k, t + 0.3, { f0: 760, f1: 1300, glide: 0.04, attack: 0.002, decay: 0.07, peak: 0.18 });
+    },
+  },
+  // The Giant toppling: a deep plastic thud, then his riders' feet clattering off.
+  giantFall: {
+    dur: 0.75,
+    play(k, t) {
+      tone(k, t, { f0: 95, f1: 34, glide: 0.3, attack: 0.004, decay: 0.42, peak: 0.95 });
+      thock(k, t, 220, 0.5);
+      noise(k, t, { decay: 0.3, peak: 0.45, filter: { type: 'lowpass', freq: 700, freq1: 180 } });
+      for (const at of [0.22, 0.29, 0.34, 0.42]) thock(k, t + at, 640 + at * 400, 0.16);
+    },
+  },
+  // A rolling snowball bursting into soldiers: a soft 'pfomf' and a sparkle of snow.
+  snowballBurst: {
+    dur: 0.35,
+    play(k, t) {
+      noise(k, t, { attack: 0.004, decay: 0.16, peak: 0.7, filter: { type: 'bandpass', freq: 650, q: 0.8 } });
+      tone(k, t, { f0: 210, f1: 80, glide: 0.12, attack: 0.003, decay: 0.15, peak: 0.45 });
+      noise(k, t + 0.03, { attack: 0.01, decay: 0.2, peak: 0.16, filter: { type: 'highpass', freq: 5000 } });
+    },
+  },
+  // Units freezing solid: frost racing over them (a noise sweep upward), crackles, a bell.
+  freeze: {
+    dur: 0.95,
+    play(k, t) {
+      noise(k, t, {
+        attack: 0.08,
+        hold: 0.15,
+        decay: 0.4,
+        peak: 0.42,
+        filter: { type: 'bandpass', freq: 500, freq1: 5200, q: 2 },
+      });
+      crystals(k, t + 0.05, 12, 0.55, 1900, 0.14, 1.8);
+      tone(k, t + 0.5, { f0: NOTE.C7, attack: 0.002, decay: 0.4, peak: 0.08 });
+      tone(k, t + 0.5, { f0: NOTE.G6, attack: 0.002, decay: 0.42, peak: 0.1 });
+    },
+  },
+  // Blizzard: a howling gust over a field of ice crystals, settling on a frozen chord.
+  'ultimate:blizzard': {
+    dur: 1.45,
+    play(k, t) {
+      noise(k, t, {
+        attack: 0.25,
+        hold: 0.55,
+        decay: 0.55,
+        peak: 0.6,
+        filter: { type: 'bandpass', freq: 380, freq1: 1500, q: 2.5 },
+        tremolo: { rate: 5, depth: 0.4 },
+      });
+      tone(k, t, { f0: 420, f1: 760, attack: 0.3, hold: 0.4, decay: 0.5, peak: 0.07, vibrato: { rate: 5, depth: 18 } });
+      crystals(k, t + 0.3, 12, 0.7, 2300, 0.12, 1.4);
+      for (const f of [NOTE.E6, NOTE.G6, NOTE.C7]) tone(k, t + 0.85, { f0: f, attack: 0.003, decay: 0.5, peak: 0.07 });
+    },
+  },
+  // The Snow Globe Giant's lob: a soft falling whistle while the snowball flies.
+  lob: {
+    dur: 1.1,
+    play(k, t) {
+      tone(k, t, {
+        f0: 1350,
+        f1: 520,
+        attack: 0.08,
+        hold: 0.75,
+        decay: 0.15,
+        peak: 0.2,
+        vibrato: { rate: 9, depth: 12 },
+      });
+      noise(k, t, {
+        attack: 0.3,
+        hold: 0.45,
+        decay: 0.2,
+        peak: 0.12,
+        filter: { type: 'bandpass', freq: 1600, freq1: 700, q: 3 },
+      });
+    },
+  },
+  // The snowball landing: a heavy snow thump with a crunchy spray.
+  lobHit: {
+    dur: 0.45,
+    play(k, t) {
+      snowThump(k, t, 0.9, 130);
+      noise(k, t + 0.04, { attack: 0.01, decay: 0.22, peak: 0.25, filter: { type: 'bandpass', freq: 2400, q: 0.9 } });
+    },
+  },
+  // The globe being shaken (gust telegraph): wind swelling and rising in pitch.
+  gustRise: {
+    dur: 1.7,
+    play(k, t) {
+      noise(k, t, {
+        attack: 1.15,
+        hold: 0.1,
+        decay: 0.4,
+        peak: 0.62,
+        filter: { type: 'bandpass', freq: 280, freq1: 1500, q: 2.2 },
+      });
+      noise(k, t + 0.2, {
+        attack: 0.95,
+        decay: 0.45,
+        peak: 0.25,
+        filter: { type: 'bandpass', freq: 600, freq1: 2600, q: 5 },
+      });
+      tone(k, t, { f0: 300, f1: 640, attack: 1.1, decay: 0.45, peak: 0.05, vibrato: { rate: 4, depth: 10 } });
+    },
+  },
+  // The gust blowing: a broad whoosh that sweeps down and fades.
+  gustWhoosh: {
+    dur: 1.5,
+    play(k, t) {
+      noise(k, t, {
+        attack: 0.08,
+        hold: 0.5,
+        decay: 0.8,
+        peak: 0.6,
+        filter: { type: 'bandpass', freq: 1500, freq1: 380, q: 1.4 },
+        tremolo: { rate: 3, depth: 0.3 },
+      });
+      noise(k, t, { attack: 0.03, decay: 0.3, peak: 0.2, filter: { type: 'highpass', freq: 4000 } });
+    },
+  },
+  // An igloo letting penguins out: a snowy door thump and two squeaky wind-up chirps.
+  igloo: {
+    dur: 0.55,
+    play(k, t) {
+      snowThump(k, t, 0.5, 200);
+      tone(k, t + 0.14, { f0: 1700, f1: 2500, glide: 0.07, attack: 0.003, decay: 0.08, peak: 0.16 });
+      tone(k, t + 0.26, { f0: 1900, f1: 2800, glide: 0.07, attack: 0.003, decay: 0.09, peak: 0.14 });
+      noise(k, t + 0.12, { attack: 0.001, decay: 0.02, peak: 0.2, filter: { type: 'bandpass', freq: 2600, q: 6 } });
     },
   },
 };

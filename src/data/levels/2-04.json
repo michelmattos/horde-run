@@ -1,0 +1,218 @@
+{
+  "id": "2-4",
+  "name": "Flash Freeze",
+  "theme": "freezer",
+  "lane": {
+    "width": 10,
+    "length": 60
+  },
+  "cannon": {
+    "fireRate": 5.6,
+    "unitsPerShot": 3,
+    "aimLimit": 4
+  },
+  "playerBase": {
+    "hp": 320
+  },
+  "enemyBase": {
+    "hp": 2000,
+    "x": 0,
+    "width": 6
+  },
+  "gates": [
+    {
+      "id": "2-4-x3",
+      "op": "mul",
+      "value": 3,
+      "x": 0,
+      "z": 18,
+      "width": 3.2,
+      "freeze": {
+        "after": 260,
+        "duration": 6,
+        "hp": 90
+      }
+    },
+    {
+      "id": "2-4-x2",
+      "op": "mul",
+      "value": 2,
+      "x": -2.4,
+      "z": 34,
+      "width": 3.2,
+      "freeze": {
+        "after": 400,
+        "duration": 5,
+        "hp": 90
+      }
+    },
+    {
+      "id": "2-4-plus1",
+      "op": "add",
+      "value": 1,
+      "x": 2.6,
+      "z": 34,
+      "width": 3
+    }
+  ],
+  "enemyWaves": [
+    {
+      "at": 10,
+      "count": 110,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 20,
+      "count": 126,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 30,
+      "count": 142,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 40,
+      "count": 158,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 50,
+      "count": 174,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 60,
+      "count": 190,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 70,
+      "count": 206,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 80,
+      "count": 227,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 90,
+      "count": 234,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 100,
+      "count": 241,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 110,
+      "count": 248,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 120,
+      "count": 255,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 18,
+      "count": 6,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "snowman"
+    },
+    {
+      "at": 30,
+      "count": 8,
+      "x": -1.5,
+      "spread": 3.5,
+      "unit": "snowman"
+    },
+    {
+      "at": 42,
+      "count": 10,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "snowman"
+    },
+    {
+      "at": 54,
+      "count": 12,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "snowman"
+    },
+    {
+      "at": 66,
+      "count": 14,
+      "x": -1.5,
+      "spread": 3.5,
+      "unit": "snowman"
+    },
+    {
+      "at": 78,
+      "count": 16,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "snowman"
+    },
+    {
+      "at": 90,
+      "count": 17,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "snowman"
+    },
+    {
+      "at": 102,
+      "count": 18,
+      "x": -1.5,
+      "spread": 3.5,
+      "unit": "snowman"
+    },
+    {
+      "at": 114,
+      "count": 19,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "snowman"
+    }
+  ],
+  "enemySpawnRate": {
+    "perSecond": 10.0,
+    "startAt": 8
+  },
+  "champion": {
+    "chargeNeeded": 280,
+    "hp": 110,
+    "damage": 85
+  },
+  "targetTime": 105,
+  "intro": "Gates ice over after enough soldiers cross. Switch until they thaw, or chip the ice open.",
+  "ice": [
+    {
+      "x": 0,
+      "z": 8,
+      "width": 6,
+      "length": 6
+    }
+  ],
+  "trickleMix": {
+    "unit": "snowman",
+    "every": 12
+  }
+}

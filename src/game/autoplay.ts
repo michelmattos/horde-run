@@ -28,11 +28,22 @@
 // Milestone 4: given a loadout (opts.loadout), it leads moving gates with the main mob's speed (firingOrder)
 // and the boss with the champion's, and presses the ultimate when its meter is full (the
 // battle's ultimateCharge is passed as the fifth argument): at once for the precise
-// profile, after the same 1.5-2.5 s delay as the champion for the human one.
+// profile, after the same 1.5-2.5 s delay as the champion for the human one (the
+// Blizzard included).
+//
+// Milestone 5 (World 2): a frozen gate (sim.gateIce, or gateFrozen / gateThawed events)
+// gives nothing and soaks the stream like a wall, so the bot only chips it when every
+// other line is worse; of a fork's branches it keeps the one it is on unless another
+// scores clearly better; ice walls cost like walls on the aim line, igloos too unless the
+// crowd is big, when it aims at them (and the champion) to knock them down. While a gust
+// pushes, it aims upwind by the drift the stream will pick up on its way to each gate
+// (more over ice, where wind feeds the slide); the human counter-steers through its
+// usual reaction delay, so late.
 
 import type { BattleState, DefenderDef, DefenderView, GateDef, LevelDef, SimEvent, SimView } from '../contracts.ts';
 import { DEFENDER_DEFAULTS, LAYOUT, Team, gateX } from '../contracts.ts';
 import type { BattleInput } from './battle.ts';
+import { IGLOO_DEFAULTS } from './levels.ts';
 import type { BattleLoadout } from './loadout.ts';
 import { firingOrder } from './loadout.ts';
 
@@ -50,6 +61,18 @@ const TOWER_COST = 0.3; // crowd lost at point-blank to a tower's fire, fading t
 const BASE_MARGIN = 0.7; // aim this far inside the strafing base's edge
 const BASE_FALLOFF = 1.5; // and lose all value this far outside it
 const CHAMPION_PATIENCE = 6; // seconds a full meter may wait for a good shot before firing anyway
+// World 2
+const FORK_STICK = 1.15; // a fork branch must score this much better to switch to it
+const CHIP_PULL = 0.05; // per point of gain, how much a frozen good gate beats another frozen one
+const IGLOO_CROWD = 80; // crowd weight from which the bot attacks igloos instead of avoiding them
+const IGLOO_BONUS = 1.6; // their pull on the aim line then
+// Wind drift model (mirrors the sim's ice constants): off ice the wind moves units at its
+// force; on ice it feeds a slide that builds up and decays slowly.
+const DRIFT_DT = 0.1;
+const ICE_WIND_GAIN = 1.5;
+const ICE_DECAY = 0.6;
+const OFF_ICE_DECAY = 8;
+const ICE_MAX_SLIDE = 8;
 
 export type AutoplayProfile = 'precise' | 'human';
 export interface AutoplayOptions {
@@ -73,7 +96,11 @@ const HUMAN = {
   championPatience: 9,
 };
 
-export type AutoplaySim = { readonly view: SimView; readonly defenders?: readonly DefenderView[] };
+export type AutoplaySim = {
+  readonly view: SimView;
+  readonly defenders?: readonly DefenderView[];
+  gateIce?(index: number): number; // World 2: remaining ice hp of a gate (level order); 0 = open
+};
 export type Autoplay = (
   state: BattleState,
   sim: AutoplaySim,
@@ -88,10 +115,11 @@ function wobble(t: number): number {
 }
 
 interface Obstacle {
-  def: DefenderDef;
+  def: Pick<DefenderDef, 'id' | 'kind' | 'x' | 'z'>;
   slot: number; // index into the per-call liveness flags
   half: number; // footprint half-width
   range: number; // towers: shooting radius; walls: 0
+  ice: boolean; // an ice wall: never destroyed
 }
 
 // Human profile: how far off it sees a far gate or defender at noise time nt. Each
@@ -112,17 +140,48 @@ export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autopla
   const championPatience = human ? HUMAN.championPatience : CHAMPION_PATIENCE;
   // Gates and defenders sorted by z once, so the chain is evaluated in crossing order.
   const gates = level.gates.slice().sort((a, b) => a.z - b.z);
-  const obstacles: Obstacle[] = (level.defenders ?? [])
-    .map((d) => ({
+  const defWidth = (d: DefenderDef): number =>
+    d.width ??
+    (d.kind === 'tower'
+      ? DEFENDER_DEFAULTS.towerWidth
+      : d.kind === 'igloo'
+        ? IGLOO_DEFAULTS.width
+        : DEFENDER_DEFAULTS.wallWidth);
+  const obstacles: Obstacle[] = [
+    ...(level.defenders ?? []).map((d) => ({
       def: d,
       slot: 0,
-      half: (d.width ?? (d.kind === 'tower' ? DEFENDER_DEFAULTS.towerWidth : DEFENDER_DEFAULTS.wallWidth)) / 2,
+      half: defWidth(d) / 2,
       range: d.kind === 'tower' ? (d.range ?? DEFENDER_DEFAULTS.range) : 0,
-    }))
-    .sort((a, b) => a.def.z - b.def.z);
+      ice: false,
+    })),
+    ...(level.iceWalls ?? []).map((w) => ({
+      def: { id: w.id, kind: 'wall' as const, x: w.x, z: w.z },
+      slot: 0,
+      half: w.width / 2,
+      range: 0,
+      ice: true,
+    })),
+  ].sort((a, b) => a.def.z - b.def.z);
   obstacles.forEach((o, i) => (o.slot = i));
   const standing = new Uint8Array(obstacles.length); // refreshed every call
   const broken = new Set<string>(); // one-use gates seen breaking, and destroyed defenders
+  // World 2: frozen gates (by id) and each sorted gate's index in level order (for gateIce).
+  const frozen = new Set<string>();
+  const gateIndex = gates.map((g) => level.gates.indexOf(g));
+  const forkOf = gates.map((g) => g.fork);
+  const iced = new Uint8Array(gates.length); // refreshed every call
+  const drift = new Float64Array(gates.length); // per gate: wind drift of the stream on the way there
+  const obstacleDrift = new Float64Array(obstacles.length);
+  const ice = level.ice ?? [];
+  const laneHalf = level.lane.width / 2;
+  const gustDefs = [
+    ...(level.gusts ?? []),
+    ...(level.boss?.phases ?? []).flatMap((ph) => (ph.gusts ? [ph.gusts] : [])),
+  ];
+  const gustDuration = gustDefs.length ? Math.max(...gustDefs.map((g) => g.duration)) : 0;
+  let gustSince = -1; // time the current push was first seen
+  let crowd = 0; // player crowd weight, for the igloo rule
   const phases = level.boss ? level.boss.phases.slice().sort((a, b) => b.belowHp - a.belowHp) : [];
   const mobSpeed = opts?.loadout ? firingOrder(opts.loadout.mobs)[0].speed : MOB_SPEED;
   const mobTravel = (level.lane.length - LAYOUT.cannonZ) / mobSpeed;
@@ -166,13 +225,21 @@ export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autopla
       const o: Obstacle | undefined = obstacles[oi];
       if (o && (!g || o.def.z < g.z)) {
         oi++;
-        if (alive(o) && Math.abs(x - obstacleX(o, time)) < o.half + BLOCK_MARGIN) c *= BLOCK_FACTOR;
+        if (alive(o) && Math.abs(x + obstacleDrift[o.slot] - obstacleX(o, time)) < o.half + BLOCK_MARGIN)
+          c *= o.def.kind === 'igloo' && crowd >= IGLOO_CROWD ? IGLOO_BONUS : BLOCK_FACTOR;
         continue;
       }
-      gi++;
+      const k = gi++;
       if (broken.has(g.id)) continue;
       const gx = gateSeenX(g, gi, time);
-      const d = Math.abs(x - gx);
+      const d = Math.abs(x + drift[k] - gx);
+      if (iced[k]) {
+        // A frozen gate does nothing and soaks the stream until it is chipped open; when
+        // every line is blocked, the better gate is the one worth chipping.
+        if (d <= g.width / 2)
+          c *= BLOCK_FACTOR * (1 + CHIP_PULL * (g.op === 'mul' ? g.value - 1 : g.op === 'add' ? g.value : 0));
+        continue;
+      }
       const good = g.op === 'mul' || g.op === 'add';
       if (good ? d > g.width / 2 - GOOD_MARGIN : d > g.width / 2 + TRAP_MARGIN) continue;
       switch (g.op) {
@@ -197,6 +264,54 @@ export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autopla
       if (d < o.range) c *= 1 - TOWER_COST * (1 - d / o.range);
     }
     return c;
+  }
+
+  // Is x inside an ice patch at depth z?
+  function onIce(x: number, z: number): boolean {
+    for (const p of ice) if (z >= p.z && z <= p.z + p.length && Math.abs(x - p.x) <= p.width / 2) return true;
+    return false;
+  }
+
+  // Sideways drift a stream fired at x picks up before it reaches depth z while a gust of
+  // `force` pushes for `left` more seconds (integrated along its path at mob speed).
+  function driftTo(x: number, zEnd: number, force: number, left: number): number {
+    let px = 0;
+    let v = 0;
+    let t = 0;
+    for (let z = LAYOUT.cannonZ; z < zEnd; z += mobSpeed * DRIFT_DT, t += DRIFT_DT) {
+      const wind = t < left ? force : 0;
+      if (onIce(x + px, z)) {
+        v += ICE_WIND_GAIN * wind * DRIFT_DT;
+        v = Math.max(-ICE_MAX_SLIDE, Math.min(ICE_MAX_SLIDE, v)) * Math.exp(-ICE_DECAY * DRIFT_DT);
+      } else {
+        px += wind * DRIFT_DT;
+        v *= Math.exp(-OFF_ICE_DECAY * DRIFT_DT);
+      }
+      px += v * DRIFT_DT;
+      px = Math.max(-laneHalf - x, Math.min(laneHalf - x, px)); // the lane's sides stop the drift
+    }
+    return px;
+  }
+
+  // Refreshes the per-gate and per-obstacle drift for the current gust (0 when calm).
+  function updateDrift(state: BattleState, time: number): void {
+    const g = state.gust;
+    const active = g?.active === true && g.dir !== 0;
+    if (!active) gustSince = -1;
+    else if (gustSince < 0) gustSince = time;
+    const left = active ? Math.max(0, gustDuration - (time - gustSince)) : 0;
+    const force = active ? (g?.dir ?? 0) * gustForce(state) : 0;
+    for (let k = 0; k < gates.length; k++) drift[k] = force === 0 ? 0 : driftTo(aim, gates[k].z, force, left);
+    for (const o of obstacles) obstacleDrift[o.slot] = force === 0 ? 0 : driftTo(aim, o.def.z, force, left);
+  }
+
+  // The push of the gust under way: the strongest gust the level (or boss) can blow.
+  function gustForce(state: BattleState): number {
+    let f = 0;
+    for (const d of level.gusts ?? []) f = Math.max(f, Math.abs(d.force));
+    const ph = phases[state.bossPhase ?? 0];
+    if (ph?.gusts) f = Math.max(f, Math.abs(ph.gusts.force));
+    return f;
   }
 
   // Where the strafing base will be `ahead` seconds from now, from its current x and
@@ -227,9 +342,12 @@ export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autopla
     const px = phases.length ? leadBase(predictBaseX(state, mobTravel)) : 0;
     let best = 0;
     let bestScore = -Infinity;
+    const branch = forkBranch(intent, time);
     for (let x = -lim; x <= lim + 1e-9; x += SAMPLE_STEP) {
       let s = chainScore(x, time);
       if (phases.length) s *= hitFactor(x, px);
+      // Stay on the fork branch already chosen unless another is clearly better.
+      if (branch >= 0 && forkBranch(x, time) === branch) s *= FORK_STICK;
       // Small pull toward the current aim (the human's intended aim, so its aim error
       // does not feed back and wander) breaks ties without jitter.
       s -= 0.01 * Math.abs(x - intent);
@@ -239,6 +357,16 @@ export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autopla
       }
     }
     return best;
+  }
+
+  // The fork gate (sorted index) a stream fired at x goes through, or -1.
+  function forkBranch(x: number, time: number): number {
+    for (let k = 0; k < gates.length; k++) {
+      const g = gates[k];
+      if (forkOf[k] === undefined || broken.has(g.id)) continue;
+      if (Math.abs(x + drift[k] - gateSeenX(g, k + 1, time)) <= g.width / 2 - GOOD_MARGIN) return k;
+    }
+    return -1;
   }
 
   // Weighted mean x of enemies close to the player base, or NaN if no real threat.
@@ -257,7 +385,7 @@ export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autopla
   function wallTarget(): Obstacle | undefined {
     let best: Obstacle | undefined;
     for (const o of obstacles) {
-      if (o.def.kind !== 'wall' || !alive(o)) continue;
+      if ((o.def.kind !== 'wall' && o.def.kind !== 'igloo') || o.ice || !alive(o)) continue;
       if (!best || Math.abs(o.def.x - aim) < Math.abs(best.def.x - aim)) best = o;
     }
     return best;
@@ -269,12 +397,19 @@ export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autopla
         if (e.type === 'gateBroken') broken.add(e.gateId);
         else if (e.type === 'gate' && e.usesLeft === 0) broken.add(e.gateId);
         else if (e.type === 'defenderDestroyed') broken.add(e.id);
+        else if (e.type === 'gateFrozen') frozen.add(e.gateId);
+        else if (e.type === 'gateThawed') frozen.delete(e.gateId);
       }
     }
+    for (let k = 0; k < gates.length; k++) {
+      const ice = sim.gateIce ? sim.gateIce(gateIndex[k]) > 0 : frozen.has(gates[k].id);
+      iced[k] = ice ? 1 : 0;
+    }
+    crowd = state.playerUnits;
     // Defenders stand until the sim reports hp 0 (or, without sim.defenders, until destroyed).
     for (const o of obstacles) {
       const view = sim.defenders?.find((d) => d.id === o.def.id);
-      standing[o.slot] = !broken.has(o.def.id) && (view ? view.hp > 0 : true) ? 1 : 0;
+      standing[o.slot] = o.ice || (!broken.has(o.def.id) && (view ? view.hp > 0 : true)) ? 1 : 0;
     }
 
     const dt = Math.max(0, time - lastTime);
@@ -310,6 +445,7 @@ export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autopla
     }
 
     if (!human) intent = aim;
+    if (gustDefs.length) updateDrift(state, time);
     const threat = threatX(sim.view);
     let target = !Number.isNaN(threat) ? threat : !Number.isNaN(champTarget) ? champTarget : bestX(state, time);
     const nt = time + noiseShift;

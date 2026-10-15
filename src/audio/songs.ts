@@ -1,15 +1,18 @@
 // The game's background music, written as data: a chord progression per song, a
 // melody in note names, and parts generated from the chords (bass, oom-pah, broken
 // chords) and from 16th-note drum grids. Pure, so the scheduler and tests can read it
-// in Node. Three loops, one per kind of screen:
+// in Node. One loop per kind of screen, and World 2 has its own battle and boss songs:
 //  - menu: a calm music-box tune in F major over marimba and pizzicato bass (92 bpm);
 //  - battle: a tin-soldier march in C major, toy trumpet over tuba and snare (120 bpm);
-//  - boss: the same band in A minor, faster, with timpani and a driving bass (132 bpm).
+//  - boss: the same band in A minor, faster, with timpani and a driving bass (132 bpm);
+//  - battle2: World 2's freezer, a glockenspiel and music-box tune in E minor over sleigh
+//    bells and marimba (116 bpm);
+//  - boss2: the Snow Globe Giant, D minor with sleigh bells driving the timpani (132 bpm).
 // Every bar of a melody must add up to a full bar; that is checked when the module loads,
 // so a typo fails loudly.
 import type { InstrumentId } from './instruments.ts';
 
-export type MusicId = 'menu' | 'battle' | 'boss';
+export type MusicId = 'menu' | 'battle' | 'boss' | 'battle2' | 'boss2';
 
 export interface Note {
   at: number; // beats from the start of the loop
@@ -319,10 +322,114 @@ function bossSong(): Song {
   };
 }
 
+// ---------- World 2 battle: 'Frost on the Glass' (E minor, 116 bpm) ----------
+
+function freezerSong(): Song {
+  const bpb = 4;
+  const bars = 16;
+  const chords = progression('Em | C | G | D | Em | Am | B7 | Em | C | G | D | Em | C | D | B7 | Em', bpb);
+  const a =
+    'E5:2 G5:2 B5:3 A5:1 | G5:2 E5:2 C5:4 | D5:2 G5:2 B5:2 D6:2 | C6:2 A5:2 F#5:4 |' +
+    ' E5:1 F#5:1 G5:2 B5:2 E6:2 | C6:2 B5:1 A5:1 E5:4 | D#5:2 F#5:2 A5:2 F#5:2 | E5:6 r:2';
+  const b =
+    'G5:1 A5:1 G5:1 E5:1 C5:4 | B4:1 D5:1 G5:2 B5:4 | A5:1 B5:1 A5:1 F#5:1 D5:4 | E5:2 G5:2 B5:4 |' +
+    ' C6:3 B5:1 G5:2 E5:2 | D6:3 C6:1 A5:2 F#5:2 | B5:2 A5:2 F#5:2 D#5:2 | E5:4 r:4';
+  const tune = melody(`${a} | ${b}`, bpb);
+  // The music box doubles the tune an octave down in the second half.
+  const under = shift(melody(b, bpb, 0.5, -12), 8 * bpb);
+  // Broken chords on the marimba: root, third, fifth, third, up and down every half bar.
+  const arp: Step[] = [0, 1, 2, 1, 0, 1, 2, 1].map((idx, i) => ({
+    at: i * 0.5,
+    dur: 0.5,
+    vel: i % 4 === 0 ? 0.75 : 0.5,
+    pick: (c: Chord) => [voicing(c, 52)[idx]],
+  }));
+  const bass: Step[] = [
+    { at: 0, dur: 1, vel: 1, pick: (c) => [lift(c.root, 36)] },
+    { at: 1.5, dur: 0.5, vel: 0.6, pick: (c) => [lift(c.root, 36) + 7] },
+    { at: 2, dur: 1, vel: 0.7, pick: (c) => [lift(c.root, 36) + 12] },
+  ];
+  return {
+    id: 'battle2',
+    bpm: 116,
+    beatsPerBar: bpb,
+    bars,
+    parts: [
+      { inst: 'glock', gain: 0.9, pan: 0.1, send: 0.35, notes: tune },
+      { inst: 'musicBox', gain: 0.55, pan: -0.1, send: 0.35, notes: under },
+      { inst: 'marimba', gain: 0.75, pan: -0.25, send: 0.2, notes: perBar(chords, bars, bpb, arp) },
+      { inst: 'pizz', gain: 0.4, send: 0.08, notes: perBar(chords, bars, bpb, bass) },
+      {
+        inst: 'sleighBells',
+        gain: 0.45,
+        pan: 0.3,
+        send: 0.2,
+        notes: drums(bars, (bar) => (bar % 4 === 3 ? 'X.x.X.x.XxXxXxXx' : 'X.x.X.x.X.x.X.x.')),
+      },
+      { inst: 'snare', gain: 0.3, pan: -0.1, send: 0.12, notes: drums(bars, () => '....X.......X...') },
+      { inst: 'kick', gain: 0.22, notes: drums(bars, () => 'X.......x.......') },
+      { inst: 'cymbal', gain: 0.45, pan: 0.2, send: 0.25, notes: drums(bars, (bar) => (bar % 8 === 0 ? 'X' : '')) },
+    ],
+  };
+}
+
+// ---------- World 2 boss: 'The Snow Globe Giant' (D minor, 132 bpm) ----------
+
+function snowGiantSong(): Song {
+  const bpb = 4;
+  const bars = 16;
+  const chords = progression('Dm | Dm | Bb | A | Dm | Gm | A | A | Bb | C | F | Dm | Gm | Dm | A | A', bpb);
+  const a =
+    'D5:3 F5:1 A5:2 D6:2 | C6:1 A5:1 F5:2 D5:2 A4:2 | Bb4:3 D5:1 F5:2 Bb5:2 | A5:2 C#5:2 E5:4 |' +
+    ' D6:3 C6:1 A5:2 F5:2 | G5:3 A5:1 Bb5:2 D6:2 | C#6:2 A5:2 E5:2 C#5:2 | A5:4 r:2 A4:1 C#5:1';
+  const b =
+    'D6:2 F6:2 D6:2 Bb5:2 | E6:2 G6:2 E6:2 C6:2 | C6:2 A5:2 F6:4 | D6:3 E6:1 F6:2 D6:2 |' +
+    ' G6:2 F6:1 E6:1 D6:2 Bb5:2 | A5:2 D6:2 F6:2 D6:2 | E6:2 C#6:2 A5:2 C#6:2 | E6:2 D6:1 C#6:1 A5:4';
+  // The trumpet takes the first half as written and the second two octaves down, under the
+  // glockenspiel's high line.
+  const lead = [...melody(a, bpb), ...shift(melody(b, bpb, 0.5, -24), 8 * bpb)];
+  const bell = shift(melody(b, bpb, 0.5, -12), 8 * bpb);
+  const drive: Step[] = [0, 0, 12, 0, 0, 0, 12, 0].map((up, i) => ({
+    at: i * 0.5,
+    dur: 0.45,
+    vel: i % 2 === 0 ? 1 : 0.7,
+    pick: (c: Chord) => [lift(c.root, 38) + up],
+  }));
+  const boom: Step[] = [
+    { at: 0, dur: 1, vel: 1, pick: (c) => [lift(c.root, 38)] },
+    { at: 2.5, dur: 1, vel: 0.7, pick: (c) => [lift(c.root, 38) + 7] },
+  ];
+  const stabs: Step[] = [1, 3].map((at) => ({ at, dur: 0.4, vel: 0.8, pick: (c: Chord) => voicing(c, 62) }));
+  return {
+    id: 'boss2',
+    bpm: 132,
+    beatsPerBar: bpb,
+    bars,
+    parts: [
+      { inst: 'trumpet', gain: 0.85, pan: 0.05, send: 0.25, notes: lead },
+      { inst: 'glock', gain: 0.5, pan: 0.25, send: 0.35, notes: bell },
+      { inst: 'pizz', gain: 0.7, send: 0.05, notes: perBar(chords, bars, bpb, drive) },
+      { inst: 'marimba', gain: 0.35, pan: -0.25, send: 0.15, notes: perBar(chords, bars, bpb, stabs) },
+      { inst: 'timpani', gain: 0.8, send: 0.15, notes: perBar(chords, bars, bpb, boom) },
+      { inst: 'sleighBells', gain: 0.65, pan: 0.3, send: 0.2, notes: drums(bars, () => 'XxXxXxXxXxXxXxXx', 0, 0.45) },
+      {
+        inst: 'snare',
+        gain: 0.4,
+        pan: -0.1,
+        send: 0.12,
+        notes: drums(bars, (bar) => (bar % 8 === 7 ? '....X...xxxxXxxx' : '....X.......X..x')),
+      },
+      { inst: 'cymbal', gain: 0.5, pan: 0.2, send: 0.2, notes: drums(bars, (bar) => (bar % 8 === 0 ? 'X' : '')) },
+    ],
+  };
+}
+
 export const SONGS: Readonly<Record<MusicId, Song>> = {
   menu: menuSong(),
   battle: battleSong(),
   boss: bossSong(),
+  battle2: freezerSong(),
+  boss2: snowGiantSong(),
 };
 
 /** Loop length in seconds. */

@@ -1,27 +1,26 @@
-// Loadout fairness (Michel: the campaign must stay fair with zero upgrades). With the
-// starter loadout every World 1 level is won by the human profile in most attempts,
-// and plays in the same time range as without a loadout, a little easier, never a
-// different game. Prints one line per level for tuning.
+// Loadout fairness (Michel: the campaign must stay fair with zero upgrades). The balance
+// tests play the starter gear a new player owns, resolved through progression's real
+// resolveLoadout over an empty profile: that must be the battle layer's
+// DEFAULT_BATTLE_LOADOUT on an unchanged level, and on every World 1 level the bot gets
+// to use the ultimate, so the curve in game-balance*.test.ts is measured with it.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { LEVELS } from '../src/game/levels.ts';
 import { DEFAULT_BATTLE_LOADOUT } from '../src/game/loadout.ts';
-import { humanRuns, median, runLine } from './balance-play.ts';
+import { humanRuns, runLine, starterSetup } from './balance-play.ts';
 
-const ATTEMPTS = 4;
+test('the starter gear of a fresh profile is the default battle loadout on an unchanged level', () => {
+  for (const level of LEVELS) {
+    const s = starterSetup(level);
+    assert.deepEqual(s.loadout, DEFAULT_BATTLE_LOADOUT, level.id);
+    assert.deepEqual(s.level, level, `${level.id}: the popgun and an empty village change nothing`);
+  }
+});
 
-for (const level of LEVELS) {
-  test(`loadout balance: ${level.id} is won by a phone player with the starter loadout`, () => {
-    const runs = humanRuns(level, ATTEMPTS, DEFAULT_BATTLE_LOADOUT);
-    console.log(runLine(level.id, runs) + ` | ultimates ${runs.map((r) => r.ultimates).join(',')}`);
-    const wins = runs.filter((r) => r.outcome === 'victory');
-    assert.ok(wins.length >= ATTEMPTS - 1, `${level.id}: only ${wins.length}/${ATTEMPTS} wins`);
-    assert.ok(
-      runs.every((r) => r.ultimates > 0),
-      'every attempt uses the ultimate',
-    );
-    // Not a walkover: battles still last about a minute or more.
-    const t = median(wins.map((r) => r.seconds));
-    assert.ok(t >= 45, `${level.id}: median win ${t.toFixed(0)} s is too quick`);
+for (const level of LEVELS.filter((l) => l.id.startsWith('1-'))) {
+  test(`loadout balance: ${level.id} is played with the starter ultimate`, () => {
+    const [run] = humanRuns(level, 1);
+    console.log(runLine(level.id, [run]) + ` | ultimates ${run.ultimates}`);
+    assert.ok(run.ultimates > 0, 'the attempt uses the ultimate');
   });
 }

@@ -11,7 +11,7 @@ import { STARTER_CASE, median, play, resolveCase } from './balance-play.ts';
 const ATTEMPTS = 2;
 
 function summary(c: ItemCase) {
-  return LEVELS.map((l) => {
+  return LEVELS.filter((l) => l.id.startsWith('1-')).map((l) => {
     const r = resolveCase(l, c);
     const rs = Array.from({ length: ATTEMPTS }, (_, a) => play(r.level, 'human', a, r.loadout));
     const wins = rs.filter((x) => x.outcome === 'victory');

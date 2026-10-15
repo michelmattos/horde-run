@@ -10,10 +10,19 @@
 // forward lean and waddle, phase-offset per unit, styled per figure) like a kid hopping
 // the toys along.
 //
+// Milestone 5 (World 2) adds the Giant (models/giant.ts) and the rolling snowball
+// (models/snowball.ts: it rolls by the distance it travels instead of hopping) for the
+// player, and the snowman and the wind-up penguin (models/snowman.ts, penguin.ts: each a
+// team-coloured kit mesh plus a white-instanced body mesh) for the enemy. While a Blizzard
+// holds the enemy crowd (BattleState.enemyFrozen > 0, update()'s third argument) the enemy
+// figures stop hopping and take an ice-blue tint, easing back to their colour at the end.
+//
 // Batches: rifleman, knight, sprinter, bomber, the bomber's firecrackers, champion body,
-// champion trim and (on 'low') blob shadows: at most 8 draw calls, plus the same in the
-// shadow pass on high / medium, and a batch with no units is hidden (costs nothing). A
-// view without a variant array draws today's look (riflemen and the champion: 3 calls).
+// champion trim, Giant, snowball, snowman kit + snow, penguin kit + tin and (on 'low')
+// blob shadows: at most 14 draw calls when every kind is on screen at once (a World 2
+// level shows 6-9), plus the same in the shadow pass on high / medium, and a batch with
+// no units is hidden (costs nothing). A view without a variant array draws today's look
+// (riflemen and the champion: 3 calls).
 // Buffers grow geometrically and nothing is allocated per frame in steady state. On the
 // 'low' tier the crowd leaves the shadow map and gets soft blob shadows instead.
 //
@@ -33,18 +42,35 @@ import type { ChampionMeshes } from './models/champion.ts';
 import { createChampionTank } from './models/championTank.ts';
 import { createChampionDrummer } from './models/championDrummer.ts';
 import { createBomberAccentMesh, createSoldierVariantMesh } from './models/soldierVariants.ts';
+import { createGiantMesh } from './models/giant.ts';
+import { createSnowballMesh } from './models/snowball.ts';
+import { createSnowmanMeshes } from './models/snowman.ts';
+import { createPenguinMeshes } from './models/penguin.ts';
 import { writeTRS } from './fxLogic.ts';
-import { SLOT, SLOT_COUNT, crowdScale, crowdSlot, slotStyle } from './crowdLogic.ts';
+import {
+  RollTracker,
+  SLOT,
+  SLOT_COUNT,
+  crowdScale,
+  crowdSlot,
+  frostAmount,
+  frostColor,
+  slotStyle,
+} from './crowdLogic.ts';
 import type { ChampionId, CrowdSlot, HopStyle } from './crowdLogic.ts';
 
-// The sim's view with the Milestone 4 render variant byte (absent before it).
-export type VariantView = SimView & { readonly variant?: Uint8Array };
+// The sim's view with the Milestone 4 render variant byte (absent before it) and the
+// Milestone 5 sideways ice slide in u/s (absent or 0 when not sliding).
+export type VariantView = SimView & { readonly variant?: Uint8Array; readonly slide?: Float32Array };
 
 // Hop: |sin| bounce with a forward lean on each hop and a side-to-side waddle.
 const HOP_HEIGHT = 0.11;
 const HOP_SPEED = 10;
 const HOP_LEAN = 0.16; // radians at the top of a hop (positive pitch tips the +Z front down)
 const WADDLE = 0.1; // radians of roll either side
+// Skid on ice: a sliding figure stops hopping and tips against the slide like a skater.
+const SKID_FULL = 2.5; // u/s of sideways slide for the full skid pose
+const SKID_TILT = 0.32; // radians of roll at the full skid
 const CHAMPION_BRIGHT = 1.12; // the champion is moulded a shade lighter so he pops
 // ±4% per-instance brightness (art direction section 3): neighbouring figures separate
 // instead of reading as one continuous plastic band. Keyed by sim index (swap-remove
@@ -69,6 +95,13 @@ const ENEMY_YAW = Math.PI + 0.55;
 const MOB_BLOB = { x: 1.05, z: 1.2 }; // the radial falloff leaves a soft dark core about the size of the base plate
 const CHAMP_BLOB = { x: 2.1, z: 2.4 };
 const KNIGHT_BLOB = { x: 1.15, z: 1.3 };
+const SNOWBALL_BLOB = 2.1;
+const BLOB: Partial<Record<CrowdSlot, { x: number; z: number }>> = {
+  [SLOT.knight]: KNIGHT_BLOB,
+  [SLOT.giant]: { x: 2.3, z: 2.7 },
+  [SLOT.snowman]: { x: 1.7, z: 1.8 },
+  [SLOT.penguin]: { x: 1.3, z: 1.4 },
+};
 
 class InstanceBatch {
   mesh: Mesh;
@@ -164,6 +197,10 @@ export class CrowdRenderer {
   // One batch per crowd slot (SLOT.*); the champion slot's batch is the champion body.
   private readonly batches: InstanceBatch[] = [];
   private readonly accent: InstanceBatch; // the bomber's firecrackers (bomber matrices)
+  private readonly snowmanSnow: InstanceBatch; // the snowman's body (snowman matrices, white x frost)
+  private readonly penguinTin: InstanceBatch; // the penguin's tin body (penguin matrices, white x frost)
+  private readonly roll = new RollTracker();
+  private readonly tint = new Float32Array(3);
   private trim: InstanceBatch | null = null;
   private readonly blobs: InstanceBatch;
   private readonly scene: Scene;
@@ -186,6 +223,14 @@ export class CrowdRenderer {
     this.batches[SLOT.sprinter] = new InstanceBatch(createSoldierVariantMesh(scene, look, 'sprinter'));
     this.batches[SLOT.bomber] = new InstanceBatch(createSoldierVariantMesh(scene, look, 'bomber'));
     this.accent = new InstanceBatch(createBomberAccentMesh(scene, look), false);
+    this.batches[SLOT.giant] = new InstanceBatch(createGiantMesh(scene, look));
+    this.batches[SLOT.snowball] = new InstanceBatch(createSnowballMesh(scene, look));
+    const snowman = createSnowmanMeshes(scene, look);
+    this.batches[SLOT.snowman] = new InstanceBatch(snowman.kit);
+    this.snowmanSnow = new InstanceBatch(snowman.snow);
+    const penguin = createPenguinMeshes(scene, look);
+    this.batches[SLOT.penguin] = new InstanceBatch(penguin.kit);
+    this.penguinTin = new InstanceBatch(penguin.tin);
     const low = createChampionFallback(scene, look);
     this.batches[SLOT.champion] = new InstanceBatch(low.body);
     this.useTrim(low);
@@ -256,12 +301,15 @@ export class CrowdRenderer {
     let n = 0;
     for (const b of this.batches) if (b.count > 0) n++;
     if (this.accent.count > 0) n++;
+    if (this.snowmanSnow.count > 0) n++;
+    if (this.penguinTin.count > 0) n++;
     if (this.trim && this.trim.count > 0) n++;
     if (this.blobs.count > 0) n++;
     return n;
   }
 
-  update(view: VariantView, time: number): void {
+  // enemyFrozen: BattleState.enemyFrozen (seconds of Blizzard freeze left; 0 / absent = none).
+  update(view: VariantView, time: number, enemyFrozen = 0): void {
     const n = view.count;
     const trim = this.trim;
     const blobs = this.look.settings.crowdShadows ? null : this.blobs;
@@ -272,6 +320,10 @@ export class CrowdRenderer {
     }
     this.accent.ensureCapacity(n);
     this.accent.count = 0;
+    this.snowmanSnow.ensureCapacity(n);
+    this.snowmanSnow.count = 0;
+    this.penguinTin.ensureCapacity(n);
+    this.penguinTin.count = 0;
     trim?.ensureCapacity(n);
     if (trim) trim.count = 0;
     blobs?.ensureCapacity(n);
@@ -279,40 +331,71 @@ export class CrowdRenderer {
     const pc = this.playerColor;
     const ec = this.enemyColor;
     const cb = CHAMPION_BRIGHT;
+    // Frost on the enemy: still figures, tinted colours (exactly the team colour at 0).
+    const frost = frostAmount(enemyFrozen);
+    const thaw = 1 - frost;
+    const tint = this.tint;
+    frostColor(ec.r, ec.g, ec.b, frost, tint);
+    const er = tint[0];
+    const eg = tint[1];
+    const eb = tint[2];
+    frostColor(1, 1, 1, frost, tint);
+    const wr = tint[0];
+    const wg = tint[1];
+    const wb = tint[2];
+    const roll = this.roll;
+    roll.ensureCapacity(n);
     const { posX, posZ, team, kind, radius } = view;
     const variant = view.variant;
+    const slide = view.slide;
     for (let i = 0; i < n; i++) {
       const slot = crowdSlot(kind[i], variant ? variant[i] : 0);
-      const st = this.styles[slot];
       const s = crowdScale(slot, radius[i]);
-      // Phase from time and position: stable per unit (the sim reorders its arrays) and
-      // varied across the crowd, so the army hops along out of step.
       const x = posX[i];
       const z = posZ[i];
-      const sn = Math.sin(time * HOP_SPEED * st.speed + z * 1.9 + x * 3.7);
-      const hop = Math.abs(sn);
       const player = team[i] === Team.Player;
       const yaw = player ? PLAYER_YAW : ENEMY_YAW;
+      const batch = batches[slot];
+      const v = SHADES[i & 255];
+      if (slot === SLOT.snowball) {
+        // Rolls by the distance it travels; no hop, no three-quarter turn.
+        roll.step(i, x, z, radius[i]);
+        batch.write(x, s, z, s, roll.pitch, roll.roll, 0, v, v, v);
+        blobs?.writeFlat(x, z, SNOWBALL_BLOB * s, SNOWBALL_BLOB * s, 0);
+        continue;
+      }
+      roll.clear(i);
+      const st = this.styles[slot];
+      // Phase from time and position: stable per unit (the sim reorders its arrays) and
+      // varied across the crowd, so the army hops along out of step. Frozen enemies stand.
+      const live = player ? 1 : thaw;
+      const sv = slide ? slide[i] : 0;
+      const skid = sv === 0 ? 0 : sv > SKID_FULL ? 1 : sv < -SKID_FULL ? -1 : sv / SKID_FULL;
+      const step = live * (1 - (skid < 0 ? -skid : skid));
+      const sn = Math.sin(time * HOP_SPEED * st.speed + z * 1.9 + x * 3.7);
+      const hop = Math.abs(sn) * step;
       const y = hop * HOP_HEIGHT * st.height * s;
       const lean = hop * HOP_LEAN * st.lean;
-      const roll = sn * WADDLE * st.waddle;
-      const batch = batches[slot];
+      const rl = sn * WADDLE * st.waddle * step - skid * SKID_TILT;
       if (slot === SLOT.champion) {
-        if (player) batch.write(x, y, z, s, lean, roll, yaw, pc.r * cb, pc.g * cb, pc.b * cb);
-        else batch.write(x, y, z, s, lean, roll, yaw, ec.r * cb, ec.g * cb, ec.b * cb);
-        trim?.write(x, y, z, s, lean, roll, yaw, 1, 1, 1);
+        if (player) batch.write(x, y, z, s, lean, rl, yaw, pc.r * cb, pc.g * cb, pc.b * cb);
+        else batch.write(x, y, z, s, lean, rl, yaw, er * cb, eg * cb, eb * cb);
+        trim?.write(x, y, z, s, lean, rl, yaw, 1, 1, 1);
         blobs?.writeFlat(x, z, CHAMP_BLOB.x * s, CHAMP_BLOB.z * s, yaw);
-      } else {
-        const v = SHADES[i & 255];
-        if (player) batch.write(x, y, z, s, lean, roll, yaw, pc.r * v, pc.g * v, pc.b * v);
-        else batch.write(x, y, z, s, lean, roll, yaw, ec.r * v, ec.g * v, ec.b * v);
-        if (slot === SLOT.bomber) this.accent.write(x, y, z, s, lean, roll, yaw, 1, 1, 1);
-        const fb = slot === SLOT.knight ? KNIGHT_BLOB : MOB_BLOB;
-        blobs?.writeFlat(x, z, fb.x * s, fb.z * s, yaw);
+        continue;
       }
+      if (player) batch.write(x, y, z, s, lean, rl, yaw, pc.r * v, pc.g * v, pc.b * v);
+      else batch.write(x, y, z, s, lean, rl, yaw, er * v, eg * v, eb * v);
+      if (slot === SLOT.bomber) this.accent.write(x, y, z, s, lean, rl, yaw, 1, 1, 1);
+      else if (slot === SLOT.snowman) this.snowmanSnow.write(x, y, z, s, lean, rl, yaw, wr * v, wg * v, wb * v);
+      else if (slot === SLOT.penguin) this.penguinTin.write(x, y, z, s, lean, rl, yaw, wr, wg, wb);
+      const fb = BLOB[slot] ?? MOB_BLOB;
+      blobs?.writeFlat(x, z, fb.x * s, fb.z * s, yaw);
     }
     for (let s = 0; s < SLOT_COUNT; s++) batches[s].commit();
     this.accent.commit();
+    this.snowmanSnow.commit();
+    this.penguinTin.commit();
     trim?.commit();
     this.blobs.commit();
   }
@@ -321,6 +404,8 @@ export class CrowdRenderer {
     this.disposed = true;
     for (const b of this.batches) b.dispose();
     this.accent.dispose();
+    this.snowmanSnow.dispose();
+    this.penguinTin.dispose();
     this.trim?.dispose();
     this.blobs.dispose();
   }

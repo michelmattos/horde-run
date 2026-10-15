@@ -2,7 +2,9 @@
 // played. applyUpgrades is the only way upgrades touch a battle. It edits plain LevelDef
 // numbers and gates, and puts the rule changes the LevelDef cannot express into
 // LevelDef.mods for battle.ts. Pure: the input level is deep-copied, never mutated.
-import type { BattleMods, GateDef, LevelDef } from '../contracts.ts';
+// The World 2 upgrades work the same way: Frost Gate adds a freezing gate, Ice Rink an
+// ice patch, and Ice Skates, Hot Cocoa and Avalanche set the World 2 BattleMods.
+import type { BattleMods, GateDef, IceWallDef, LevelDef } from '../contracts.ts';
 import { cardsClash } from '../game/gateSpacing.ts';
 import { getUpgrade } from './upgrades.ts';
 
@@ -22,6 +24,13 @@ const SUPPLY = { value: 2, uses: 120 };
 const FORK_ADD = { value: 3, uses: 150 };
 const KNIGHT_EVERY = [10, 7, 5]; // shots per knight, by stacks (the card counts shots, battle.ts mobs)
 const KNIGHT = { hp: 18, damage: 12, radius: 0.6 };
+const FROST = { value: 3, freeze: { after: 40, duration: 3, hp: 30 } }; // Frost Gate: x3 that ices over
+const ICE_WALL_GAP = 1; // min z clearance between an added gate and an ice wall it overlaps in x
+// Ice Rink: an ice patch from just past the muzzle, most of the lane wide.
+const RINK = { z: 2.5, length: 8, edge: 0.5 };
+const SKATES_GRIP = 0.45; // iceGrip per stack (cap 0.9: a little slide always stays)
+const COCOA = { thawRate: 2, freezeAfter: 1.5, waves: 1.1, more: 0.75 }; // more: x on snowman/penguin intervals
+const AVALANCHE = { radius: 3, seconds: 2, perStack: 1 }; // champion landing freeze; +1 radius and s per extra stack
 
 // Stacks owned of a known upgrade, clamped to [0, maxStacks]; unknown ids count 0.
 function stacks(upgrades: Readonly<Record<string, number>>, id: string): number {
@@ -34,7 +43,7 @@ function stacks(upgrades: Readonly<Record<string, number>>, id: string): number 
 interface GatePlan {
   upgradeId: string;
   at: number; // preferred z as a fraction of the player's half [GATE_Z_MIN, length/2]
-  gates: Pick<GateDef, 'op' | 'value' | 'x' | 'width' | 'move' | 'uses'>[];
+  gates: Pick<GateDef, 'op' | 'value' | 'x' | 'width' | 'move' | 'uses' | 'freeze'>[];
 }
 
 // Added gates in a fixed order so placement is deterministic: rarest first, so when the
@@ -50,6 +59,12 @@ function gatePlans(upgrades: Readonly<Record<string, number>>, hw: number): Gate
       gates: [{ op: 'mul', value: 3, x: 0, width, move: { amplitude, period: 7 } }],
     });
   }
+  if (stacks(upgrades, 'frost-gate') > 0)
+    plans.push({
+      upgradeId: 'frost-gate',
+      at: 0.4,
+      gates: [{ op: 'mul', value: FROST.value, x: 1, width: 3, freeze: { ...FROST.freeze } }],
+    });
   if (stacks(upgrades, 'fork') > 0)
     plans.push({
       upgradeId: 'fork',
@@ -84,10 +99,16 @@ function sideBySide(a: GateDef, b: GateDef): boolean {
   return Math.abs(a.x - b.x) - reach(a) - reach(b) >= SIDE_GAP;
 }
 
+// A gate whose hit width overlaps an ice wall in x must stand clear of it in z.
+function clearOfIceWall(g: GateDef, w: IceWallDef): boolean {
+  const apartX = Math.abs(g.x - w.x) - g.width / 2 - Math.abs(g.move?.amplitude ?? 0) - w.width / 2 >= SIDE_GAP;
+  return apartX || Math.abs(g.z - w.z) >= w.depth / 2 + ICE_WALL_GAP;
+}
+
 // Where a plan's gates go: the nearest z to `preferred` (0.5 steps) inside [zMin, zMax],
 // shifted sideways when that is closer, that keeps every gate GATE_GAP from any other gate
 // line, CARD_CLEAR_Z from any gate whose sign card it would cover or be covered by, and
-// clear of defenders. Null when the player's half is full.
+// clear of defenders and ice walls. Null when the player's half is full.
 function place(level: LevelDef, plan: GateDef[], preferred: number, zMin: number, zMax: number): GateDef[] | null {
   const hw = level.lane.width / 2;
   const fits = (gates: GateDef[]): boolean =>
@@ -95,7 +116,8 @@ function place(level: LevelDef, plan: GateDef[], preferred: number, zMin: number
       (g) =>
         Math.abs(g.x) + (g.move?.amplitude ?? 0) + g.width / 2 <= hw - LANE_MARGIN + 1e-9 &&
         level.gates.every((o) => (Math.abs(o.z - g.z) >= GATE_GAP || sideBySide(o, g)) && !cardsClash(o, g)) &&
-        (level.defenders ?? []).every((d) => Math.abs(d.z - g.z) >= DEFENDER_GAP),
+        (level.defenders ?? []).every((d) => Math.abs(d.z - g.z) >= DEFENDER_GAP) &&
+        (level.iceWalls ?? []).every((w) => clearOfIceWall(g, w)),
     );
   const start = Math.round(Math.min(zMax, Math.max(zMin, preferred)) * 2) / 2;
   const candidates: { z: number; dx: number; cost: number }[] = [];
@@ -132,6 +154,7 @@ function addGates(level: LevelDef, upgrades: Readonly<Record<string, number>>): 
       };
       if (g.move) gate.move = { ...g.move };
       if (g.uses !== undefined) gate.uses = g.uses;
+      if (g.freeze) gate.freeze = { ...g.freeze };
       return gate;
     });
     const placed = place(level, drafts, zMin + plan.at * (zMax - zMin), zMin, zMax);
@@ -174,14 +197,38 @@ function scaleMods(
   if (stacks(upgrades, 'burst')) mods.burst = { shots: 3, gap: 0.08 };
   const rally = stacks(upgrades, 'rally');
   if (rally) mods.championEcho = (mods.championEcho ?? 0) + 30 * rally;
+  const skates = stacks(upgrades, 'skates');
+  if (skates) mods.iceGrip = Math.min(0.9, (mods.iceGrip ?? 0) + SKATES_GRIP * skates);
+  if (stacks(upgrades, 'cocoa')) {
+    mods.thawRate = (mods.thawRate ?? 1) * COCOA.thawRate;
+    mods.freezeAfter = (mods.freezeAfter ?? 1) * COCOA.freezeAfter;
+  }
+  const avalanche = stacks(upgrades, 'avalanche');
+  if (avalanche) {
+    const extra = AVALANCHE.perStack * (avalanche - 1);
+    const prev = mods.championFreeze;
+    mods.championFreeze = {
+      radius: Math.max(prev?.radius ?? 0, AVALANCHE.radius + extra),
+      seconds: Math.max(prev?.seconds ?? 0, AVALANCHE.seconds + extra),
+    };
+  }
   return mods;
+}
+
+// Ice Rink: an ice patch in front of the cannon, so fresh shots slide apart.
+function addRink(level: LevelDef): void {
+  const width = Math.max(1, level.lane.width - 2 * RINK.edge);
+  const length = Math.min(RINK.length, level.lane.length * 0.5 - RINK.z);
+  if (length <= 0) return;
+  level.ice = [...(level.ice ?? []), { x: 0, z: RINK.z, width, length }];
 }
 
 export function applyUpgrades(level: LevelDef, upgrades: Readonly<Record<string, number>>): LevelDef {
   const out: LevelDef = structuredClone(level);
 
-  // 1. Gates from upgrades, then Overcharge (so it also boosts those).
+  // 1. Gates and ice from upgrades, then Overcharge (so it also boosts those).
   addGates(out, upgrades);
+  if (stacks(upgrades, 'rink')) addRink(out);
   const overcharge = stacks(upgrades, 'overcharge') > 0;
   if (overcharge) for (const g of out.gates) if (g.op === 'mul') g.value += 1;
 
@@ -212,10 +259,19 @@ export function applyUpgrades(level: LevelDef, upgrades: Readonly<Record<string,
   if (stacks(upgrades, 'sapper')) defenderHp *= 0.7;
   if (defenderHp !== 1 && out.defenders)
     for (const d of out.defenders) d.hp = Math.max(1, Math.round(d.hp * defenderHp));
-  if (stacks(upgrades, 'chest')) {
-    for (const w of out.enemyWaves) w.count = Math.max(1, Math.round(w.count * 1.1));
-    if (out.enemySpawnRate) out.enemySpawnRate.perSecond *= 1.1;
-    if (out.boss) for (const ph of out.boss.phases) if (ph.trickle !== undefined) ph.trickle *= 1.1;
+  let waves = 1;
+  if (stacks(upgrades, 'chest')) waves *= 1.1;
+  const cocoa = stacks(upgrades, 'cocoa') > 0;
+  if (cocoa) waves *= COCOA.waves;
+  if (waves !== 1) {
+    for (const w of out.enemyWaves) w.count = Math.max(1, Math.round(w.count * waves));
+    if (out.enemySpawnRate) out.enemySpawnRate.perSecond *= waves;
+    if (out.boss) for (const ph of out.boss.phases) if (ph.trickle !== undefined) ph.trickle *= waves;
+  }
+  // Hot Cocoa's other cost: the World 2 enemies come more often.
+  if (cocoa) {
+    if (out.trickleMix) out.trickleMix.every = Math.max(2, Math.round(out.trickleMix.every * COCOA.more));
+    for (const d of out.defenders ?? []) if (d.spawn) d.spawn.every *= COCOA.more;
   }
 
   // 6. Battle mods, merged onto any the generator set.

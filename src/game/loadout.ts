@@ -4,8 +4,12 @@
 // battle layer only reads numbers from it. The cannon is not here: it reshapes the
 // LevelDef (fire rate, units per shot, spread) before the battle is created.
 //
-// Unit variant bytes (render): 0 rifleman / enemy mob, 1 knight, 2 sprinter, 3 bomber,
-// 8 sarge, 9 tank, 10 drummer.
+// Unit variant bytes (render): UNIT_VARIANT in contracts.ts (0 rifleman / enemy mob,
+// 1 knight, 2 sprinter, 3 bomber, 4 giant, 5 snowball, 8 sarge, 9 tank, 10 drummer).
+//
+// Milestone 5 gear: a mob may carry riders (the Giant drops them when it falls), the
+// Blizzard ultimate freezes the enemy crowd for `power` seconds, and a cannon may fire
+// rolling snowballs (BattleLoadout.shot) instead of loose mobs.
 
 export interface MobSpec {
   id: string;
@@ -17,6 +21,7 @@ export interface MobSpec {
   radius: number;
   speed: number;
   deathBlast?: { radius: number; damage: number };
+  riders?: number; // single mobs released when the unit dies (heavy slots: the Giant)
 }
 export interface ChampionSpec {
   id: string;
@@ -29,15 +34,23 @@ export interface ChampionSpec {
   echo: number;
 }
 export interface UltimateSpec {
-  id: 'barrage' | 'paratroopers' | 'marble';
+  id: 'barrage' | 'paratroopers' | 'marble' | 'blizzard';
   chargeNeeded: number;
-  power: number;
+  power: number; // barrage / paratroopers: mobs; marble: weight it flattens; blizzard: freeze seconds
+}
+// Snowball Launcher: each shot of the crowd mob is one rolling ball of the shot's weight
+// that grows through gates and over lone mobs and bursts at burstWeight or on contact.
+export interface ShotSpec {
+  kind: 'snowball';
+  burstWeight: number;
+  maxRadius: number;
 }
 export interface BattleLoadout {
   mobs: [MobSpec, MobSpec];
   mixEvery: number;
   champion: ChampionSpec;
   ultimate: UltimateSpec;
+  shot?: ShotSpec; // absent: the cannon fires loose mobs
 }
 
 // The starter loadout every new player owns: riflemen with a knight every 10th shot,

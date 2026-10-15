@@ -4,6 +4,11 @@
 // sounding at once, its length (to know when a voice is free again) and a base volume.
 // Within one frame, events of the same sound collapse into one voice whose volume
 // grows gently with the count and whose pan follows their mean world x.
+// World 2 adds ice and snow: gates icing over, being chipped (tightly throttled, a crowd
+// chips every step) and thawing, the Giant falling, snowballs bursting, units freezing
+// (the Blizzard and Avalanche), the Snow Globe Giant's lobbed snowball (whistle, then the
+// hit), the gust (a rising wind on its telegraph, a whoosh when it blows, panned from the
+// side it comes from) and an igloo letting penguins out.
 import type { SimEvent } from '../contracts.ts';
 
 export type SoundId =
@@ -26,7 +31,18 @@ export type SoundId =
   | 'coin'
   | 'unlock'
   | 'build'
-  | 'upgrade';
+  | 'upgrade'
+  | 'gateFreeze'
+  | 'iceChip'
+  | 'gateThaw'
+  | 'giantFall'
+  | 'snowballBurst'
+  | 'freeze'
+  | 'lob'
+  | 'lobHit'
+  | 'gustRise'
+  | 'gustWhoosh'
+  | 'igloo';
 
 export const SOUND_IDS: readonly SoundId[] = [
   'shot',
@@ -49,6 +65,17 @@ export const SOUND_IDS: readonly SoundId[] = [
   'unlock',
   'build',
   'upgrade',
+  'gateFreeze',
+  'iceChip',
+  'gateThaw',
+  'giantFall',
+  'snowballBurst',
+  'freeze',
+  'lob',
+  'lobHit',
+  'gustRise',
+  'gustWhoosh',
+  'igloo',
 ];
 
 // The battle cue shape audio reads (a structural subset of the game's BattleCue).
@@ -57,6 +84,7 @@ export interface AudioCue {
   id?: string;
   count?: number;
   x?: number;
+  dir?: number; // gust cues: -1 blows to the left, 1 to the right
 }
 
 export interface SoundRule {
@@ -87,6 +115,17 @@ export const SOUND_RULES: Readonly<Record<SoundId, SoundRule>> = {
   unlock: { gapMs: 300, voices: 1, durMs: 1000, volume: 0.44 },
   build: { gapMs: 200, voices: 2, durMs: 650, volume: 0.65 },
   upgrade: { gapMs: 200, voices: 2, durMs: 900, volume: 0.59 },
+  gateFreeze: { gapMs: 120, voices: 2, durMs: 650, volume: 0.55 },
+  iceChip: { gapMs: 110, voices: 2, durMs: 120, volume: 0.28 },
+  gateThaw: { gapMs: 150, voices: 2, durMs: 550, volume: 0.45 },
+  giantFall: { gapMs: 200, voices: 2, durMs: 750, volume: 0.7 },
+  snowballBurst: { gapMs: 80, voices: 3, durMs: 350, volume: 0.5 },
+  freeze: { gapMs: 250, voices: 1, durMs: 950, volume: 0.6 },
+  lob: { gapMs: 200, voices: 2, durMs: 1100, volume: 0.42 },
+  lobHit: { gapMs: 120, voices: 2, durMs: 450, volume: 0.65 },
+  gustRise: { gapMs: 1000, voices: 1, durMs: 1700, volume: 0.5 },
+  gustWhoosh: { gapMs: 800, voices: 1, durMs: 1500, volume: 0.5 },
+  igloo: { gapMs: 300, voices: 2, durMs: 550, volume: 0.5 },
 };
 
 /** Per-sound throttle memory: last start time and the end time of each voice slot. */
@@ -127,7 +166,7 @@ export interface SoundRequest {
   id: SoundId;
   x?: number; // world x for stereo pan; absent = centred
   volume: number; // 0..1
-  variant?: string; // the ultimate's id ('barrage' | 'paratroopers' | 'marble')
+  variant?: string; // the ultimate's id ('barrage' | 'paratroopers' | 'marble' | 'blizzard')
 }
 
 // Volume boost for `count` same-frame events of one sound: 1 for one, ~1.5x at most.
@@ -161,15 +200,26 @@ const PRIORITY: readonly SoundId[] = [
   'defeat',
   'bossPhase',
   'ultimate',
+  'freeze',
   'championLaunch',
+  'lobHit',
+  'giantFall',
   'defenderDown',
   'gateBreak',
+  'gateFreeze',
+  'gustRise',
+  'gustWhoosh',
   'blast',
+  'snowballBurst',
+  'lob',
+  'igloo',
+  'gateThaw',
   'hitPlayerBase',
   'hitEnemyBase',
   'gateGood',
   'gateTrap',
   'towerShot',
+  'iceChip',
   'shot',
   'clash',
 ];
@@ -197,16 +247,42 @@ function eventSound(e: SimEvent): SoundId | null {
       return 'victory';
     case 'defeat':
       return 'defeat';
+    case 'gateFrozen':
+      return 'gateFreeze';
+    case 'gateChipped':
+      return 'iceChip';
+    case 'gateThawed':
+      return 'gateThaw';
+    case 'giantFell':
+      return 'giantFall';
+    case 'snowballBurst':
+      return 'snowballBurst';
+    case 'unitsFrozen':
+      return 'freeze';
     default:
       return null;
   }
 }
 
+const CUE_SOUNDS: ReadonlyMap<string, SoundId> = new Map([
+  ['shot', 'shot'],
+  ['ultimate', 'ultimate'],
+  ['blast', 'blast'],
+  ['lob', 'lob'],
+  ['lobHit', 'lobHit'],
+  ['gustWarn', 'gustRise'],
+  ['gust', 'gustWhoosh'],
+  ['iglooRelease', 'igloo'],
+]);
+
 function cueSound(c: AudioCue): SoundId | null {
-  if (c.type === 'shot') return 'shot';
-  if (c.type === 'ultimate') return 'ultimate';
-  if (c.type === 'blast') return 'blast';
-  return null;
+  return CUE_SOUNDS.get(c.type) ?? null;
+}
+
+// Where a cue sounds: its x, or for a gust the side the wind comes from.
+function cueX(c: AudioCue): number | undefined {
+  if (c.x !== undefined) return c.x;
+  return c.dir ? -c.dir * PAN_RANGE * 0.8 : undefined;
 }
 
 function eventX(e: SimEvent): number | undefined {
@@ -254,7 +330,7 @@ export function soundsForFrame(
     const id = cueSound(c);
     if (!id) continue;
     const weight = id === 'shot' ? Math.max(1, c.count ?? 1) : 1;
-    add(id, c.x, weight, id === 'ultimate' ? c.id : undefined);
+    add(id, cueX(c), weight, id === 'ultimate' ? c.id : undefined);
   }
   if (tallies.length === 0) return [];
   tallies.sort((a, b) => PRIORITY.indexOf(a.id) - PRIORITY.indexOf(b.id));

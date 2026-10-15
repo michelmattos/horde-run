@@ -22,6 +22,7 @@ import {
   resolveLoadout,
   setLoadout,
   unannouncedUnlocks,
+  unlockHint,
   upgradeCost,
   upgradeItem,
   validateLoadout,
@@ -245,7 +246,7 @@ test('cannon transforms', () => {
     },
   ).level;
   assert.equal(one.cannon.unitsPerShot, 1, 'min 1');
-  assert.equal(withCannon('popgun', { popgun: 3 }).cannon.fireRate, 7.5);
+  assert.equal(withCannon('popgun', { popgun: 3 }).cannon.fireRate, 6.36);
   // Fixed-count mobs follow the cannon's mobs per shot (2 of 3, 7 of 3); crowd mobs stay null.
   const mobsWith = (cannon: string) =>
     resolveLoadout(level, { ...emptyProfile(), loadout: { ...STARTER_LOADOUT, mobs: ['rifleman', 'knight'], cannon } })
@@ -264,14 +265,14 @@ test('cannon transforms', () => {
 test('village perks feed startCrowd, base HP and champion charge', () => {
   const p: Profile = { ...emptyProfile(), village: { barracks: 2, walls: 3, workshop: 1, garden: 3, flagpole: 2 } };
   const r = resolveLoadout(level, p);
-  assert.equal(r.level.mods?.startCrowd, 8);
+  assert.equal(r.level.mods?.startCrowd, 4);
   assert.equal(r.level.mods?.mobHp, 1.2);
-  assert.equal(r.level.playerBase.hp, Math.round(320 * 1.15));
-  assert.equal(r.level.champion.chargeNeeded, Math.round(280 * 0.95));
+  assert.equal(r.level.playerBase.hp, Math.round(320 * 1.09));
+  assert.equal(r.level.champion.chargeNeeded, Math.round(280 * 0.98));
   const off = resolveLoadout(level, p, { useVillage: false });
   assert.deepEqual(off.level, level);
   const stacked = resolveLoadout({ ...level, mods: { startCrowd: 10 } }, p);
-  assert.equal(stacked.level.mods?.startCrowd, 18);
+  assert.equal(stacked.level.mods?.startCrowd, 14);
 });
 
 test('resolveLoadout is deterministic and honours useUpgrades', () => {
@@ -284,8 +285,9 @@ test('resolveLoadout is deterministic and honours useUpgrades', () => {
   const b = resolveLoadout(level, p);
   assert.deepEqual(a, b);
   assert.notEqual(a.battle.mobs[0], b.battle.mobs[0]);
-  assert.equal(a.battle.mobs[0].hp, 1.25);
-  assert.equal(a.battle.ultimate.power, 25);
+  assert.equal(a.battle.mobs[0].hp, 1, 'crowd mobs keep 1 hp: a fraction over 1 survives a 1:1 trade');
+  assert.equal(a.battle.mobs[0].damage, 1.12);
+  assert.equal(a.battle.ultimate.power, 22.4);
   const flat = resolveLoadout(level, p, { useUpgrades: false });
   assert.deepEqual(flat.battle, resolveLoadout(level, emptyProfile()).battle);
 });
@@ -306,29 +308,35 @@ function numericStats(it: ItemDef, tier: number): Record<string, number> {
 }
 const better = (k: string, a: number, b: number) => (LOWER_IS_BETTER.has(k) ? a < b : a > b);
 
-test('every upgrade tier improves stats monotonically, about +8% each and +25% at max', () => {
+test('every upgrade tier improves stats monotonically, about +4% each and +12% at max (cannons +2% and +6%)', () => {
   for (const it of ITEMS) {
     let improvedTotal = 0;
     for (let t = 1; t <= MAX_TIER; t++) {
       const prev = numericStats(it, t - 1);
       const cur = numericStats(it, t);
       let improved = false;
+      let step = 1;
       for (const k of Object.keys(cur)) {
         assert.ok(!better(k, prev[k], cur[k]), `${it.id} tier ${t} ${k} got worse`);
         if (better(k, cur[k], prev[k])) improved = true;
+        if (!LOWER_IS_BETTER.has(k) && prev[k] > 0) step = Math.max(step, cur[k] / prev[k]);
       }
+      // Concept §9.2: upgrades make a level comfortable, not trivial.
+      assert.ok(step <= 1.06, `${it.id} tier ${t} gains ${((step - 1) * 100).toFixed(1)}%`);
       assert.ok(improved, `${it.id} tier ${t} improves something`);
       improvedTotal++;
     }
     assert.equal(improvedTotal, MAX_TIER);
-    // The headline stat grows roughly +25% by tier 3, never more than +30%.
+    // The headline stat grows roughly +12% by tier 3, never more than +15%. Cannons only
+    // raise the fire rate, about +2% a tier: the battle is far more sensitive to it.
     const s0 = numericStats(it, 0);
     const s3 = numericStats(it, MAX_TIER);
     const gains = Object.keys(s0)
       .filter((k) => !LOWER_IS_BETTER.has(k) && s0[k] > 0)
       .map((k) => s3[k] / s0[k]);
     const best = Math.max(...gains);
-    assert.ok(best >= 1.2 && best <= 1.3, `${it.id} max gain ${best}`);
+    const [lo, hi] = it.slot === 'cannon' ? [1.05, 1.08] : [1.1, 1.15];
+    assert.ok(best >= lo && best <= hi, `${it.id} max gain ${best}`);
   }
 });
 
@@ -343,4 +351,23 @@ test('tier-0 non-starter items are sidegrades, never strictly better than every 
       assert.ok(worseSomewhere, `${it.id} strictly dominates ${st.id}`);
     }
   }
+});
+
+test('World 2 items: snowball shot, giant riders and the blizzard resolve and describe themselves', () => {
+  assert.equal(unlockHint('snowball-launcher'), 'Clear level 2-3');
+  assert.equal(unlockHint('giant'), 'Clear level 2-5');
+  assert.equal(unlockHint('blizzard'), 'Clear level 2-7');
+  const p: Profile = {
+    ...emptyProfile(),
+    loadout: { cannon: 'snowball-launcher', mobs: ['rifleman', 'giant'], champion: 'sarge', ultimate: 'blizzard' },
+  };
+  const b = resolveLoadout(level, p).battle;
+  assert.deepEqual(b.shot, { kind: 'snowball', burstWeight: 40, maxRadius: 1.3 });
+  assert.equal(b.mobs[1].riders, 6);
+  assert.equal(b.ultimate.id, 'blizzard');
+  assert.equal(resolveLoadout(level, emptyProfile()).battle.shot, undefined, 'the popgun fires plain shots');
+  const has = (id: string, label: string) => itemStats(id, 0).some((l) => l.label === label);
+  assert.ok(has('snowball-launcher', 'Snowball'));
+  assert.ok(has('giant', 'Riders'));
+  assert.ok(has('blizzard', 'Freeze') && !has('blizzard', 'Power'));
 });

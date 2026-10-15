@@ -15,8 +15,12 @@ const facts = (profile: Profile = emptyProfile(), levels: SaveData['levels'] = {
 
 test('item cards: every catalog item, starters unlocked, the rest locked with a hint', () => {
   const cards = itemCards(facts());
-  assert.equal(cards.length, 13);
+  assert.equal(cards.length, 16);
   const by = Object.fromEntries(cards.map((c) => [c.id, c]));
+  // The World 2 items unlock on Freezer levels.
+  assert.equal(by['snowball-launcher'].hint, 'Clear level 2-3');
+  assert.equal(by.giant.hint, 'Clear level 2-5');
+  assert.equal(by.blizzard.hint, 'Clear level 2-7');
   for (const id of ['popgun', 'rifleman', 'knight', 'sarge', 'barrage']) assert.equal(by[id].locked, false, id);
   assert.equal(by.sprinter.locked, true);
   assert.equal(by.sprinter.hint, 'Clear level 1-3');
@@ -71,7 +75,7 @@ test('home view: five buildings with costs, perks and gates', () => {
   const by = Object.fromEntries(v.buildings.map((b) => [b.id, b]));
   assert.equal(by.barracks.tier, 0);
   assert.equal(by.barracks.nextCost, 60);
-  assert.equal(by.barracks.nextPerk, '+4 starting troops');
+  assert.equal(by.barracks.nextPerk, '+2 starting troops');
   assert.equal(by.garden.nextCost, null);
   assert.equal(by.garden.canAfford, false);
   assert.equal(by.garden.nextPerk, undefined);

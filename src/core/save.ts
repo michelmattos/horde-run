@@ -136,6 +136,20 @@ export function isUnlocked(save: SaveData, world: WorldDef, levelId: string): bo
   return save.levels[world.levels[i - 1]]?.stars[0] === true;
 }
 
+// World unlocks (Milestone 5): a world with `unlock` opens once the player holds that many
+// stars over the named world's levels. A world without `unlock` is open from the start;
+// one naming an unknown world counts no stars toward it.
+export function starsNeeded(save: SaveData, world: WorldDef, worlds: readonly WorldDef[]): number {
+  const u = world.unlock;
+  if (!u) return 0;
+  const from = worlds.find((w) => w.id === u.world);
+  return Math.max(0, u.stars - (from ? starCount(save, from.levels) : 0));
+}
+
+export function isWorldUnlocked(save: SaveData, world: WorldDef, worlds: readonly WorldDef[]): boolean {
+  return starsNeeded(save, world, worlds) === 0;
+}
+
 export function starCount(save: SaveData, levelIds?: readonly string[]): number {
   const ids = levelIds ?? Object.keys(save.levels);
   let n = 0;

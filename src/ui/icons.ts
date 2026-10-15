@@ -321,10 +321,82 @@ function marbleBody(): string {
   );
 }
 
-export type UltimateIconId = 'barrage' | 'paratroopers' | 'marble';
+// Blizzard (World 2): a puffy snow cloud over an icy disc, three snowflakes whirling down.
+function blizzardBody(): string {
+  const cloud =
+    'M12 31 C6 31 5 22 12 21 C12 13 22 11 25 16 C28 8 42 8 44 16 C51 13 58 20 54 27 C58 31 53 35 49 34 L15 34 C13.5 34 12.5 32.5 12 31 Z';
+  const flake = (cx: number, cy: number, r: number): string => {
+    let d = '';
+    for (let i = 0; i < 3; i++) {
+      const a = (i * Math.PI) / 3 + Math.PI / 2;
+      const dx = Math.cos(a) * r;
+      const dy = Math.sin(a) * r;
+      d += `M${(cx - dx).toFixed(2)} ${(cy - dy).toFixed(2)} L${(cx + dx).toFixed(2)} ${(cy + dy).toFixed(2)} `;
+    }
+    return (
+      `<path d="${d}" fill="none" stroke="${INK}" stroke-width="${r * 0.42 + 3.6}" stroke-linecap="round"/>` +
+      `<path d="${d}" fill="none" stroke="#f4f9fc" stroke-width="${r * 0.42}" stroke-linecap="round"/>`
+    );
+  };
+  return (
+    disc(32, 34, 22, '#8fcdea') +
+    `<path d="M14 46 C22 42 30 50 40 45 C45 42.5 49 43 52 44" fill="none" stroke="#d6f0fb" stroke-width="2.6" stroke-linecap="round" opacity=".9"/>` +
+    `<path d="${cloud}" fill="${INK}" stroke="${INK}" stroke-width="6" stroke-linejoin="round" transform="translate(0 1.8)"/>` +
+    `<path d="${cloud}" fill="#f4f9fc" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>` +
+    `<path d="M17 30 C26 32.5 40 32.5 50 30" fill="none" stroke="#bfe0f1" stroke-width="2.6" stroke-linecap="round"/>` +
+    `<path d="M19 19 C21 16 25 15 27.5 16.5" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/>` +
+    flake(21, 45, 4.5) +
+    flake(33, 52, 5) +
+    flake(45, 45, 4.5)
+  );
+}
+
+export type UltimateIconId = 'barrage' | 'paratroopers' | 'marble' | 'blizzard';
+
+const ULTIMATE_BODY: Record<UltimateIconId, () => string> = {
+  barrage: barrageBody,
+  paratroopers: paratroopersBody,
+  marble: marbleBody,
+  blizzard: blizzardBody,
+};
 
 /** Colourful sticker for an ultimate (HUD button, loadout, collection). */
 export function ultimateIcon(id: UltimateIconId, size: number | string): string {
-  const body = id === 'paratroopers' ? paratroopersBody() : id === 'marble' ? marbleBody() : barrageBody();
-  return svg('0 0 64 64', body, size, 'tb-ico');
+  return svg('0 0 64 64', (ULTIMATE_BODY[id] ?? barrageBody)(), size, 'tb-ico');
+}
+
+/** Six-armed snowflake (World 2: the freezer's world tab, the HUD's frozen-enemy chip). */
+export function snowflakeIcon(size: number | string, color = '#f4f9fc'): string {
+  let d = '';
+  for (let i = 0; i < 6; i++) {
+    const a = (i * Math.PI) / 3 - Math.PI / 2;
+    const p = (r: number, da = 0): string =>
+      `${(32 + Math.cos(a + da) * r).toFixed(2)} ${(32 + Math.sin(a + da) * r).toFixed(2)}`;
+    d += `M32 32 L${p(24)} M${p(15, 0.42)} L${p(12)} L${p(15, -0.42)} `;
+  }
+  const pass = (c: string, w: number): string =>
+    `<path d="${d}" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  return svg(
+    '0 0 64 64',
+    pass(INK, 8.6) +
+      pass(color, 4) +
+      `<circle cx="32" cy="32" r="4.5" fill="${color}" stroke="${INK}" stroke-width="2.4"/>`,
+    size,
+    'tb-ico',
+  );
+}
+
+/** Gust arrow pointing right (flip it for a left gust): a chunky arrow with wind streaks. */
+export function gustArrowIcon(size: number | string): string {
+  const arrow = 'M8 26 L36 26 L36 14 L58 32 L36 50 L36 38 L8 38 Z';
+  return svg(
+    '0 0 64 64',
+    `<path d="M4 18 L16 18 M2 46 L14 46" fill="none" stroke="${INK}" stroke-width="7" stroke-linecap="round"/>` +
+      `<path d="M4 18 L16 18 M2 46 L14 46" fill="none" stroke="#e6f6ff" stroke-width="3" stroke-linecap="round"/>` +
+      `<path d="${arrow}" fill="${INK}" stroke="${INK}" stroke-width="6" stroke-linejoin="round" transform="translate(0 2)"/>` +
+      `<path d="${arrow}" fill="#f4f9fc" stroke="${INK}" stroke-width="3.2" stroke-linejoin="round"/>` +
+      `<path d="M12 29.5 L37 29.5" stroke="#bfe3f5" stroke-width="2.4" stroke-linecap="round"/>`,
+    size,
+    'tb-ico',
+  );
 }

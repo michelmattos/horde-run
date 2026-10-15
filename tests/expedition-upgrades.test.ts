@@ -1,5 +1,6 @@
-// Upgrade pool and the modifiers layer: every upgrade's documented effect on World 1
-// levels, stacking, the Overcharge synergy, gate placement rules and purity.
+// Upgrade pool and the modifiers layer: every upgrade's documented effect on campaign
+// levels, stacking, the Overcharge synergy, gate placement rules and purity, plus the
+// five World 2 upgrades (Frost Gate, Ice Rink, Ice Skates, Hot Cocoa, Avalanche).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { RARITY_PRICE, UPGRADES, drawOffer, getUpgrade } from '../src/expedition/upgrades.ts';
@@ -7,7 +8,9 @@ import { applyUpgrades } from '../src/expedition/modifiers.ts';
 import { createRng } from '../src/core/rng.ts';
 import { LEVELS, getLevelById, validateLevel } from '../src/game/levels.ts';
 import { cardsClash } from '../src/game/gateSpacing.ts';
-import type { LevelDef, UpgradeIcon } from '../src/contracts.ts';
+import type { LevelDef, UpgradeIcon, UpgradeIconW2 } from '../src/contracts.ts';
+
+type Build = Readonly<Record<string, number>>;
 
 const ICONS: UpgradeIcon[] = [
   'gate-x2',
@@ -43,21 +46,33 @@ function assertValid(l: LevelDef): void {
   validateLevel(rest, 'test');
 }
 
-test('pool: 20 unique ids, distinct valid icons, short text', () => {
-  assert.equal(UPGRADES.length, 20);
-  assert.equal(new Set(UPGRADES.map((u) => u.id)).size, 20);
+const W2: Record<string, UpgradeIconW2> = {
+  'frost-gate': 'gate-frost',
+  rink: 'gate-rink',
+  skates: 'mob-skates',
+  cocoa: 'relic-cocoa',
+  avalanche: 'champ-avalanche',
+};
+
+test('pool: 25 unique ids, every icon used, World 2 art on exactly the five new ones, short text', () => {
+  assert.equal(UPGRADES.length, 25);
+  assert.equal(new Set(UPGRADES.map((u) => u.id)).size, 25);
   assert.deepEqual(new Set(UPGRADES.map((u) => u.icon)), new Set(ICONS));
+  // World 1 upgrades keep one icon each; a World 2 upgrade borrows its nearest one.
+  const w1 = UPGRADES.filter((u) => u.iconW2 === undefined);
+  assert.equal(new Set(w1.map((u) => u.icon)).size, w1.length);
+  assert.deepEqual(Object.fromEntries(UPGRADES.filter((u) => u.iconW2).map((u) => [u.id, u.iconW2])), W2);
   for (const u of UPGRADES) {
     assert.equal(getUpgrade(u.id), u);
     assert.ok(u.text.length <= 48, `${u.id}: ${u.text}`);
     assert.ok((u.drawback ?? '').length <= 48);
     assert.ok(u.maxStacks >= 1);
     assert.ok(RARITY_PRICE[u.rarity] > 0);
-    assert.equal(u.drawback !== undefined, ['overcharge', 'glass', 'chest'].includes(u.id));
+    assert.equal(u.drawback !== undefined, ['overcharge', 'glass', 'chest', 'cocoa'].includes(u.id));
   }
   assert.equal(getUpgrade('nope'), undefined);
   const perCategory = (cat: string) => UPGRADES.filter((u) => u.category === cat).length;
-  assert.deepEqual(['gate', 'mob', 'cannon', 'champion', 'relic'].map(perCategory), [4, 4, 4, 3, 5]);
+  assert.deepEqual(['gate', 'mob', 'cannon', 'champion', 'relic'].map(perCategory), [6, 5, 4, 4, 6]);
 });
 
 test('drawOffer: distinct, respects maxStacks, deterministic, runs short gracefully', () => {
@@ -258,4 +273,73 @@ test('modifiers: pure, deterministic and validateLevel-clean on every World 1 le
     a.cannon.fireRate = 999;
     assert.equal(JSON.stringify(base), before);
   }
+});
+
+// ---------- World 2 upgrades ----------
+
+test('Frost Gate adds one x3 freezing gate (about 40 weight, 3 s, 30 hp) that Overcharge boosts', () => {
+  const base = lvl('1-4');
+  const [g] = added(applyUpgrades(base, { 'frost-gate': 1 }));
+  assert.equal(g.id, 'up-frost-gate-1');
+  assert.deepEqual([g.op, g.value], ['mul', 3]);
+  assert.deepEqual(g.freeze, { after: 40, duration: 3, hp: 30 });
+  assert.ok(g.z >= 6 && g.z <= base.lane.length / 2);
+  const boosted = added(applyUpgrades(base, { 'frost-gate': 1, overcharge: 1 }));
+  assert.equal(boosted[0].value, 4);
+  assertValid(applyUpgrades(base, { 'frost-gate': 1 }));
+});
+
+test('added gates keep clear of ice walls they overlap in x', () => {
+  const base: LevelDef = structuredClone(lvl('1-1'));
+  // A wall across the middle of the player half, where the gates would like to go.
+  base.iceWalls = [{ id: 'iw', x: 0, z: 14, width: 6, depth: 3 }];
+  const out = applyUpgrades(base, { 'frost-gate': 1, doubler: 3, fork: 1, supply: 1 });
+  assert.ok(added(out).length >= 4);
+  for (const g of added(out)) {
+    const apartX = Math.abs(g.x) - g.width / 2 - Math.abs(g.move?.amplitude ?? 0) - 3 >= 0.3;
+    assert.ok(apartX || Math.abs(g.z - 14) >= 2.5, `${g.id} at x ${g.x} z ${g.z} runs into the ice wall`);
+  }
+});
+
+test('Ice Rink lays ice in front of the cannon, most of the lane wide, adding to the level ice', () => {
+  const base: LevelDef = structuredClone(lvl('1-2'));
+  const out = applyUpgrades(base, { rink: 1 });
+  assert.equal(out.ice?.length, 1);
+  const [rink] = out.ice!;
+  assert.ok(rink.z > 1.5 && rink.z < 6, 'starts just past the muzzle');
+  assert.ok(rink.length >= 4 && rink.z + rink.length <= base.lane.length / 2);
+  assert.ok(rink.width >= base.lane.width - 2 && Math.abs(rink.x) + rink.width / 2 <= base.lane.width / 2);
+  base.ice = [{ x: 0, z: 30, width: 4, length: 5 }];
+  assert.deepEqual(applyUpgrades(base, { rink: 1 }).ice?.[0], base.ice[0], 'the level ice stays');
+  assert.equal(applyUpgrades(base, { rink: 1 }).ice?.length, 2);
+  assertValid(out);
+});
+
+test('Ice Skates, Hot Cocoa and Avalanche reach the battle mods, stacking where they stack', () => {
+  const base = lvl('1-3');
+  near(applyUpgrades(base, { skates: 1 }).mods!.iceGrip!, 0.45);
+  near(applyUpgrades(base, { skates: 2 }).mods!.iceGrip!, 0.9);
+  near(applyUpgrades({ ...base, mods: { iceGrip: 0.3 } }, { skates: 2 }).mods!.iceGrip!, 0.9);
+  const cocoa = applyUpgrades(base, { cocoa: 1 }).mods!;
+  assert.deepEqual([cocoa.thawRate, cocoa.freezeAfter], [2, 1.5]);
+  assert.deepEqual(applyUpgrades(base, { avalanche: 1 }).mods!.championFreeze, { radius: 3, seconds: 2 });
+  assert.deepEqual(applyUpgrades(base, { avalanche: 2 }).mods!.championFreeze, { radius: 4, seconds: 3 });
+  assert.deepEqual(applyUpgrades(base, { avalanche: 7 }).mods!.championFreeze, { radius: 4, seconds: 3 });
+  for (const ups of [{ skates: 1 }, { cocoa: 1 }, { avalanche: 2 }] as Build[]) assertValid(applyUpgrades(base, ups));
+});
+
+test('Hot Cocoa costs: waves +10% (on top of War Chest), snowmen and penguins come more often', () => {
+  const base: LevelDef = structuredClone(lvl('1-6'));
+  base.trickleMix = { unit: 'penguin', every: 8 };
+  base.defenders = [
+    ...(base.defenders ?? []),
+    { id: 'ig', kind: 'igloo', x: 0, z: 40, hp: 120, spawn: { unit: 'penguin', every: 6, count: 3 } },
+  ];
+  const out = applyUpgrades(base, { cocoa: 1 });
+  out.enemyWaves.forEach((w, i) => assert.equal(w.count, Math.round(base.enemyWaves[i].count * 1.1)));
+  if (base.enemySpawnRate) near(out.enemySpawnRate!.perSecond, base.enemySpawnRate.perSecond * 1.1);
+  assert.ok(out.trickleMix!.every < 8 && out.trickleMix!.every >= 2);
+  assert.ok(out.defenders!.find((d) => d.id === 'ig')!.spawn!.every < 6);
+  const both = applyUpgrades(base, { cocoa: 1, chest: 1 });
+  both.enemyWaves.forEach((w, i) => assert.equal(w.count, Math.round(base.enemyWaves[i].count * 1.21)));
 });

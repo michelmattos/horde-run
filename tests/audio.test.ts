@@ -148,11 +148,80 @@ test('master gain follows sound, mute and volume', () => {
 
 test('every sound and variant has a recipe', () => {
   for (const id of SOUND_IDS) assert.ok(RECIPES[recipeKey(id)], id);
-  for (const v of ['barrage', 'paratroopers', 'marble']) assert.equal(recipeKey('ultimate', v), `ultimate:${v}`);
+  for (const v of ['barrage', 'paratroopers', 'marble', 'blizzard'])
+    assert.equal(recipeKey('ultimate', v), `ultimate:${v}`);
   for (const v of ['sarge', 'tank', 'drummer']) assert.equal(recipeKey('championLaunch', v), `championLaunch:${v}`);
   assert.equal(recipeKey('ultimate', 'nope'), 'ultimate:barrage');
   assert.equal(recipeKey('shot', 'ignored'), 'shot');
   for (const r of Object.values(RECIPES)) assert.ok(r.dur > 0 && r.dur <= 2.5);
+});
+
+test('World 2 sim events map to their sounds', () => {
+  const events: SimEvent[] = [
+    { type: 'gateFrozen', gateId: 'a', x: 1, z: 5, duration: 3 },
+    { type: 'gateChipped', gateId: 'a', x: 1, z: 5, hp: 20, maxHp: 30 },
+    { type: 'gateThawed', gateId: 'b', x: -1, z: 5, chipped: true },
+    { type: 'giantFell', x: 0, z: 30, riders: 2 },
+    { type: 'snowballBurst', x: 2, z: 20, count: 4 },
+    { type: 'unitsFrozen', team: 1, x: 0, z: 25, radius: 3, seconds: 2 },
+    { type: 'iceWallHit', id: 'w', x: 0, z: 18 },
+  ];
+  const out = soundsForFrame(events, [], 0, createThrottleState());
+  assert.deepEqual(
+    ids(out),
+    (['freeze', 'gateFreeze', 'gateThaw', 'giantFall', 'iceChip', 'snowballBurst'] as SoundId[]).sort(),
+  );
+  assert.equal(out[0].id, 'freeze', 'a freeze outranks the gate sounds');
+});
+
+test('World 2 cues: lob whistle and hit, gust rise and whoosh, igloo release, Blizzard', () => {
+  const cues: AudioCue[] = [
+    { type: 'lob', x: 1 },
+    { type: 'lobHit', x: 1 },
+    { type: 'gustWarn', dir: 1 },
+    { type: 'gust', dir: 1 },
+    { type: 'iglooRelease', id: 'ig1', x: -2, count: 3 },
+    { type: 'ultimate', id: 'blizzard', x: 0 },
+  ];
+  const out = soundsForFrame([], cues, 0, createThrottleState());
+  assert.deepEqual(ids(out), (['gustRise', 'gustWhoosh', 'igloo', 'lob', 'lobHit', 'ultimate'] as SoundId[]).sort());
+  assert.equal(out.find((r) => r.id === 'ultimate')?.variant, 'blizzard');
+  assert.equal(out.find((r) => r.id === 'igloo')?.variant, undefined, "the igloo's id is not a variant");
+});
+
+test('a gust sounds from the side the wind comes from', () => {
+  const pan = (dir: -1 | 1): number => {
+    const [r] = soundsForFrame([], [{ type: 'gustWarn', dir }], 0, createThrottleState());
+    return panForX(r.x);
+  };
+  assert.ok(pan(1) < 0, 'blowing right: the wind comes from the left');
+  assert.ok(pan(-1) > 0, 'blowing left: the wind comes from the right');
+  assert.ok(Math.abs(pan(1)) <= PAN_MAX);
+});
+
+test('a storm of ice chips on a frozen gate stays a light tick, a few times a second', () => {
+  const state = createThrottleState();
+  let played = 0;
+  // 2 s at 60 fps with 40 units hacking at the ice every frame.
+  for (let f = 0; f < 120; f++) {
+    const chips: SimEvent[] = Array.from({ length: 40 }, () => ({
+      type: 'gateChipped' as const,
+      gateId: 'a',
+      x: 0,
+      z: 16,
+      hp: 10,
+      maxHp: 30,
+    }));
+    for (const r of soundsForFrame(chips, [], f * (1000 / 60), state)) {
+      played++;
+      assert.ok(r.volume < 0.6, `chip volume ${r.volume}`);
+    }
+  }
+  assert.ok(played >= 4 && played <= 20, `${played} chips in 2 s`);
+  // The gust's rising wind is never doubled up.
+  const g = createThrottleState();
+  assert.equal(soundsForFrame([], [{ type: 'gustWarn', dir: 1 }], 0, g).length, 1);
+  assert.equal(soundsForFrame([], [{ type: 'gustWarn', dir: 1 }], 300, g).length, 0);
 });
 
 // ---------- Music ----------
@@ -201,6 +270,8 @@ test('songs stay in key: pitched notes use only their scale', () => {
     menu: scale('F', major),
     battle: scale('C', major),
     boss: scale('A', [0, 2, 3, 5, 7, 8, 10, 11]), // A minor, with the raised G# of E major
+    battle2: scale('E', [0, 2, 3, 5, 7, 8, 10, 11]), // E minor, with the D# of B7
+    boss2: scale('D', [0, 2, 3, 5, 7, 8, 10, 11]), // D minor, with the C# of A major
   };
   for (const song of Object.values(SONGS)) {
     for (const p of song.parts) {

@@ -102,7 +102,12 @@ export function hudTopHeight(run = false): number {
 // Short tag under the ultimate button: the caller's label when it fits in 7 letters,
 // otherwise a short name per ultimate, so the tag stays inside its corner.
 export const ULT_TAG_MAX = 7;
-const ULT_SHORT: Readonly<Record<string, string>> = { barrage: 'BARRAGE', paratroopers: 'PARAS', marble: 'MARBLE' };
+const ULT_SHORT: Readonly<Record<string, string>> = {
+  barrage: 'BARRAGE',
+  paratroopers: 'PARAS',
+  marble: 'MARBLE',
+  blizzard: 'FREEZE',
+};
 export function ultimateTagText(id: string, label: string): string {
   const l = label.trim().toUpperCase();
   if (l.length > 0 && l.length <= ULT_TAG_MAX) return l;
@@ -239,4 +244,26 @@ export function coinTallyAt(
 export function formatCoinDelta(n: number): string {
   const v = Math.round(Number.isFinite(n) ? n : 0);
   return v > 0 ? `+${formatCount(v)}` : v < 0 ? `-${formatCount(-v)}` : '0';
+}
+
+// ---------- World 2 hazards on the HUD ----------
+// The gust telegraph chip: hidden with no gust; while the gust is coming it fills with
+// state.gust.warn toward the push direction, then stays full and pulses while active.
+// `fill` is snapped to 1/50 so the per-frame update only touches the DOM when it moves.
+export interface GustChipLook {
+  show: boolean;
+  dir: -1 | 1;
+  fill: number; // 0..1
+  active: boolean;
+}
+export function gustChipLook(gust: { dir: -1 | 0 | 1; warn: number; active: boolean } | undefined): GustChipLook {
+  if (!gust || gust.dir === 0 || !(gust.active || gust.warn > 0))
+    return { show: false, dir: 1, fill: 0, active: false };
+  const warn = Number.isFinite(gust.warn) ? Math.min(1, Math.max(0, gust.warn)) : 0;
+  return { show: true, dir: gust.dir, fill: gust.active ? 1 : Math.round(warn * 50) / 50, active: gust.active };
+}
+
+// Whole seconds left of a Blizzard freeze on the enemy crowd for the frost chip ('' = none).
+export function frozenSecondsLabel(seconds: number | undefined): string {
+  return seconds !== undefined && Number.isFinite(seconds) && seconds > 0 ? String(Math.ceil(seconds)) : '';
 }

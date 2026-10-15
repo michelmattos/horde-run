@@ -1,0 +1,274 @@
+{
+  "id": "2-9",
+  "name": "Penguin Parade",
+  "theme": "freezer",
+  "lane": {
+    "width": 10,
+    "length": 62
+  },
+  "cannon": {
+    "fireRate": 5.6,
+    "unitsPerShot": 3,
+    "aimLimit": 4
+  },
+  "playerBase": {
+    "hp": 150
+  },
+  "enemyBase": {
+    "hp": 2050,
+    "x": 0,
+    "width": 6
+  },
+  "gates": [
+    {
+      "id": "2-9-x2",
+      "op": "mul",
+      "value": 2,
+      "x": -2.6,
+      "z": 16,
+      "width": 3.4,
+      "fork": "f1"
+    },
+    {
+      "id": "2-9-plus3",
+      "op": "add",
+      "value": 3,
+      "x": 2.6,
+      "z": 16,
+      "width": 3.4,
+      "fork": "f1",
+      "uses": 120
+    },
+    {
+      "id": "2-9-x3",
+      "op": "mul",
+      "value": 3,
+      "x": 0,
+      "z": 34,
+      "width": 2.6,
+      "freeze": {
+        "after": 420,
+        "duration": 4,
+        "hp": 60
+      }
+    }
+  ],
+  "enemyWaves": [
+    {
+      "at": 10,
+      "count": 121,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 19,
+      "count": 139,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 28,
+      "count": 156,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 37,
+      "count": 174,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 46,
+      "count": 191,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 55,
+      "count": 209,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 64,
+      "count": 227,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 73,
+      "count": 244,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 82,
+      "count": 262,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 91,
+      "count": 271,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 100,
+      "count": 279,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 109,
+      "count": 288,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 118,
+      "count": 297,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 13,
+      "count": 24,
+      "x": -2,
+      "spread": 3.5,
+      "unit": "penguin"
+    },
+    {
+      "at": 23,
+      "count": 30,
+      "x": 2,
+      "spread": 3.5,
+      "unit": "penguin"
+    },
+    {
+      "at": 33,
+      "count": 35,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "penguin"
+    },
+    {
+      "at": 43,
+      "count": 41,
+      "x": -2,
+      "spread": 3.5,
+      "unit": "penguin"
+    },
+    {
+      "at": 53,
+      "count": 46,
+      "x": 2,
+      "spread": 3.5,
+      "unit": "penguin"
+    },
+    {
+      "at": 63,
+      "count": 52,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "penguin"
+    },
+    {
+      "at": 73,
+      "count": 57,
+      "x": -2,
+      "spread": 3.5,
+      "unit": "penguin"
+    },
+    {
+      "at": 83,
+      "count": 59,
+      "x": 2,
+      "spread": 3.5,
+      "unit": "penguin"
+    },
+    {
+      "at": 93,
+      "count": 62,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "penguin"
+    },
+    {
+      "at": 103,
+      "count": 64,
+      "x": -2,
+      "spread": 3.5,
+      "unit": "penguin"
+    },
+    {
+      "at": 113,
+      "count": 66,
+      "x": 2,
+      "spread": 3.5,
+      "unit": "penguin"
+    }
+  ],
+  "enemySpawnRate": {
+    "perSecond": 11.0,
+    "startAt": 8
+  },
+  "champion": {
+    "chargeNeeded": 300,
+    "hp": 130,
+    "damage": 100
+  },
+  "targetTime": 120,
+  "defenders": [
+    {
+      "id": "2-9-igloo",
+      "kind": "igloo",
+      "x": 0,
+      "z": 46,
+      "hp": 320,
+      "width": 3,
+      "spawn": {
+        "unit": "penguin",
+        "every": 7,
+        "count": 8,
+        "startAt": 12
+      }
+    }
+  ],
+  "iceWalls": [
+    {
+      "id": "2-9-divider",
+      "x": 0,
+      "z": 16,
+      "width": 1.2,
+      "depth": 4
+    },
+    {
+      "id": "2-9-wl",
+      "x": -3.5,
+      "z": 27,
+      "width": 3,
+      "depth": 2
+    },
+    {
+      "id": "2-9-wr",
+      "x": 3.5,
+      "z": 27,
+      "width": 3,
+      "depth": 2
+    }
+  ],
+  "ice": [
+    {
+      "x": 0,
+      "z": 38,
+      "width": 6,
+      "length": 6
+    }
+  ],
+  "trickleMix": {
+    "unit": "penguin",
+    "every": 5
+  }
+}

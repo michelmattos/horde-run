@@ -3,12 +3,12 @@
 import itemsJson from '../data/progression/items.json' with { type: 'json' };
 import villageJson from '../data/progression/village.json' with { type: 'json' };
 import { MAX_TIER } from './types.ts';
-import type { BuildingDef, BuildingPerk, ItemDef, ItemSlot, Loadout, UnlockRule } from './types.ts';
+import type { BuildingDef, BuildingPerk, CannonStats, ItemDef, ItemSlot, Loadout, UnlockRule } from './types.ts';
 
 type Obj = Record<string, unknown>;
 
 const SLOTS: readonly ItemSlot[] = ['cannon', 'mob', 'champion', 'ultimate'];
-const ULTIMATE_IDS = ['barrage', 'paratroopers', 'marble'] as const;
+const ULTIMATE_IDS = ['barrage', 'paratroopers', 'marble', 'blizzard'] as const;
 const PERKS: readonly BuildingPerk['type'][] = ['startCrowd', 'baseHp', 'championCharge', 'decor'];
 
 function isRecord(v: unknown): v is Obj {
@@ -68,8 +68,20 @@ function parseItem(v: unknown, i: number): ItemDef {
         ...base,
         slot: 'cannon',
         tiers: parseTiers(v.tiers, id, (t, w) => {
-          const s = { fireRate: num(t, 'fireRate', w, 0.01), unitsPerShot: num(t, 'unitsPerShot', w, 0.01) };
-          return t.shotSpread === undefined ? s : { ...s, shotSpread: num(t, 'shotSpread', w) };
+          const s: CannonStats = {
+            fireRate: num(t, 'fireRate', w, 0.01),
+            unitsPerShot: num(t, 'unitsPerShot', w, 0.01),
+          };
+          if (t.shotSpread !== undefined) s.shotSpread = num(t, 'shotSpread', w);
+          if (t.shot !== undefined) {
+            if (!isRecord(t.shot) || t.shot.kind !== 'snowball') fail(w, 'shot must be { "kind": "snowball", ... }');
+            s.shot = {
+              kind: 'snowball',
+              burstWeight: num(t.shot, 'burstWeight', w, 2),
+              maxRadius: num(t.shot, 'maxRadius', w, 0.1),
+            };
+          }
+          return s;
         }),
       };
     case 'mob': {
@@ -82,16 +94,22 @@ function parseItem(v: unknown, i: number): ItemDef {
         kind,
         tiers: parseTiers(v.tiers, id, (t, w) => {
           const s = {
-            perShot: t.perShot === null ? null : num(t, 'perShot', w, 1),
+            perShot: t.perShot === null ? null : num(t, 'perShot', w, 0.1),
             hp: num(t, 'hp', w, 0.01),
             damage: num(t, 'damage', w, 0.01),
             radius: num(t, 'radius', w, 0.05),
             speed: num(t, 'speed', w, 0.1),
           };
-          if (t.deathBlast === undefined) return s;
+          const riders = t.riders === undefined ? {} : { riders: num(t, 'riders', w, 1) };
+          if (t.riders !== undefined && !Number.isInteger(riders.riders)) fail(w, '"riders" must be a whole number');
+          if (t.deathBlast === undefined) return { ...s, ...riders };
           if (!isRecord(t.deathBlast)) fail(w, 'deathBlast must be an object');
           const b = t.deathBlast;
-          return { ...s, deathBlast: { radius: num(b, 'radius', w, 0.1), damage: num(b, 'damage', w, 0.01) } };
+          return {
+            ...s,
+            ...riders,
+            deathBlast: { radius: num(b, 'radius', w, 0.1), damage: num(b, 'damage', w, 0.01) },
+          };
         }),
       };
     }

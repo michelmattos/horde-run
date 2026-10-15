@@ -56,6 +56,32 @@ export function applyGrade(scene: Scene): void {
   ip.vignetteEnabled = false; // the pipeline tier turns it on (it is free there)
 }
 
+// Theme part of the grade: the colour curves and the vignette tint (uniforms only, no
+// recompile). The bedroom keeps GRADE's warm highlights; the freezer swaps them for cool
+// ice-blue highlights, deeper blue shadows and a navy vignette.
+export const FREEZER_GRADE = {
+  saturation: 6,
+  highlightsHue: 205,
+  highlightsDensity: 8,
+  shadowsHue: 225,
+  shadowsDensity: 20,
+  vignetteColor: new Color4(0.03, 0.06, 0.12, 0),
+};
+
+export function applyGradeTheme(scene: Scene, theme: 'bedroom' | 'freezer'): void {
+  const ip = scene.imageProcessingConfiguration;
+  const c = ip.colorCurves;
+  const g = theme === 'freezer' ? FREEZER_GRADE : GRADE;
+  if (c) {
+    c.globalSaturation = g.saturation;
+    c.highlightsHue = g.highlightsHue;
+    c.highlightsDensity = g.highlightsDensity;
+    c.shadowsHue = g.shadowsHue;
+    c.shadowsDensity = g.shadowsDensity;
+  }
+  ip.vignetteColor = g.vignetteColor;
+}
+
 // True when the pipeline for `q` renders to half-float targets and grades in its final
 // pass; false means the frame buffer holds graded 8-bit colour (no pipeline, or 8-bit).
 export function gradesInPost(scene: Scene, q: QualitySettings): boolean {

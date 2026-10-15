@@ -329,16 +329,14 @@ test('loadout battles are deterministic for a seed, and the autoplay uses the ul
 });
 
 test('no loadout: the battle plays exactly as in Milestone 3, and cues only observe', () => {
-  // Golden numbers recorded from main before loadouts existed (Milestone 3 plus the auto-firing cannon).
+  // Golden numbers recorded from main before loadouts existed (Milestone 3 plus the
+  // auto-firing cannon), re-recorded after the Milestone 5 rebalance of the level data.
   const r = play(getLevelById('1-6')!, 'human', 2);
-  assert.deepEqual(
-    [r.outcome, r.seconds, r.peak, r.fired, r.playerBase],
-    ['victory', 88.54999999999626, 395, 1530, 0.8787878787878788],
-  );
+  assert.deepEqual([r.outcome, r.seconds, r.peak, r.fired, r.playerBase], ['defeat', 81.9666666666633, 450, 1416, 0]);
   const r10 = play(getLevelById('1-10')!, 'human', 2);
   assert.deepEqual(
     [r10.outcome, r10.seconds, r10.peak, r10.fired, r10.enemyBase],
-    ['defeat', 104.66666666666201, 516, 1761, 0.1135],
+    ['defeat', 80.14999999999674, 516, 1347, 0.1135],
   );
   // Passing a cue array changes nothing but the cues.
   const lv = getLevelById('1-2')!;

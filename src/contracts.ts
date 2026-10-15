@@ -79,7 +79,8 @@ export type SimEvent =
   | { type: 'defenderHit'; id: string; damage: number; x: number; z: number }
   | { type: 'defenderDestroyed'; id: string; kind: DefenderKind; x: number; z: number }
   | { type: 'baseMiss'; x: number; z: number; count: number }
-  | { type: 'bossPhase'; phase: number; x: number; z: number };
+  | { type: 'bossPhase'; phase: number; x: number; z: number }
+  | SimEventW2; // Milestone 5 (World 2) events, declared below
 
 export interface BattleState {
   time: number;
@@ -137,7 +138,7 @@ export interface GateDef {
 }
 
 // Enemy structures on the lane. Towers shoot the nearest player unit in range; walls only soak.
-export type DefenderKind = 'tower' | 'wall';
+export type DefenderKind = 'tower' | 'wall' | 'igloo'; // igloo: Milestone 5, see IglooSpawnDef
 export interface DefenderDef {
   id: string;
   kind: DefenderKind;
@@ -341,4 +342,153 @@ export interface RunState {
   lastBattle?: { victory: boolean; hpLost: number; gold: number }; // shown after a battle
   stats: RunStats;
   outcome: 'active' | 'won' | 'lost';
+}
+
+// ---------- Milestone 5 additions: World 2, Freezer / Snow Globe (append-only) ----------
+// Concept §9.1 "World 2 in detail". Everything here is optional, so World 1 levels, saves
+// and Expedition runs keep their exact behaviour when none of it is set.
+
+// Which room a level is played in. Absent = 'bedroom' (World 1). The renderer loads only
+// the current theme's assets and disposes them when the theme changes.
+export type WorldTheme = 'bedroom' | 'freezer';
+
+// Render variant bytes the sim carries per unit (SimViewM4.variant). 0-3 and 8-10 are the
+// Milestone 4 values; the rest are new in World 2. Enemy mobs default to 0.
+export const UNIT_VARIANT = {
+  rifleman: 0, // also the plain enemy mob and the Giant's riders
+  knight: 1,
+  sprinter: 2,
+  bomber: 3,
+  giant: 4, // player heavy unit: slow, very tough, carries riders
+  snowball: 5, // Snowball Launcher shot: a rolling, growing player unit
+  sarge: 8,
+  tank: 9,
+  drummer: 10,
+  snowman: 16, // enemy: tanky and slow
+  penguin: 17, // enemy: wind-up penguin, fast and weak
+} as const;
+
+// Enemy unit types a wave, the trickle or an igloo can send. 'mob' is the World 1 soldier.
+export type EnemyUnit = 'mob' | 'snowman' | 'penguin';
+
+// Freezing gate: after `after` crossing weight it ices over for `duration` seconds. While
+// frozen it gives no effect and blocks player units like a wall of `hp` ice: units that
+// hit it cancel against the ice (min of both hp) and chip it; at 0 hp, or when the
+// duration runs out, it thaws and works again (and counts `after` afresh).
+export interface GateFreezeDef {
+  after: number;
+  duration: number;
+  hp: number;
+}
+export interface GateDef {
+  freeze?: GateFreezeDef;
+  // Gates sharing a fork id stand side by side on one z line and offer a choice (e.g.
+  // left x2 vs right +N); the renderer draws a fork sign, the bot picks one branch.
+  fork?: string;
+}
+
+// Ice patch: a rectangle of the lane, x centre and width, from z to z + length. Units on
+// it slide: they keep their sideways momentum (separation and gust pushes are not damped)
+// and lose most of their own steering.
+export interface IcePatchDef {
+  x: number;
+  z: number;
+  width: number;
+  length: number;
+}
+
+// Ice wall: an unbreakable block of ice that narrows the lane into a chokepoint (and can
+// divide a fork). Units of both teams are pushed out of it; it never takes damage.
+export interface IceWallDef {
+  id: string;
+  x: number; // centre x
+  z: number; // centre z
+  width: number;
+  depth: number;
+}
+
+// Wind gust (the globe is shaken): `warn` seconds of telegraph, then for `duration`
+// seconds every unit on the lane is pushed sideways at `force` world units/s (+x = right).
+// Repeats every `every` seconds when set; `alternate` flips the direction each time.
+export interface GustDef {
+  at: number;
+  warn: number;
+  duration: number;
+  force: number;
+  every?: number;
+  alternate?: boolean;
+}
+
+// Igloo: an enemy defender that releases `count` units every `every` seconds until it is
+// destroyed (DefenderDef.kind 'igloo'; it soaks like a wall and never shoots).
+export interface IglooSpawnDef {
+  unit: EnemyUnit;
+  every: number;
+  count: number;
+  startAt?: number; // seconds into the battle of the first release (default `every`)
+}
+export interface DefenderDef {
+  spawn?: IglooSpawnDef;
+}
+
+export interface EnemyWaveDef {
+  unit?: EnemyUnit; // default 'mob'
+}
+
+export interface LevelDef {
+  theme?: WorldTheme;
+  ice?: IcePatchDef[];
+  iceWalls?: IceWallDef[];
+  gusts?: GustDef[];
+  trickleMix?: { unit: EnemyUnit; every: number }; // every Nth trickle unit is this type
+}
+
+// Snow Globe Giant phases: lob snowballs at the crowd (phase 1), freeze every gate until
+// units chip it open (phase 2), add gusts (phase 3). Absent fields: nothing extra.
+export interface BossPhaseDef {
+  lob?: { every: number; warn: number; radius: number; damage: number }; // damage = weight removed per snowball
+  freezeGates?: { duration: number; hp: number }; // applied on entering the phase
+  gusts?: GustDef; // `at` counts from the phase start
+}
+export interface BossDef {
+  model?: 'tinGeneral' | 'snowGlobeGiant'; // absent = 'tinGeneral'
+}
+
+// A world may be locked behind the stars earned in an earlier world.
+export interface WorldDef {
+  theme?: WorldTheme; // absent = 'bedroom'
+  unlock?: { world: string; stars: number }; // absent = open from the start
+}
+
+// Battle state the HUD and renderer read for World 2 hazards.
+export interface BattleState {
+  // Current or coming gust: dir -1 (left) / 1 (right) / 0 (none); warn 0..1 telegraph
+  // progress (1 = the push starts); active while the crowd is being pushed.
+  gust?: { dir: -1 | 0 | 1; warn: number; active: boolean };
+  enemyFrozen?: number; // seconds left of a Blizzard freeze on the enemy crowd (0 = none)
+}
+
+// Expedition rule changes for the World 2 upgrades (applied by the sim and battle layers).
+export interface BattleMods {
+  iceGrip?: number; // 0..1: share of normal steering your units keep on ice (default 0)
+  thawRate?: number; // multiplier on frozen gates' thaw speed and on chip damage (default 1)
+  freezeAfter?: number; // multiplier on every freezing gate's `after` budget (default 1)
+  championFreeze?: { radius: number; seconds: number }; // champion launch freezes enemies near its landing
+}
+
+export type SimEventW2 =
+  | { type: 'gateFrozen'; gateId: string; x: number; z: number; duration: number }
+  | { type: 'gateChipped'; gateId: string; x: number; z: number; hp: number; maxHp: number }
+  | { type: 'gateThawed'; gateId: string; x: number; z: number; chipped: boolean } // chipped: broken open by units
+  | { type: 'iceWallHit'; id: string; x: number; z: number }
+  | { type: 'giantFell'; x: number; z: number; riders: number }
+  | { type: 'snowballBurst'; x: number; z: number; count: number }
+  | { type: 'unitsFrozen'; team: Team; x: number; z: number; radius: number; seconds: number };
+
+// Icons of the five World 2 Expedition upgrades. UpgradeIcon stays as it is (UI tables
+// are keyed by it): a World 2 upgrade sets `icon` to its nearest World 1 icon and
+// `iconW2` to its own art, which the UI draws instead when present.
+export type UpgradeIconW2 = 'gate-frost' | 'gate-rink' | 'mob-skates' | 'relic-cocoa' | 'champ-avalanche';
+export interface UpgradeDef {
+  iconW2?: UpgradeIconW2;
 }

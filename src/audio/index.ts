@@ -48,7 +48,7 @@ export {
 export interface PlayOptions {
   x?: number; // world x for stereo pan
   volume?: number; // 0..1, multiplies the sound's base volume
-  variant?: string; // 'barrage' | 'paratroopers' | 'marble' for 'ultimate'; 'sarge' | 'tank' | 'drummer' for 'championLaunch'
+  variant?: string; // 'barrage' | 'paratroopers' | 'marble' | 'blizzard' for 'ultimate'; 'sarge' | 'tank' | 'drummer' for 'championLaunch'
 }
 
 export interface GameAudio {
@@ -79,7 +79,17 @@ export interface GameAudio {
 
 // Sounds that get a little random pitch so repeats don't sound machine-gunned
 // (recorded takes always do; see samples.ts).
-export const JITTER = new Set<SoundId>(['shot', 'towerShot', 'blast', 'tap', 'gateGood', 'gateTrap']);
+export const JITTER = new Set<SoundId>([
+  'shot',
+  'towerShot',
+  'blast',
+  'tap',
+  'gateGood',
+  'gateTrap',
+  'iceChip',
+  'snowballBurst',
+  'lobHit',
+]);
 // Reverb send per sound: the musical stings and big moments get some room, while the
 // constant battle noise stays dry and close.
 export const SEND: Readonly<Partial<Record<SoundId, number>>> = {

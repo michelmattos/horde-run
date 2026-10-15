@@ -1,0 +1,11 @@
+{
+  "id": "w2",
+  "name": "Freezer",
+  "faction": "Snow Globe Gang",
+  "theme": "freezer",
+  "unlock": {
+    "world": "w1",
+    "stars": 15
+  },
+  "levels": ["2-1", "2-2", "2-3", "2-4", "2-5", "2-6", "2-7", "2-8", "2-9", "2-10"]
+}

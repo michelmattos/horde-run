@@ -23,9 +23,31 @@
 // meter charges an ultimate (barrage, paratroopers or marble). Mods still apply on top.
 // Without a loadout nothing of this runs, so the rand() sequence is unchanged. Cues for
 // the renderer and audio (shots, ultimates, death blasts) go to an optional array.
+//
+// Milestone 5 (World 2, concept §9.1): waves, the trickle mix and igloos send snowmen and
+// penguins (ENEMY_UNIT_STATS); an igloo releases its units at its front while it stands;
+// gusts are telegraphed (state.gust, cues) and then push the crowd through sim.setWind;
+// the Snow Globe Giant lobs snowballs at the densest part of your crowd, freezes every
+// gate on entering a phase with freezeGates and adds phase gusts. New gear: the Blizzard
+// ultimate freezes the enemy crowd, a mob slot may carry riders (the Giant), a snowball
+// cannon fires one rolling unit per shot, and mods.championFreeze freezes enemies where
+// the champion meets them. The new sim calls are optional (?.) so a fake sim still works,
+// and none of it runs on a World 1 level, whose rand() sequence stays the same.
 
-import type { BattleState, DefenderView, InputState, LevelDef, SimEvent, SimView } from '../contracts.ts';
-import { LAYOUT, SIM_DT, Team, UnitKind } from '../contracts.ts';
+import type {
+  BattleState,
+  DefenderDef,
+  DefenderView,
+  EnemyUnit,
+  GustDef,
+  IglooSpawnDef,
+  InputState,
+  LevelDef,
+  SimEvent,
+  SimView,
+} from '../contracts.ts';
+import { LAYOUT, SIM_DT, Team, UNIT_VARIANT, UnitKind } from '../contracts.ts';
+import { IGLOO_DEFAULTS, MIN_GUST_WARN } from './levels.ts';
 import type { BattleLoadout, MobSpec } from './loadout.ts';
 import { firingOrder } from './loadout.ts';
 
@@ -38,6 +60,8 @@ export interface BattleSpawnOpts {
   speed?: number;
   variant?: number;
   deathBlast?: { radius: number; damage: number };
+  riders?: number; // on death, releases this many single player mobs (the Giant)
+  roll?: { burstWeight: number; maxRadius: number }; // a rolling, growing snowball (player mob)
 }
 
 export interface BattleSim {
@@ -51,22 +75,35 @@ export interface BattleSim {
   takeBlasts?(out: { x: number; z: number; radius: number }[]): void;
   damageArea?(team: Team, x: number, z: number, radius: number, maxWeight: number): number;
   damageDefender?(index: number, amount: number): void;
+  // Milestone 5 (World 2)
+  setWind?(vx: number): void; // lateral wind in world units / s, + = right
+  freezeGate?(index: number, seconds: number, hp: number): void;
+  gateIce?(index: number): number; // remaining ice hp of a gate; 0 = not frozen
+  freezeUnits?(team: Team, x: number, z: number, radius: number, seconds: number): number;
 }
 
 // Things the renderer and audio react to. 'shot' per cannon shot; 'ultimate' when one
-// fires (marble: z is where it starts rolling and duration the roll time); 'blast' per
-// death blast in the sim.
+// fires (marble: z is where it starts rolling and duration the roll time; blizzard: the
+// whole lane, duration the freeze); 'blast' per death blast in the sim. World 2: 'lob'
+// when the Snow Globe Giant throws a snowball (it lands `flight` s later, then 'lobHit');
+// 'gustWarn' when a gust's telegraph starts (the push starts `seconds` later) and 'gust'
+// when the push starts; 'iglooRelease' when an igloo lets out `count` units.
 export type BattleCue =
   | {
       type: 'ultimate';
-      id: 'barrage' | 'paratroopers' | 'marble';
+      id: 'barrage' | 'paratroopers' | 'marble' | 'blizzard';
       x: number;
       z: number;
       radius: number;
       duration: number;
     }
   | { type: 'blast'; x: number; z: number; radius: number }
-  | { type: 'shot'; x: number; count: number };
+  | { type: 'shot'; x: number; count: number }
+  | { type: 'lob'; x: number; z: number; radius: number; flight: number }
+  | { type: 'lobHit'; x: number; z: number; radius: number }
+  | { type: 'gustWarn'; dir: -1 | 1; seconds: number }
+  | { type: 'gust'; dir: -1 | 1; duration: number }
+  | { type: 'iglooRelease'; id: string; x: number; z: number; count: number };
 
 // Battle input: the shared InputState plus the ultimate button (edge-triggered like the champion's).
 export type BattleInput = InputState & { ultimatePressed?: boolean };
@@ -110,6 +147,31 @@ export const ULTIMATE = {
   marbleSpeed: 12, // world units / s
   marbleStop: 6, // the marble stops this far before the enemy base (never hits it)
   marbleDefender: 0.5, // each defender it rolls over takes power x this
+} as const;
+
+// Enemy unit types (World 2). hp is per unit: a snowman cancels 4 weight of your crowd;
+// damage is what it does to your base. 'mob' is the World 1 soldier, spawned exactly as
+// before (no spawn options).
+export interface EnemyUnitStats {
+  hp: number;
+  damage: number;
+  speed: number;
+  radius: number;
+  variant: number;
+}
+export const ENEMY_UNIT_STATS: Readonly<Record<EnemyUnit, Readonly<EnemyUnitStats>>> = {
+  mob: { hp: 1, damage: 1, speed: 5, radius: LAYOUT.mobRadius, variant: UNIT_VARIANT.rifleman },
+  snowman: { hp: 4, damage: 3, speed: 3.2, radius: 0.42, variant: UNIT_VARIANT.snowman },
+  penguin: { hp: 1, damage: 1, speed: 8.5, radius: 0.24, variant: UNIT_VARIANT.penguin },
+};
+
+// World 2 battle rules.
+export const WORLD2 = {
+  iglooFront: 0.4, // igloo units appear this far in front of its footprint
+  iglooSpread: 0.6, // share of the igloo's half-width they spread over
+  lobCell: 2, // world units: grid cell for finding the densest part of the crowd
+  maxLobs: 8, // snowballs in flight at once
+  championFreezeAhead: 3, // championFreeze without an enemy in reach freezes this far ahead
 } as const;
 
 function clamp(v: number, lo: number, hi: number): number {
@@ -187,6 +249,36 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
   let marbleHit = 0;
   const blastScratch: { x: number; z: number; radius: number }[] = [];
 
+  // World 2, resolved once. A World 1 level leaves all of it empty.
+  const enemyOpts: Record<EnemyUnit, BattleSpawnOpts | undefined> = {
+    mob: undefined, // the World 1 soldier: spawned with no options, exactly as before
+    snowman: unitOpts(ENEMY_UNIT_STATS.snowman),
+    penguin: unitOpts(ENEMY_UNIT_STATS.penguin),
+  };
+  const trickleMix = level.trickleMix;
+  let trickleNo = 0; // trickle units sent, for the every-Nth mix
+  const igloos: Igloo[] = [];
+  (level.defenders ?? []).forEach((d, index) => {
+    if (d.spawn) igloos.push({ def: d, spawn: d.spawn, index, next: d.spawn.startAt ?? d.spawn.every });
+  });
+  const gusts: GustSource[] = (level.gusts ?? []).map((def) => gustSource(def, 0));
+  const hasGusts = gusts.length > 0 || phases.some((ph) => ph.gusts);
+  let wind = 0; // the wind last handed to the sim
+  if (hasGusts) state.gust = { dir: 0, warn: 0, active: false };
+  const hasLobs = phases.some((ph) => ph.lob);
+  let lobNext = Infinity; // battle time of the current phase's next lob
+  let lobCount = 0; // snowballs in flight: land time, where, how big, how hard
+  const lobT = new Float64Array(hasLobs ? WORLD2.maxLobs : 0);
+  const lobX = new Float64Array(lobT.length);
+  const lobZ = new Float64Array(lobT.length);
+  const lobR = new Float64Array(lobT.length);
+  const lobD = new Float64Array(lobT.length);
+  const cellsX = Math.max(1, Math.ceil(level.lane.width / WORLD2.lobCell));
+  const cellsZ = Math.max(1, Math.ceil(level.lane.length / WORLD2.lobCell));
+  const density = new Float64Array(hasLobs ? cellsX * cellsZ : 0);
+  const champFreeze = mods?.championFreeze;
+  if (loadout?.ultimate.id === 'blizzard') state.enemyFrozen = 0;
+
   function fire(): void {
     if (lo) {
       fireLoadout(lo);
@@ -223,7 +315,14 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
       const knights = knightEvery
         ? Math.floor((stats.mobsFired + n) / knightEvery) - Math.floor(stats.mobsFired / knightEvery)
         : 0;
-      if (n > knights) sim.spawn(Team.Player, UnitKind.Mob, cannonX, LAYOUT.cannonZ, n - knights, l.shotOpts[slot]);
+      if (l.roll && slot === 0 && n > knights) {
+        // Snowball cannon: one rolling unit; the rest of the shot's weight starts inside it
+        // (the sim rolls coincident lone mobs into the ball on its first step).
+        sim.spawn(Team.Player, UnitKind.Mob, cannonX, LAYOUT.cannonZ, 1, l.roll.ball);
+        if (n - knights > 1)
+          sim.spawn(Team.Player, UnitKind.Mob, cannonX, LAYOUT.cannonZ, n - knights - 1, l.roll.fill);
+      } else if (n > knights)
+        sim.spawn(Team.Player, UnitKind.Mob, cannonX, LAYOUT.cannonZ, n - knights, l.shotOpts[slot]);
       if (knights > 0) sim.spawn(Team.Player, UnitKind.Champion, cannonX, LAYOUT.cannonZ, knights, knightOpts);
     }
     stats.mobsFired += n;
@@ -266,6 +365,17 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
         z: l.paraZ,
         radius: ULTIMATE.paraSpread,
         duration: ULTIMATE.paraTime,
+      });
+    } else if (u.id === 'blizzard') {
+      sim.freezeUnits?.(Team.Enemy, 0, 0, Infinity, u.power);
+      state.enemyFrozen = u.power;
+      cues?.push({
+        type: 'ultimate',
+        id: u.id,
+        x: 0,
+        z: level.lane.length / 2,
+        radius: level.lane.width,
+        duration: u.power,
       });
     } else {
       marbleOn = true;
@@ -338,8 +448,10 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
     }
   }
 
-  function spawnEnemy(x: number): void {
-    sim.spawn(Team.Enemy, UnitKind.Mob, x, enemyZ, 1);
+  function spawnEnemy(x: number, unit: EnemyUnit = 'mob', z = enemyZ): void {
+    const o = enemyOpts[unit];
+    if (o) sim.spawn(Team.Enemy, UnitKind.Mob, x, z, 1, o);
+    else sim.spawn(Team.Enemy, UnitKind.Mob, x, z, 1);
   }
 
   function spawnEnemies(t: number): void {
@@ -349,7 +461,7 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
       if (done >= wave.count || t + EPS < wave.at) continue;
       const interval = wave.interval ?? DEFAULT_WAVE_INTERVAL;
       const due = interval > 0 ? Math.min(wave.count, Math.floor((t - wave.at) / interval + EPS) + 1) : wave.count;
-      for (let k = done; k < due; k++) spawnEnemy(wave.x + (rand() * 2 - 1) * wave.spread);
+      for (let k = done; k < due; k++) spawnEnemy(wave.x + (rand() * 2 - 1) * wave.spread, wave.unit);
       waveSpawned[w] = due;
     }
 
@@ -359,15 +471,191 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
       trickleAcc += perSecond * SIM_DT;
       while (trickleAcc >= 1 - EPS) {
         trickleAcc -= 1;
-        spawnAcrossBase(1);
+        const unit = trickleMix && ++trickleNo % trickleMix.every === 0 ? trickleMix.unit : 'mob';
+        spawnAcrossBase(1, unit);
       }
     }
   }
 
-  function spawnAcrossBase(count: number): void {
+  function spawnAcrossBase(count: number, unit: EnemyUnit = 'mob'): void {
     const x = state.enemyBaseX ?? level.enemyBase.x;
     const half = level.enemyBase.width / 2;
-    for (let k = 0; k < count; k++) spawnEnemy(x + (rand() * 2 - 1) * half);
+    for (let k = 0; k < count; k++) spawnEnemy(x + (rand() * 2 - 1) * half, unit);
+  }
+
+  // Igloos release their units at their front every `every` s while they stand; a
+  // destroyed igloo never releases again.
+  function stepIgloos(t: number): void {
+    for (const ig of igloos) {
+      if (t + EPS < ig.next) continue;
+      ig.next += ig.spawn.every;
+      const view = sim.defenders?.[ig.index];
+      if (view && view.hp <= 0) {
+        ig.next = Infinity;
+        continue;
+      }
+      const d = ig.def;
+      const half = ((d.width ?? IGLOO_DEFAULTS.width) / 2) * WORLD2.iglooSpread;
+      const z = d.z - IGLOO_DEFAULTS.depth / 2 - WORLD2.iglooFront;
+      for (let k = 0; k < ig.spawn.count; k++) spawnEnemy(d.x + (rand() * 2 - 1) * half, ig.spawn.unit, z);
+      cues?.push({ type: 'iglooRelease', id: d.id, x: d.x, z, count: ig.spawn.count });
+    }
+  }
+
+  // Gusts: the telegraph (state.gust.warn 0..1, a gustWarn cue) and then the push (sim
+  // wind, a gust cue). The first source pushing wins; else the furthest telegraph shows.
+  function stepGusts(t: number, playing: boolean): void {
+    const g = state.gust;
+    if (!g) return;
+    let dir: -1 | 0 | 1 = 0;
+    let warn = 0;
+    let active = false;
+    let force = 0;
+    if (playing) {
+      for (const src of gusts) {
+        const def = src.def;
+        if (t + EPS < src.start) continue;
+        const k = def.every ? Math.floor((t - src.start + EPS) / def.every) : 0;
+        const local = t - (src.start + k * (def.every ?? 0));
+        const telegraph = Math.max(def.warn, MIN_GUST_WARN);
+        if (local >= telegraph + def.duration - EPS) continue;
+        const d: -1 | 1 = (def.force < 0 ? -1 : 1) * (def.alternate && k % 2 === 1 ? -1 : 1) === 1 ? 1 : -1;
+        if (k > src.warned) {
+          src.warned = k;
+          cues?.push({ type: 'gustWarn', dir: d, seconds: telegraph });
+        }
+        if (local + EPS >= telegraph) {
+          if (k > src.pushed) {
+            src.pushed = k;
+            cues?.push({ type: 'gust', dir: d, duration: def.duration });
+          }
+          if (!active) {
+            active = true;
+            dir = d;
+            warn = 1;
+            force = Math.abs(def.force) * d;
+          }
+        } else if (!active && local / telegraph >= warn) {
+          dir = d;
+          warn = Math.min(1, local / telegraph);
+        }
+      }
+    }
+    g.dir = dir;
+    g.warn = warn;
+    g.active = active;
+    if (force !== wind) {
+      wind = force;
+      sim.setWind?.(force);
+    }
+  }
+
+  // Snow Globe Giant: throws a snowball at the densest part of your crowd every `every`
+  // s of a lob phase; it lands `warn` s later and removes up to `damage` weight there.
+  function stepLobs(t: number): void {
+    for (let i = 0; i < lobCount;) {
+      if (t + EPS < lobT[i]) {
+        i++;
+        continue;
+      }
+      sim.damageArea?.(Team.Player, lobX[i], lobZ[i], lobR[i], lobD[i]);
+      cues?.push({ type: 'lobHit', x: lobX[i], z: lobZ[i], radius: lobR[i] });
+      lobCount--;
+      lobT[i] = lobT[lobCount];
+      lobX[i] = lobX[lobCount];
+      lobZ[i] = lobZ[lobCount];
+      lobR[i] = lobR[lobCount];
+      lobD[i] = lobD[lobCount];
+    }
+    const lob = phases.length ? phases[phase].lob : undefined;
+    if (!lob || t + EPS < lobNext) return;
+    lobNext += lob.every;
+    if (lobCount >= lobT.length || !densestCrowd()) return;
+    lobT[lobCount] = t + lob.warn;
+    lobX[lobCount] = aimX;
+    lobZ[lobCount] = aimZ;
+    lobR[lobCount] = lob.radius;
+    lobD[lobCount] = lob.damage;
+    lobCount++;
+    cues?.push({ type: 'lob', x: aimX, z: aimZ, radius: lob.radius, flight: lob.warn });
+  }
+
+  // Weighted centre of the player crowd around the heaviest 3x3 block of grid cells, into
+  // aimX / aimZ. False when there is no player crowd on the lane.
+  let aimX = 0;
+  let aimZ = 0;
+  function densestCrowd(): boolean {
+    const v = sim.view;
+    const cell = WORLD2.lobCell;
+    const half = level.lane.width / 2;
+    density.fill(0);
+    const cellOf = (i: number): number => {
+      const cx = clamp(Math.floor((v.posX[i] + half) / cell), 0, cellsX - 1);
+      const cz = clamp(Math.floor(v.posZ[i] / cell), 0, cellsZ - 1);
+      return cz * cellsX + cx;
+    };
+    for (let i = 0; i < v.count; i++) {
+      if (v.team[i] === Team.Player && v.posZ[i] > LAYOUT.cannonZ) density[cellOf(i)] += v.weight[i];
+    }
+    let best = -1;
+    let bestW = 0;
+    for (let cz = 0; cz < cellsZ; cz++) {
+      for (let cx = 0; cx < cellsX; cx++) {
+        let w = 0;
+        for (let dz = -1; dz <= 1; dz++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const x = cx + dx;
+            const z = cz + dz;
+            if (x >= 0 && x < cellsX && z >= 0 && z < cellsZ) w += density[z * cellsX + x];
+          }
+        }
+        if (w > bestW) {
+          bestW = w;
+          best = cz * cellsX + cx;
+        }
+      }
+    }
+    if (best < 0) return false;
+    const bx = best % cellsX;
+    const bz = (best - bx) / cellsX;
+    let sw = 0;
+    let sx = 0;
+    let sz = 0;
+    for (let i = 0; i < v.count; i++) {
+      if (v.team[i] !== Team.Player || v.posZ[i] <= LAYOUT.cannonZ) continue;
+      const c = cellOf(i);
+      const cx = c % cellsX;
+      const cz = (c - cx) / cellsX;
+      if (Math.abs(cx - bx) > 1 || Math.abs(cz - bz) > 1) continue;
+      sw += v.weight[i];
+      sx += v.posX[i] * v.weight[i];
+      sz += v.posZ[i] * v.weight[i];
+    }
+    aimX = sx / sw;
+    aimZ = sz / sw;
+    return true;
+  }
+
+  // A boss phase's one-off effects: freezing every gate, starting its lobs and gusts.
+  function enterPhase(t: number): void {
+    const ph = phases[phase];
+    if (ph.freezeGates) {
+      for (let i = 0; i < level.gates.length; i++) sim.freezeGate?.(i, ph.freezeGates.duration, ph.freezeGates.hp);
+    }
+    lobNext = ph.lob ? t + ph.lob.every : Infinity;
+    if (ph.gusts) gusts.push(gustSource(ph.gusts, t));
+  }
+
+  // Where a launched champion meets the enemy: the nearest enemy in its column ahead.
+  function championFreezeAt(x: number, radius: number, seconds: number): void {
+    const v = sim.view;
+    let z = Infinity;
+    for (let i = 0; i < v.count; i++) {
+      if (v.team[i] === Team.Enemy && v.posZ[i] > LAYOUT.cannonZ && Math.abs(v.posX[i] - x) <= radius && v.posZ[i] < z)
+        z = v.posZ[i];
+    }
+    if (z === Infinity) z = LAYOUT.cannonZ + WORLD2.championFreezeAhead + radius;
+    sim.freezeUnits?.(Team.Enemy, x, z, radius, seconds);
   }
 
   // Advances the strafe by one step and tells the sim where the base is.
@@ -383,7 +671,7 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
   }
 
   // Enters every phase whose threshold the base HP has fallen below.
-  function checkPhase(events: SimEvent[]): void {
+  function checkPhase(events: SimEvent[], t: number): void {
     const frac = state.enemyBaseHp / state.enemyBaseMaxHp;
     while (phase + 1 < phases.length && frac < phases[phase + 1].belowHp) {
       phase++;
@@ -392,6 +680,7 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
       state.bossPhase = phase;
       events.push({ type: 'bossPhase', phase, x: state.enemyBaseX ?? level.enemyBase.x, z: level.lane.length });
       if (ph.summon) spawnAcrossBase(ph.summon);
+      enterPhase(t);
     }
   }
 
@@ -407,6 +696,7 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
 
     if (playing) {
       if (steps === 1 && startCrowd > 0) spawnStartCrowd();
+      if (steps === 1 && phases.length) enterPhase(0);
       shotAcc += shotInc;
       if (input.firing) {
         while (shotAcc >= 1 - EPS) {
@@ -430,6 +720,7 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
           });
           if (echo > 0) sim.spawn(Team.Player, UnitKind.Mob, cannonX, LAYOUT.cannonZ - ECHO_BEHIND, echo, echoOpts);
         }
+        if (champFreeze) championFreezeAt(cannonX, champFreeze.radius, champFreeze.seconds);
         state.championCharge = 0;
         stats.championsLaunched++;
         events.push({ type: 'championLaunched', x: cannonX });
@@ -445,7 +736,11 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
       }
 
       spawnEnemies(t);
+      if (igloos.length) stepIgloos(t);
+      if (hasLobs) stepLobs(t);
     }
+    if (hasGusts) stepGusts(t, playing);
+    if (state.enemyFrozen) state.enemyFrozen = Math.max(0, state.enemyFrozen - SIM_DT);
 
     moveBase();
     const first = events.length;
@@ -462,7 +757,7 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
         if (e.team === Team.Enemy) state.enemyBaseHp = Math.max(0, state.enemyBaseHp - e.damage);
         else state.playerBaseHp = Math.max(0, state.playerBaseHp - e.damage);
       }
-      if (state.enemyBaseHp > 0) checkPhase(events);
+      if (state.enemyBaseHp > 0) checkPhase(events, t);
     }
 
     state.time = sim.time;
@@ -512,6 +807,7 @@ interface ResolvedLoadout {
   paraZ: number;
   marbleEnd: number;
   ultimate: BattleLoadout['ultimate'];
+  roll?: { ball: BattleSpawnOpts; fill: BattleSpawnOpts }; // snowball cannon: the ball and its starting weight
 }
 
 function resolveLoadout(level: LevelDef, l: BattleLoadout): ResolvedLoadout {
@@ -529,6 +825,7 @@ function resolveLoadout(level: LevelDef, l: BattleLoadout): ResolvedLoadout {
       spread: sp,
     };
     if (spec.deathBlast) o.deathBlast = { radius: spec.deathBlast.radius, damage: spec.deathBlast.damage };
+    if (spec.riders) o.riders = spec.riders;
     return o;
   };
   // Fixed counts stay fractional (progression scales them by the cannon); see slotCount.
@@ -556,7 +853,43 @@ function resolveLoadout(level: LevelDef, l: BattleLoadout): ResolvedLoadout {
     paraZ: ULTIMATE.paraZ * level.lane.length,
     marbleEnd: level.lane.length - ULTIMATE.marbleStop,
     ultimate: l.ultimate,
+    ...(l.shot && a.kind === 'mob'
+      ? {
+          roll: {
+            ball: {
+              ...opts(a, 0),
+              variant: UNIT_VARIANT.snowball,
+              roll: { burstWeight: l.shot.burstWeight, maxRadius: l.shot.maxRadius },
+            },
+            fill: opts(a, 0),
+          },
+        }
+      : {}),
   };
+}
+
+// Spawn options of an enemy unit type (spawned one at a time, so per-weight = per unit).
+function unitOpts(u: EnemyUnitStats): BattleSpawnOpts {
+  return { hp: u.hp, damage: u.damage, speed: u.speed, radius: u.radius, variant: u.variant };
+}
+
+interface Igloo {
+  def: DefenderDef;
+  spawn: IglooSpawnDef;
+  index: number; // into sim.defenders (level order)
+  next: number; // battle time of the next release
+}
+
+// One gust schedule: `start` is the battle time its `at` counts from (0, or a boss
+// phase's start); warned / pushed are the last occurrences already cued.
+interface GustSource {
+  def: GustDef;
+  start: number;
+  warned: number;
+  pushed: number;
+}
+function gustSource(def: GustDef, from: number): GustSource {
+  return { def, start: from + def.at, warned: -1, pushed: -1 };
 }
 
 // A weight of mobs as slot-1 units: itself for a mob slot, weight / hp (at least one) for a heavy slot.

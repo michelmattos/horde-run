@@ -1,9 +1,17 @@
-// Inline SVG stickers for the Expedition screens: 20 upgrade icons (one per
-// UpgradeIcon key, each a figure on a disc tinted by its category) and 5 run-map node
+// Inline SVG stickers for the Expedition screens: 25 upgrade icons (one per UpgradeIcon
+// and UpgradeIconW2 key, each a figure on a disc tinted by its category; an upgrade with
+// an iconW2 is drawn with it, see upgradeIconOf) and 5 run-map node
 // icons (figure only; the node badge is the disc). Same two-pass style as
 // src/ui/icons.ts: a wide ink pass for the die-cut outline, then the fill colour.
 // Shapes are chunky so they read at 28 px. Every icon is decorative (aria-hidden).
-import type { RunNodeKind, UpgradeCategory, UpgradeIcon, UpgradeRarity } from '../../contracts.ts';
+import type {
+  RunNodeKind,
+  UpgradeCategory,
+  UpgradeDef,
+  UpgradeIcon,
+  UpgradeIconW2,
+  UpgradeRarity,
+} from '../../contracts.ts';
 import { HEX } from '../../render/look/palette.ts';
 import { championIcon, fortIcon, soldierIcon } from '../icons.ts';
 
@@ -14,6 +22,9 @@ const PALE_YELLOW = '#fff0a0';
 const WOOD = '#9a6236';
 const WOOD_L = '#c08250';
 const GOLD_D = '#d08f00';
+const ICE = '#dff3fc';
+const ICE_D = '#8fcbea';
+const SNOW = '#f6fbfe';
 
 // Ribbon / card tint per rarity: common cream-blue, rare green, epic purple.
 export const RARITY_COLORS: Record<UpgradeRarity, { face: string; edge: string; label: string }> = {
@@ -114,7 +125,21 @@ function disc(cat: UpgradeCategory): string {
 
 const X_GLYPH = 'M13 26 L25 42 M25 26 L13 42';
 
-const UPGRADE_ART: Record<UpgradeIcon, { cat: UpgradeCategory; body: () => string }> = {
+// Six-armed snowflake.
+function flakePath(cx: number, cy: number, r: number): string {
+  let d = '';
+  for (let i = 0; i < 3; i++) {
+    const a = (i * Math.PI) / 3 + Math.PI / 2;
+    const dx = Math.cos(a) * r;
+    const dy = Math.sin(a) * r;
+    d += `M${(cx - dx).toFixed(2)} ${(cy - dy).toFixed(2)} L${(cx + dx).toFixed(2)} ${(cy + dy).toFixed(2)} `;
+  }
+  return d;
+}
+
+export type UpgradeArt = UpgradeIcon | UpgradeIconW2;
+
+const UPGRADE_ART: Record<UpgradeArt, { cat: UpgradeCategory; body: () => string }> = {
   // ----- Gate -----
   'gate-x2': {
     cat: 'gate',
@@ -309,14 +334,108 @@ const UPGRADE_ART: Record<UpgradeIcon, { cat: UpgradeCategory; body: () => strin
     cat: 'relic',
     body: () => nested(fortIcon(44, CREAM, YELLOW), 10, 9),
   },
+  // ----- World 2 -----
+  // An icy x3 with icicles hanging off it and a snowflake.
+  'gate-frost': {
+    cat: 'gate',
+    body: () =>
+      sticker(
+        [
+          { d: X_GLYPH, w: 5.5, open: true },
+          { d: 'M31 17 L47 17 L39 27 C50 26 52 45 40 45.5 C35 45.8 32 43.5 31 41', w: 5.5, open: true },
+        ],
+        ICE,
+      ) +
+      sticker(
+        [
+          { d: 'M14 46 L15.5 52 L17 46 Z', w: 1 },
+          { d: 'M22 46 L23.5 54 L25 46 Z', w: 1 },
+          { d: 'M36 48 L37.5 54 L39 48 Z', w: 1 },
+        ],
+        SNOW,
+        1.5,
+      ) +
+      sticker([{ d: flakePath(52, 12, 6), w: 2.2, open: true }], SNOW, 1.6),
+  },
+  // A little ice rink: soldiers' tracks fanning out from the bottom.
+  'gate-rink': {
+    cat: 'gate',
+    body: () =>
+      sticker([{ d: 'M8 38 C8 26 56 26 56 38 C56 50 8 50 8 38 Z', w: 2 }], ICE) +
+      detail('M12 37.5 C12 30 52 30 52 37.5', '#ffffff', 2.4) +
+      detail('M20 44 C24 40 28 40 32 42 M36 41 C41 38 45 39 47 42', ICE_D, 2) +
+      sticker(
+        [
+          { d: 'M32 30 L32 12 M27 17 L32 12 L37 17', w: 3.6, open: true },
+          { d: 'M28 31 L16 17 M16 23.5 L16 17 L22.5 17', w: 3.6, open: true },
+          { d: 'M36 31 L48 17 M48 23.5 L48 17 L41.5 17', w: 3.6, open: true },
+        ],
+        CREAM,
+        1.8,
+      ),
+  },
+  // An ice skate: cream boot, laces, a tin blade.
+  'mob-skates': {
+    cat: 'mob',
+    body: () =>
+      sticker([{ d: 'M13 49 L52 49 C55 49 56 46 54 44', w: 3.4, open: true }], '#e8eef2') +
+      sticker([{ d: 'M20 44 L20 45 M44 44 L44 45', w: 4, open: true }], '#aeb7bf', 1.6) +
+      sticker([{ d: 'M18 12 L33 12 L34 29 C42 30 50 33 50 38 L50 43 L16 43 C16 34 17 22 18 12 Z', w: 2 }], CREAM) +
+      detail('M16.5 39 L50 39', HEX.uiRed, 3) +
+      detail('M23 17 L30 20 M23 22 L30 25 M23 27 L30 30', INK, 1.8) +
+      `<ellipse cx="22" cy="18" rx="2.6" ry="5" fill="#fff" opacity=".6"/>`,
+  },
+  // A red mug of hot cocoa, a marshmallow, curls of steam.
+  'relic-cocoa': {
+    cat: 'relic',
+    body: () =>
+      sticker(
+        [
+          { d: 'M24 6 C21 10 27 12 24 16', w: 2.6, open: true },
+          { d: 'M34 4 C31 8 37 10 34 15', w: 2.6, open: true },
+        ],
+        CREAM,
+        1.5,
+      ) +
+      sticker([{ d: 'M45 28 C55 27 55 43 44 42', w: 4.6, open: true }], HEX.uiRed) +
+      sticker([{ d: 'M14 22 L48 22 L45 48 C44.5 52 41 54 37 54 L25 54 C21 54 17.5 52 17 48 Z', w: 2 }], HEX.uiRed) +
+      sticker([{ d: 'M15.5 23.5 C22 27 40 27 46.5 23.5 C40 20 22 20 15.5 23.5 Z', w: 1.2 }], '#7a4a2a', 1.4) +
+      sticker([{ d: 'M30 19 L38 19 L38 25 L30 25 Z', w: 1.4 }], SNOW, 1.6) +
+      detail('M21 31 C21.5 40 23 46 26 49', '#fff', 2.6) +
+      sticker([{ d: flakePath(31, 38, 5), w: 2, open: true }], SNOW, 1.4),
+  },
+  // Avalanche: a curling wave of snow carrying tumbling snowballs.
+  'champ-avalanche': {
+    cat: 'champion',
+    body: () =>
+      sticker(
+        [
+          {
+            d: 'M8 50 C10 34 20 18 36 14 C47 11 55 17 54 25 C53 32 44 33 42 27 C41 23 45 21 47 23 C42 30 30 34 26 50 Z',
+            w: 2,
+          },
+        ],
+        SNOW,
+      ) +
+      detail('M14 47 C17 36 24 26 34 21', ICE_D, 2.6) +
+      sticker([{ d: circle(39, 44, 6.5), w: 1 }], SNOW, 2.2) +
+      sticker([{ d: circle(52, 47, 4.5), w: 1 }], SNOW, 2) +
+      detail('M35 46 C37 48.5 41 48.5 43.5 46', ICE_D, 1.8) +
+      sticker([{ d: flakePath(52, 9, 5), w: 2, open: true }], ICE, 1.4),
+  },
 };
 
-export function upgradeIconSvg(icon: UpgradeIcon, size: number | string): string {
+// The art an upgrade card draws: the World 2 sticker when the upgrade has one.
+export function upgradeIconOf(def: Pick<UpgradeDef, 'icon' | 'iconW2'>): UpgradeArt {
+  return def.iconW2 ?? def.icon;
+}
+
+export function upgradeIconSvg(icon: UpgradeArt, size: number | string): string {
   const art = UPGRADE_ART[icon];
   return wrap(disc(art.cat) + art.body(), size, `hx-ico hx-ico-${icon}`);
 }
 
-export function upgradeCategoryOf(icon: UpgradeIcon): UpgradeCategory {
+export function upgradeCategoryOf(icon: UpgradeArt): UpgradeCategory {
   return UPGRADE_ART[icon].cat;
 }
 

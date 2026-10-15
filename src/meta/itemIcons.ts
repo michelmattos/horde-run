@@ -1,4 +1,5 @@
-// Inline SVG stickers for the 13 loadout items (cannons, mobs, champions, ultimates),
+// Inline SVG stickers for the 16 loadout items (cannons, mobs, champions, ultimates; the
+// Snowball Launcher, the Giant and Blizzard came with World 2),
 // in the same two-pass sticker style as src/ui/icons.ts and src/ui/expedition/icons.ts:
 // a wide ink pass for the die-cut outline, then the fill colour, on a plastic disc tinted
 // by the item's slot (cannon tin grey, mob army green, champion orange, ultimate purple).
@@ -16,6 +17,8 @@ const BRASS = HEX.brass;
 const TIN = HEX.tin;
 const RED = HEX.toyRed;
 const RUBBER = '#4a4d55';
+const SNOW = '#f4f9fc';
+const SNOW_SHADE = '#b9dcef';
 
 export const SLOT_COLORS: Record<ItemSlot, { c1: string; c2: string; c3: string }> = {
   cannon: { c1: '#c3cbd2', c2: '#7b858e', c3: '#4a535b' },
@@ -78,6 +81,31 @@ function disc(slot: ItemSlot): string {
   );
 }
 
+// A packed snowball: white with a cool shaded underside and a glint.
+function snowball(cx: number, cy: number, r: number): string {
+  return (
+    sticker([{ d: circle(cx, cy, r), w: 1 }], SNOW, 2.2) +
+    detail(
+      `M${cx - r * 0.8} ${cy + r * 0.25} C${cx - r * 0.4} ${cy + r * 0.85} ${cx + r * 0.5} ${cy + r * 0.85} ${cx + r * 0.85} ${cy + r * 0.2}`,
+      SNOW_SHADE,
+      Math.max(1.6, r * 0.32),
+    ) +
+    detail(circle(cx - r * 0.35, cy - r * 0.35, r * 0.2), '#fff')
+  );
+}
+
+// A six-armed snowflake.
+function flake(cx: number, cy: number, r: number, color: string): string {
+  let d = '';
+  for (let i = 0; i < 3; i++) {
+    const a = (i * Math.PI) / 3 + Math.PI / 2;
+    const dx = Math.cos(a) * r;
+    const dy = Math.sin(a) * r;
+    d += `M${(cx - dx).toFixed(2)} ${(cy - dy).toFixed(2)} L${(cx + dx).toFixed(2)} ${(cy + dy).toFixed(2)} `;
+  }
+  return sticker([{ d, w: Math.max(1.6, r * 0.38), open: true }], color, 1.6);
+}
+
 // A spoked toy wheel (wood rim, brass hub).
 function wheel(cx: number, cy: number, r: number): string {
   return (
@@ -133,6 +161,19 @@ const ART: Record<string, { slot: ItemSlot; body: () => string }> = {
       detail(`${circle(59, 15, 2)} ${circle(61, 23, 1.6)} ${circle(55, 9, 1.6)}`, CREAM) +
       wheel(25, 45, 8.5),
   },
+  // A stubby green mortar lobbing snowballs that grow as they roll.
+  'snowball-launcher': {
+    slot: 'cannon',
+    body: () =>
+      sticker([{ d: 'M14 48 L28 42', w: 6, open: true }], HEX.greenDark) +
+      sticker([{ d: 'M19 44 L34 30', w: 13, open: true }], HEX.green) +
+      sticker([{ d: 'M33.5 30.5 L36 28', w: 16, open: true }], BRASS) +
+      detail('M22 39 L31 31', '#fff', 2.2, 0.35) +
+      snowball(42, 19, 5) +
+      snowball(51, 31, 7) +
+      detail('M44 44 C47 46 51 46 54 44', SNOW, 2.2, 0.85) +
+      wheel(24, 46, 8),
+  },
   // ----- Mobs -----
   rifleman: {
     slot: 'mob',
@@ -173,6 +214,14 @@ const ART: Record<string, { slot: ItemSlot; body: () => string }> = {
       detail('M19 33 C20 27 25 24 30 24', '#fff', 3, 0.45) +
       detail(circle(23, 31, 1.8), '#fff', 0, 0.7) +
       detail('M16 42 C21 49 33 52 41 47', CREAM, 3.4, 0.9),
+  },
+  // The Giant: a big soldier striding with two little riders on his shoulders.
+  giant: {
+    slot: 'mob',
+    body: () =>
+      nested(soldierIcon(48, CREAM), 8, 17) +
+      nested(soldierIcon(22, CREAM), 10, 4) +
+      nested(soldierIcon(22, CREAM), 27, 4, ' scale(-1 1) translate(-22 0)'),
   },
   // ----- Champions -----
   sarge: {
@@ -263,6 +312,26 @@ const ART: Record<string, { slot: ItemSlot; body: () => string }> = {
       detail('M27 46 C33 47 44 46 49 38', '#3f7fc0', 3, 0.7) +
       detail('M24 28 C26 22 32 19 37 19', '#fff', 3.4, 0.75) +
       detail(circle(28, 25, 2), '#fff'),
+  },
+  // Blizzard: a puffy snow cloud dropping snowflakes over an iced-up enemy.
+  blizzard: {
+    slot: 'ultimate',
+    body: () =>
+      sticker(
+        [
+          {
+            d: 'M13 30 C8 30 7 22 13 21 C13 14 22 12 25 17 C28 9 41 9 43 17 C50 14 57 20 53 27 C56 31 52 34 48 33 L16 33 C14.5 33 13.5 31.5 13 30 Z',
+            w: 2,
+          },
+        ],
+        SNOW,
+      ) +
+      detail('M18 29 C26 31 40 31 49 29', SNOW_SHADE, 2.6) +
+      detail('M20 19 C22 16 26 15 28 16.5', '#fff', 2.4) +
+      flake(20, 43, 5, SNOW) +
+      flake(34, 50, 6, SNOW) +
+      flake(48, 42, 5, SNOW) +
+      detail('M9 41 C12 39 14 41 12 44 M53 51 C56 49 58 51 56 54', '#d9f0fb', 2, 0.8),
   },
 };
 

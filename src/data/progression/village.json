@@ -4,21 +4,21 @@
       "id": "barracks",
       "name": "Barracks",
       "text": "Bunks for reserve troops who join the start of every battle.",
-      "perk": { "type": "startCrowd", "perTier": 4 },
+      "perk": { "type": "startCrowd", "perTier": 2 },
       "tiers": [{ "cost": 60 }, { "cost": 150, "after": "1-5" }, { "cost": 300, "after": "1-10" }]
     },
     {
       "id": "walls",
       "name": "Block Walls",
       "text": "Building-block ramparts that toughen your base.",
-      "perk": { "type": "baseHp", "perTier": 0.05 },
+      "perk": { "type": "baseHp", "perTier": 0.03 },
       "tiers": [{ "cost": 60 }, { "cost": 150, "after": "1-5" }, { "cost": 300, "after": "1-10" }]
     },
     {
       "id": "workshop",
       "name": "Workshop",
       "text": "Tinkerers wind up your champion a little faster.",
-      "perk": { "type": "championCharge", "perTier": 0.95 },
+      "perk": { "type": "championCharge", "perTier": 0.98 },
       "tiers": [{ "cost": 60 }, { "cost": 150, "after": "1-5" }, { "cost": 300, "after": "1-10" }]
     },
     {

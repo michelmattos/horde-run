@@ -5,8 +5,8 @@ import type { SaveData } from '../contracts.ts';
 
 // ---------- Battle loadout (shared with the battle task) ----------
 
-import type { BattleLoadout, ChampionSpec, MobSpec, UltimateSpec } from '../game/loadout.ts';
-export type { BattleLoadout, ChampionSpec, MobSpec, UltimateSpec };
+import type { BattleLoadout, ChampionSpec, MobSpec, ShotSpec, UltimateSpec } from '../game/loadout.ts';
+export type { BattleLoadout, ChampionSpec, MobSpec, ShotSpec, UltimateSpec };
 
 // ---------- Catalog ----------
 
@@ -20,11 +20,13 @@ export type UnlockRule =
   | { type: 'expeditionWins'; count: number }
   | { type: 'buy'; price: number; after?: string };
 
-// Cannon stats are multipliers on LevelDef.cannon; shotSpread sets mods.shotSpread.
+// Cannon stats are multipliers on LevelDef.cannon; shotSpread sets mods.shotSpread; shot
+// (the Snowball Launcher) goes to BattleLoadout.shot.
 export interface CannonStats {
   fireRate: number;
   unitsPerShot: number;
   shotSpread?: number;
+  shot?: ShotSpec;
 }
 export type MobStats = Omit<MobSpec, 'id' | 'variant' | 'kind'>;
 export type ChampionStats = Omit<ChampionSpec, 'id' | 'variant'>;

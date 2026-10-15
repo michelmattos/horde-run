@@ -10,6 +10,13 @@
 //   back    the boss phase: brass rings and sparks
 //
 //   node scripts/preview.mjs effects 5212
+//
+// Variant 'world2' (Milestone 5) loops the Freezer effects instead: a boss snowball lob
+// (floor marker filling, the ball arcing in, the snow burst), snowball pops, a giant's
+// fall, a gate freezing / shattering / melting, ice-wall chips, an igloo's snow debris
+// and a steady gust of wind streaks and drifting snow.
+//
+//   node scripts/preview.mjs effects 5212 --variant=world2
 import type { Scene } from '@babylonjs/core/scene';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import type { Mesh } from '@babylonjs/core/Meshes/mesh';
@@ -27,6 +34,7 @@ export const info: ModelInfo = {
   height: 3,
   triangleBudget: 600,
   gameZ: 20,
+  variants: ['all', 'world2'],
 };
 
 interface Timer {
@@ -35,7 +43,8 @@ interface Timer {
   n: number;
 }
 
-export function preview(scene: Scene, look: Look, _opts: PreviewOptions): PreviewResult {
+export function preview(scene: Scene, look: Look, opts: PreviewOptions): PreviewResult {
+  if (opts.variant === 'world2') return previewWorld2(scene, look);
   const root = new TransformNode('effectsPreviewRoot', scene);
   const fx = new Effects(scene, look);
   fx.root.parent = root;
@@ -84,6 +93,69 @@ export function preview(scene: Scene, look: Look, _opts: PreviewOptions): Previe
     dispose() {
       fx.dispose();
       root.dispose();
+    },
+  };
+}
+
+function previewWorld2(scene: Scene, look: Look): PreviewResult {
+  const root = new TransformNode('effectsW2PreviewRoot', scene);
+  const old = look.theme;
+  look.setTheme('freezer');
+  const fx = new Effects(scene, look);
+  fx.root.parent = root;
+  fx.setGustArea(4);
+  const frame: Mesh = CreateBox('effectsFrame', { width: 9, height: 3, depth: 7 }, scene);
+  frame.position.y = 1.5;
+  frame.isVisible = false;
+  frame.isPickable = false;
+  frame.parent = root;
+  const FLIGHT = 1.4;
+  const timers: Record<string, Timer> = {
+    lob: { every: 1.8, t: 1.75, n: 0 },
+    burst: { every: 0.7, t: 0.5, n: 0 },
+    giant: { every: 3.2, t: 2.5, n: 0 },
+    gate: { every: 2.4, t: 2.3, n: 0 },
+    wall: { every: 0.3, t: 0, n: 0 },
+    igloo: { every: 2.8, t: 1.2, n: 0 },
+  };
+  const due = (tm: Timer, dt: number): boolean => {
+    tm.t += dt;
+    if (tm.t < tm.every) return false;
+    tm.t -= tm.every;
+    tm.n++;
+    return true;
+  };
+  let pending = -1;
+  let px = 0;
+  return {
+    root,
+    update(_time, dt) {
+      fx.setGust(1, 0, true);
+      if (due(timers.lob, dt)) {
+        px = -1.5 + (timers.lob.n % 3) * 1.5;
+        fx.lob(px, -1.2, 1.3, FLIGHT, 0, 4, 4);
+        pending = FLIGHT;
+      }
+      if (pending > 0) {
+        pending -= dt;
+        if (pending <= 0) fx.lobHit(px, -1.2, 1.3);
+      }
+      if (due(timers.burst, dt)) fx.snowballBurst(-3 + (timers.burst.n % 2) * 0.8, 1.5, 3);
+      if (due(timers.giant, dt)) fx.giantFell(3, 2);
+      if (due(timers.gate, dt)) {
+        const k = timers.gate.n % 3;
+        if (k === 0) fx.gateFrozen(0, 0.5, 3.4);
+        else if (k === 1) fx.iceShatter(0, 0.5, 3.4);
+        else fx.meltDrips(0, 0.5, 3.4);
+      }
+      if (due(timers.wall, dt)) fx.iceWallHit('w' + (timers.wall.n % 2), -3.4, -2.5);
+      if (due(timers.igloo, dt)) fx.snowDebris(3.2, -2.2, 3);
+      fx.update(dt);
+    },
+    dispose() {
+      fx.dispose();
+      root.dispose();
+      look.setTheme(old);
     },
   };
 }

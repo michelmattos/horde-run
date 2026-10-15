@@ -33,7 +33,7 @@ import { createSim } from './sim/index.ts';
 import type { Sim } from './sim/index.ts';
 import { createBattle } from './game/battle.ts';
 import type { Battle, BattleCue } from './game/battle.ts';
-import { getLevel, getLevelById, getWorld } from './game/levels.ts';
+import { WORLDS, getLevel, getLevelById } from './game/levels.ts';
 import { evaluateStars } from './game/stars.ts';
 import { createRenderer } from './render/index.ts';
 import type { RenderStats } from './render/index.ts';
@@ -47,7 +47,7 @@ import { isLandscapeTouch, watchInterruptions } from './core/lifecycle.ts';
 import type { InterruptReason } from './core/lifecycle.ts';
 import { createHaptics } from './core/haptics.ts';
 import { registerServiceWorker } from './core/pwa.ts';
-import { loadGame, recordResult, writeGame } from './core/save.ts';
+import { isWorldUnlocked, loadGame, recordResult, writeGame } from './core/save.ts';
 import type { GameData } from './core/save.ts';
 import { planRecovery, readRecovery, takeRecoveryTarget, writeRecovery } from './core/recovery.ts';
 import type { RecoveryTarget } from './core/recovery.ts';
@@ -189,12 +189,6 @@ function createEngine(): Engine {
   }
 }
 
-const world: WorldDef = getWorld('w1') ?? {
-  id: 'w1',
-  name: 'Bedroom Floor',
-  faction: 'Tan Army',
-  levels: [getLevel(0).id],
-};
 const levelDef = (id: string): LevelDef => getLevelById(id) ?? getLevel(0);
 
 const loading = createLoadingScreen();
@@ -226,8 +220,10 @@ function commitProfile(p: Profile): void {
 }
 
 const map = createWorldMap(app, {
-  world,
-  levels: world.levels.map((id) => ({ id, name: levelDef(id).name, boss: !!levelDef(id).boss })),
+  worlds: WORLDS.map((w: WorldDef) => ({
+    world: w,
+    levels: w.levels.map((id) => ({ id, name: levelDef(id).name, boss: !!levelDef(id).boss })),
+  })),
   onPlay: (id) => openLevelCard(id),
   onSaveReplaced: (s) => {
     save = s;
@@ -312,9 +308,16 @@ const cues: BattleCue[] = []; // battle cues (shots, blasts, ultimates) since th
 // The campaign battle's loadout (undefined in the Expedition: no ultimate button there).
 let battleLoadout: BattleLoadout | undefined;
 
+// The level after `id`: the next one in its world, or the first of the next world once
+// that world is open (World 1's boss leads into World 2 when the stars are there).
 function nextLevelId(id: string): string | undefined {
-  const i = world.levels.indexOf(id);
-  return i >= 0 && i + 1 < world.levels.length ? world.levels[i + 1] : undefined;
+  const wi = WORLDS.findIndex((w) => w.levels.includes(id));
+  if (wi < 0) return undefined;
+  const levels = WORLDS[wi].levels;
+  const i = levels.indexOf(id);
+  if (i + 1 < levels.length) return levels[i + 1];
+  const nextWorld = WORLDS[wi + 1];
+  return nextWorld && isWorldUnlocked(save, nextWorld, WORLDS) ? nextWorld.levels[0] : undefined;
 }
 
 // Level card over whatever is showing (the map, or the stopped battlefield after a win).
@@ -437,7 +440,8 @@ function beginBattle(def: LevelDef, seed: number, loadout?: BattleLoadout): void
   screens.hide();
   hideMeta();
   level = def;
-  audio.setMusic(def.boss ? 'boss' : 'battle');
+  const freezer = def.theme === 'freezer';
+  audio.setMusic(def.boss ? (freezer ? 'boss2' : 'boss') : freezer ? 'battle2' : 'battle');
   const rng = createRng(seed);
   const rand = (): number => rng.next();
   const s = createSim(level, rand);
@@ -938,7 +942,8 @@ engine.onContextRestoredObservable.add(() => {
 
 // The level the player is up to: the first one not yet won (the boss once all are).
 function currentLevelId(): string {
-  return world.levels.find((id) => !save.levels[id]?.stars[0]) ?? world.levels[world.levels.length - 1];
+  const open = WORLDS.filter((w) => isWorldUnlocked(save, w, WORLDS)).flatMap((w) => w.levels);
+  return open.find((id) => !save.levels[id]?.stars[0]) ?? open[open.length - 1] ?? getLevel(0).id;
 }
 
 // Opens a meta screen by name; false for an unknown name.

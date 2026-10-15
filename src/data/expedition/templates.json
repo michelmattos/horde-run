@@ -171,6 +171,155 @@
           "width": 3.4
         }
       ]
+    },
+    {
+      "name": "frost doubles",
+      "theme": "freezer",
+      "baseHp": 0.65,
+      "waves": 0.8,
+      "gates": [
+        {
+          "op": "mul",
+          "value": 2,
+          "x": 0,
+          "z": 17,
+          "width": 3.4,
+          "freeze": {
+            "after": 120,
+            "duration": 3,
+            "hp": 30
+          }
+        },
+        {
+          "op": "mul",
+          "value": 3,
+          "x": -1,
+          "z": 36,
+          "width": 3,
+          "freeze": {
+            "after": 90,
+            "duration": 4,
+            "hp": 40
+          }
+        }
+      ],
+      "ice": [
+        {
+          "x": 0,
+          "z": 31,
+          "width": 10,
+          "length": 7
+        }
+      ],
+      "trickleMix": {
+        "unit": "penguin",
+        "every": 6
+      }
+    },
+    {
+      "name": "icy fork",
+      "theme": "freezer",
+      "baseHp": 0.9,
+      "waves": 0.8,
+      "gates": [
+        {
+          "op": "mul",
+          "value": 2,
+          "x": -2.4,
+          "z": 18,
+          "width": 3,
+          "fork": "a"
+        },
+        {
+          "op": "add",
+          "value": 2,
+          "x": 2.4,
+          "z": 18,
+          "width": 3,
+          "uses": 400,
+          "fork": "a"
+        },
+        {
+          "op": "mul",
+          "value": 2,
+          "x": 0,
+          "z": 37,
+          "width": 3.2
+        }
+      ],
+      "iceWalls": [
+        {
+          "x": 0,
+          "z": 18,
+          "width": 1,
+          "depth": 4
+        }
+      ],
+      "ice": [
+        {
+          "x": 0,
+          "z": 32,
+          "width": 8,
+          "length": 4
+        }
+      ],
+      "trickleMix": {
+        "unit": "penguin",
+        "every": 6
+      }
+    },
+    {
+      "name": "ice chokepoint",
+      "theme": "freezer",
+      "baseHp": 1.2,
+      "waves": 0.85,
+      "gates": [
+        {
+          "op": "mul",
+          "value": 3,
+          "x": 0,
+          "z": 16.5,
+          "width": 3,
+          "freeze": {
+            "after": 100,
+            "duration": 3,
+            "hp": 35
+          }
+        },
+        {
+          "op": "mul",
+          "value": 2,
+          "x": 0,
+          "z": 36,
+          "width": 3.4
+        }
+      ],
+      "iceWalls": [
+        {
+          "x": -3.7,
+          "z": 20,
+          "width": 2.6,
+          "depth": 1.6
+        },
+        {
+          "x": 3.7,
+          "z": 20,
+          "width": 2.6,
+          "depth": 1.6
+        }
+      ],
+      "ice": [
+        {
+          "x": 0,
+          "z": 14.5,
+          "width": 8,
+          "length": 4
+        }
+      ],
+      "trickleMix": {
+        "unit": "penguin",
+        "every": 6
+      }
     }
   ],
   "defenderSets": [
@@ -474,6 +623,141 @@
     ],
     "targetTime": 140,
     "intro": "The Tin General himself. His tank strafes and calls in reinforcements as it cracks."
+  },
+  "snowBoss": {
+    "name": "Snow Globe Giant",
+    "theme": "freezer",
+    "lane": {
+      "width": 10,
+      "length": 62
+    },
+    "enemyBase": {
+      "hp": 1650,
+      "width": 6
+    },
+    "playerBaseHp": 240,
+    "gates": [
+      {
+        "op": "mul",
+        "value": 3,
+        "x": 0,
+        "z": 16,
+        "width": 3.2,
+        "freeze": {
+          "after": 250,
+          "duration": 3,
+          "hp": 30
+        }
+      },
+      {
+        "op": "mul",
+        "value": 2,
+        "x": -2.3,
+        "z": 35,
+        "width": 3,
+        "fork": "boss"
+      },
+      {
+        "op": "add",
+        "value": 1,
+        "x": 2.3,
+        "z": 35,
+        "width": 3,
+        "fork": "boss"
+      }
+    ],
+    "iceWalls": [
+      {
+        "x": 0,
+        "z": 35,
+        "width": 0.9,
+        "depth": 3
+      }
+    ],
+    "ice": [
+      {
+        "x": 0,
+        "z": 40,
+        "width": 10,
+        "length": 6
+      }
+    ],
+    "waves": {
+      "name": "blizzard",
+      "first": 11,
+      "every": 10,
+      "waves": 14,
+      "count": 168,
+      "ramp": 33,
+      "step": 12,
+      "trickle": 24,
+      "trickleAt": 12
+    },
+    "snowmanEvery": 4,
+    "snowmanShare": 0.25,
+    "trickleMix": {
+      "unit": "penguin",
+      "every": 5
+    },
+    "phases": [
+      {
+        "belowHp": 1,
+        "strafe": {
+          "amplitude": 0.8,
+          "period": 10
+        },
+        "lob": {
+          "every": 6,
+          "warn": 1.2,
+          "radius": 2.2,
+          "damage": 20
+        }
+      },
+      {
+        "belowHp": 0.6,
+        "strafe": {
+          "amplitude": 1,
+          "period": 8
+        },
+        "summon": 90,
+        "trickle": 26,
+        "freezeGates": {
+          "duration": 5,
+          "hp": 60
+        },
+        "lob": {
+          "every": 6,
+          "warn": 1.2,
+          "radius": 2.2,
+          "damage": 20
+        }
+      },
+      {
+        "belowHp": 0.25,
+        "strafe": {
+          "amplitude": 1.2,
+          "period": 6
+        },
+        "summon": 120,
+        "trickle": 32,
+        "gusts": {
+          "at": 2,
+          "warn": 1.6,
+          "duration": 2.4,
+          "force": 3.5,
+          "every": 8,
+          "alternate": true
+        },
+        "lob": {
+          "every": 6,
+          "warn": 1.2,
+          "radius": 2.2,
+          "damage": 20
+        }
+      }
+    ],
+    "targetTime": 140,
+    "intro": "The Snow Globe Giant lobs snowballs, freezes your gates and shakes the globe."
   },
   "names": [
     "Rug Ambush",
