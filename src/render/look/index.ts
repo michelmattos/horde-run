@@ -303,8 +303,16 @@ class LookImpl implements Look {
   private rebuildPipeline(): void {
     this.pipeline?.dispose();
     this.pipeline = null;
-    if (this.camera) this.pipeline = createPipeline(this.scene, this.camera, this.settings);
-    else this.scene.imageProcessingConfiguration.vignetteEnabled = false;
+    if (this.camera) {
+      try {
+        this.pipeline = createPipeline(this.scene, this.camera, this.settings);
+      } catch (e) {
+        // A GPU that reports odd limits can make a post effect throw while it is built:
+        // draw without the pipeline rather than not at all.
+        console.warn('look: post pipeline unavailable', e);
+        this.pipeline = null;
+      }
+    } else this.scene.imageProcessingConfiguration.vignetteEnabled = false;
   }
 
   setQuality(q: QualityLevel): void {

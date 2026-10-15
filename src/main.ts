@@ -99,6 +99,37 @@ const app = document.getElementById('app') as HTMLElement;
 // MSAA is expensive at phone DPRs and barely visible there; keep it for low-DPR screens.
 const antialias = window.devicePixelRatio < 2;
 const engine = createEngine();
+// iOS can hand out a WebGL context that is already lost. Babylon then reads every GPU
+// limit as 0, and building the bloom blur on those limits throws (the "e.toFixed" start-up
+// error). Recover the same way as a context lost mid-game, before anything is built on it.
+if (!contextUsable(engine)) recoverDeadContextAtBoot();
+
+// True when the context is alive and reported real limits.
+function contextUsable(e: Engine): boolean {
+  const gl = (e as unknown as { _gl?: WebGLRenderingContext | null })._gl;
+  if (!gl || gl.isContextLost()) return false;
+  const caps = e.getCaps();
+  return caps.maxVaryingVectors > 0 && caps.maxTextureSize > 0;
+}
+
+function recoverDeadContextAtBoot(): never {
+  const prev = readRecovery();
+  const { plan, count } = planRecovery(prev, Date.now());
+  // Keep the place an earlier recovery asked to return to (this boot has not used it yet).
+  const target: RecoveryTarget = prev?.target ?? { kind: 'map' };
+  if (plan !== 'give-up' && writeRecovery({ at: Date.now(), count, target })) {
+    console.warn(`WebGL context lost at start-up: reloading (${plan})`);
+    if (plan === 'reload-low') writeSavedRender({ quality: 'low', post: 'off' });
+    window.__hordeBooted = true; // a reload is coming: the boot guard must not report this stop
+    reloadWhenVisible();
+  } else {
+    window.__hordeBootError?.(
+      'The phone did not give the game its graphics (the WebGL context was lost at start-up).\n\n' +
+        'Close the game and Safari completely, then open it again. If that does not help, restart the phone.',
+    );
+  }
+  throw new Error('WebGL context lost at start-up');
+}
 
 function createEngine(): Engine {
   try {
