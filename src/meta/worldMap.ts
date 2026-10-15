@@ -271,6 +271,7 @@ export function createWorldMap(
     // the profile from storage unless getGame is given; onGameReplaced also gets the profile.
     getGame?(): GameData;
     onGameReplaced?(g: GameData): void;
+    whenUncovered?(): Promise<void>; // resolves once the loading screen is gone (the title card waits for it)
   },
 ): WorldMap {
   injectStyles();
@@ -591,12 +592,14 @@ export function createWorldMap(
       if (!cardShown) {
         cardShown = true;
         card.classList.add('hm-on');
-        // Count the card's time from when it is actually on screen (boot work can hold
-        // the first paint back), not from when it was asked for.
-        requestAnimationFrame(() =>
-          requestAnimationFrame(() => {
-            if (card.classList.contains('hm-on')) cardTimer = window.setTimeout(dismissCard, TITLE_CARD_MS);
-          }),
+        // Count the card's time from when it is actually on screen (boot work and the
+        // loading screen can hold it back), not from when it was asked for.
+        void (opts.whenUncovered?.() ?? Promise.resolve()).then(() =>
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => {
+              if (card.classList.contains('hm-on')) cardTimer = window.setTimeout(dismissCard, TITLE_CARD_MS);
+            }),
+          ),
         );
       }
     },

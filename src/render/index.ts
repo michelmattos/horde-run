@@ -98,6 +98,10 @@ export interface GameRenderer {
   // A battle cue (shot puffs, ultimates, bomber blasts); call as the battle produces them.
   cue(c: FxCue): void;
   crowdBatches(): number; // crowd thin-instance batches drawn last frame (main pass); for debugging
+  // Resolves once the loaded level can draw its finished picture: environment and floor
+  // textures in, every material and the shadow map compiled. Frames must keep rendering
+  // meanwhile (shaders compile as they are drawn).
+  whenReady(): Promise<void>;
 }
 
 let activeScaler: ResolutionScaler | null = null;
@@ -346,6 +350,11 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
 
     crowdBatches(): number {
       return crowd.drawBatches;
+    },
+
+    async whenReady(): Promise<void> {
+      await Promise.all([look.ready, level?.ready]);
+      await scene.whenReadyAsync(true);
     },
 
     contextRestored(): void {

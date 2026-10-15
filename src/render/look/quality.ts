@@ -22,6 +22,9 @@ export interface QualitySettings {
   fxaa: boolean;
   bloom: boolean;
   vignette: boolean;
+  // Half-float pipeline targets with grading in a final pass. Off: 8-bit targets, the
+  // materials tone-map and grade themselves (as on low) and bloom works on graded colour.
+  hdr: boolean;
 }
 
 export const QUALITY_SETTINGS: Record<QualityLevel, QualitySettings> = {
@@ -34,6 +37,7 @@ export const QUALITY_SETTINGS: Record<QualityLevel, QualitySettings> = {
     fxaa: false,
     bloom: true,
     vignette: true,
+    hdr: true,
   },
   medium: {
     shadowMapSize: 1024,
@@ -44,6 +48,7 @@ export const QUALITY_SETTINGS: Record<QualityLevel, QualitySettings> = {
     fxaa: true,
     bloom: true,
     vignette: true,
+    hdr: true,
   },
   low: {
     shadowMapSize: 1024,
@@ -54,6 +59,7 @@ export const QUALITY_SETTINGS: Record<QualityLevel, QualitySettings> = {
     fxaa: false,
     bloom: false,
     vignette: false,
+    hdr: false,
   },
 };
 
@@ -63,8 +69,10 @@ export function parseQuality(v: string | null | undefined): QualityLevel | null 
 
 // Phones (touch screens) share their GPU memory with everything else, and iOS drops
 // or refuses the WebGL context of a page that uses too much (the blank screens of
-// 2026-10-15). On a phone every tier keeps the shadow map at 1024 and anti-aliases with
-// FXAA instead of a 4x multisampled HDR target: about 100 MB less GPU memory on high.
+// 2026-10-15). On a phone every tier keeps the shadow map at 1024, anti-aliases with
+// FXAA instead of a 4x multisampled target, and runs the pipeline on 8-bit targets
+// graded in the materials (no half-float buffers, no separate grading pass): on high at
+// 440x956 that is about 115 MB less GPU memory than the desktop settings.
 export const PHONE_SHADOW_MAP_MAX = 1024;
 
 export function withDeviceLimits(q: QualitySettings, phone: boolean): QualitySettings {
@@ -72,8 +80,9 @@ export function withDeviceLimits(q: QualitySettings, phone: boolean): QualitySet
   const shadowMapSize = Math.min(q.shadowMapSize, PHONE_SHADOW_MAP_MAX);
   const msaa = 1;
   const fxaa = q.postProcess && (q.fxaa || q.msaa > 1);
-  if (shadowMapSize === q.shadowMapSize && msaa === q.msaa && fxaa === q.fxaa) return q;
-  return { ...q, shadowMapSize, msaa, fxaa };
+  const hdr = false;
+  if (shadowMapSize === q.shadowMapSize && msaa === q.msaa && fxaa === q.fxaa && hdr === q.hdr) return q;
+  return { ...q, shadowMapSize, msaa, fxaa, hdr };
 }
 
 // Pipeline parts switched off for this device because the canvas stayed blank with them
@@ -87,7 +96,7 @@ export function parsePostFallback(v: unknown): PostFallback | null {
 
 // A tier's settings with the device's post fallback applied.
 export function withPostFallback(q: QualitySettings, f: PostFallback | null | undefined): QualitySettings {
-  if (f === 'off') return { ...q, postProcess: false, msaa: 1, fxaa: false, bloom: false, vignette: false };
+  if (f === 'off') return { ...q, postProcess: false, msaa: 1, fxaa: false, bloom: false, vignette: false, hdr: false };
   if (f === 'no-msaa' && q.msaa > 1) return { ...q, msaa: 1, fxaa: true };
   return q;
 }

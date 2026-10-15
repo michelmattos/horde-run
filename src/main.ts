@@ -76,6 +76,7 @@ import {
 import type { Profile, ProgressFacts } from './progression/index.ts';
 import { createHud, hudReserve } from './ui/hud.ts';
 import { createOverlays } from './ui/overlays.ts';
+import { createLoadingScreen, LOADING_TIMEOUT_MS, settle } from './ui/loading.ts';
 import {
   abandonRun,
   applyUpgrades,
@@ -196,6 +197,7 @@ const world: WorldDef = getWorld('w1') ?? {
 };
 const levelDef = (id: string): LevelDef => getLevelById(id) ?? getLevel(0);
 
+const loading = createLoadingScreen();
 const settings = loadSettings();
 const renderer = createRenderer(engine, canvas, { hudReserve });
 const input = createInput(canvas, settings);
@@ -236,8 +238,13 @@ const map = createWorldMap(app, {
     save = g.save;
     profile = g.profile;
   },
+  whenUncovered: () => loading.whenHidden(),
 });
 const screens = createExpeditionScreens(app);
+// The UI font, so no screen is first shown in the fallback face and then re-laid out.
+const fontsReady: Promise<unknown> = document.fonts
+  ? Promise.all(['600', '700'].map((w) => document.fonts.load(`${w} 16px 'Horde Fredoka'`)))
+  : Promise.resolve();
 
 // Meta screens. Where Back goes from the loadout and the collection depends on how they
 // were opened, so the openers keep the way back.
@@ -294,6 +301,8 @@ let resultShown = false;
 // Which flow the battle on screen belongs to; an Expedition battle ends in the run's
 // pick / lost card instead of the campaign result.
 let mode: 'campaign' | 'expedition' = 'campaign';
+let stageLoading = false; // the battle's scene is still loading behind the loading screen: the sim waits
+let battleLoad = 0; // bumped per battle, so a slow load never releases a newer battle
 let runMapShown = false; // the run map is the Expedition screen up (for __horde.level())
 const events: SimEvent[] = []; // sim and battle events since the last rendered frame
 const cues: BattleCue[] = []; // battle cues (shots, blasts, ultimates) since the last rendered frame
@@ -434,7 +443,17 @@ function beginBattle(def: LevelDef, seed: number, loadout?: BattleLoadout): void
   resultShown = false;
   events.length = 0;
   cues.length = 0;
+  // Cover the screen until the scene can draw its finished picture; frames keep
+  // rendering under the cover (that is when shaders compile) but the battle waits.
+  loading.show();
+  stageLoading = true;
+  const load = ++battleLoad;
   renderer.loadLevel(level);
+  const ready = settle(Promise.all([fontsReady, renderer.whenReady()]), LOADING_TIMEOUT_MS);
+  void ready.then(() => {
+    if (load === battleLoad) stageLoading = false;
+  });
+  void loading.hideWhen(ready);
   input.configure({ laneWidth: level.lane.width, aimLimit: level.cannon.aimLimit });
   input.setPaused(false);
   hud.setVisible(true);
@@ -811,7 +830,7 @@ function renderFrame(): void {
   if (gap > 0) drawnFps = drawnFps > 0 ? drawnFps + (1 / gap - drawnFps) * 0.1 : 1 / gap;
   const dt = woke ? 0 : gap;
   woke = false;
-  if (!input.paused) loop.advance(dt, simStep);
+  if (!input.paused && !stageLoading) loop.advance(dt, simStep);
   // After the outcome the crowd keeps settling (the sim keeps stepping) until the result screen.
   if (outcomeAt >= 0 && !resultShown && battle.state.time - outcomeAt >= RESULT_DELAY) {
     if (mode === 'expedition') finishRunBattle(battle);
@@ -843,8 +862,9 @@ function renderFrame(): void {
   });
   events.length = 0;
   cues.length = 0;
-  // Static menu up and this frame drawn under it: stop until resume, retry or next.
-  if (input.paused || resultShown) stopLoop();
+  // Static menu up and this frame drawn under it: stop until resume, retry or next
+  // (a loading battle keeps drawing so its shaders compile under the loading screen).
+  if ((input.paused && !stageLoading) || resultShown) stopLoop();
 }
 
 input.onPauseKey(() => {
@@ -958,6 +978,8 @@ function boot(): void {
   showMap();
 }
 boot();
+// A battle lifts the loading screen itself once its scene is ready; a menu once the font is in.
+if (!inBattle) void loading.hideWhen(fontsReady);
 window.__hordeBooted = true; // the first screen is up: the index.html boot guard stands down
 
 window.__horde = {

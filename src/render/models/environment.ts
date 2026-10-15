@@ -609,8 +609,9 @@ function rawImageProcessing(): ImageProcessingConfiguration {
 }
 
 const SUN_STRENGTH = 0.7; // peak brightening inside a pane (+70%)
-// On the 'low' tier there is no post pipeline: the frame buffer already holds tone-mapped
-// colours, so the same brightening factor would blow out. Use a gentler one there.
+// Without an HDR pipeline (the 'low' tier, and phones' 8-bit pipeline) the frame buffer
+// already holds tone-mapped colours, so the same brightening factor would blow out. Use a
+// gentler one there.
 const SUN_STRENGTH_LDR = 0.28;
 const GL_DST_COLOR = 0x0306;
 const GL_ONE = 1;
@@ -1340,7 +1341,7 @@ export function createEnvironment(scene: Scene, look: Look, opts: EnvironmentOpt
   // The sun pool's strength follows the quality tier (see SUN_STRENGTH_LDR).
   const sunTex = (meshes[6].material as StandardMaterial | null)?.emissiveTexture ?? null;
   const applySun = (): void => {
-    if (sunTex) sunTex.level = look.pipeline ? SUN_STRENGTH : SUN_STRENGTH_LDR;
+    if (sunTex) sunTex.level = look.hdrPipeline ? SUN_STRENGTH : SUN_STRENGTH_LDR;
   };
   applySun();
   const unsubscribe = look.onQualityChange(applySun);

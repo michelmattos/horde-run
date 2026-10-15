@@ -128,14 +128,16 @@ test('a sample is blank only when no pixel has alpha', () => {
   assert.equal(isBlankSample(new Uint8Array([0, 0, 0, 1])), false);
 });
 
-test('phones keep the shadow map at 1024 and swap MSAA for FXAA', () => {
+test('phones keep the shadow map at 1024, swap MSAA for FXAA and drop half-float targets', () => {
   const high = withDeviceLimits(QUALITY_SETTINGS.high, true);
   assert.equal(high.shadowMapSize, PHONE_SHADOW_MAP_MAX);
   assert.equal(high.msaa, 1);
   assert.equal(high.fxaa, true);
+  assert.equal(high.hdr, false);
   assert.equal(high.bloom, QUALITY_SETTINGS.high.bloom); // the rest of the tier stays
   assert.equal(withDeviceLimits(QUALITY_SETTINGS.low, true).fxaa, false); // no pipeline, no FXAA
-  assert.equal(withDeviceLimits(QUALITY_SETTINGS.medium, true), QUALITY_SETTINGS.medium);
+  assert.deepEqual(withDeviceLimits(QUALITY_SETTINGS.medium, true), { ...QUALITY_SETTINGS.medium, hdr: false });
+  assert.equal(withDeviceLimits(QUALITY_SETTINGS.low, true), QUALITY_SETTINGS.low); // already within limits
   assert.equal(withDeviceLimits(QUALITY_SETTINGS.high, false), QUALITY_SETTINGS.high);
   // On a phone the first post fallback skips straight to 'off' (there is no MSAA to drop).
   assert.equal(nextPostFallback(high, null), 'off');

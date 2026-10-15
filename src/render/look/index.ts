@@ -29,7 +29,7 @@ import { Color4 } from '@babylonjs/core/Maths/math.color';
 import type { DefaultRenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline';
 import { HEX, lin, srgb } from './palette.ts';
 import { loadEnvironment } from './environment.ts';
-import { applyGrade, createPipeline } from './post.ts';
+import { applyGrade, createPipeline, gradesInPost } from './post.ts';
 import {
   QUALITY_SETTINGS,
   QualityGovernor,
@@ -92,6 +92,7 @@ export interface Look {
   readonly environment: BaseTexture | null;
   readonly ready: Promise<void>; // resolves when the environment has loaded (or failed)
   readonly pipeline: DefaultRenderingPipeline | null;
+  readonly hdrPipeline: boolean; // the pipeline grades HDR colour in its last pass (else the frame buffer holds graded colour)
   addShadowCaster(mesh: AbstractMesh, kind?: CasterKind): void;
   removeShadowCaster(mesh: AbstractMesh): void;
   receiveShadows(mesh: AbstractMesh, on?: boolean): void;
@@ -148,6 +149,7 @@ class LookImpl implements Look {
   environment: BaseTexture | null = null;
   readonly ready: Promise<void>;
   pipeline: DefaultRenderingPipeline | null = null;
+  hdrPipeline = false;
   private camera: Camera | null = null;
   private readonly governor: QualityGovernor;
   private readonly casters = new Map<AbstractMesh, CasterKind>();
@@ -318,14 +320,17 @@ class LookImpl implements Look {
   private rebuildPipeline(): void {
     this.pipeline?.dispose();
     this.pipeline = null;
+    this.hdrPipeline = false;
     if (this.camera) {
       try {
         this.pipeline = createPipeline(this.scene, this.camera, this.settings);
+        this.hdrPipeline = !!this.pipeline && gradesInPost(this.scene, this.settings);
       } catch (e) {
         // A GPU that reports odd limits can make a post effect throw while it is built:
         // draw without the pipeline rather than not at all.
         console.warn('look: post pipeline unavailable', e);
         this.pipeline = null;
+        this.hdrPipeline = false;
       }
     } else this.scene.imageProcessingConfiguration.vignetteEnabled = false;
   }
