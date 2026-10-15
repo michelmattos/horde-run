@@ -228,14 +228,15 @@ test('validateLevel takes up to 32 gates', () => {
 });
 
 test('no mods plays exactly as before mods existed', () => {
-  // Recorded from the battle layer before BattleMods (1-6, human attempt 2).
+  // Recorded from the battle layer before BattleMods (1-6, human attempt 2); re-recorded
+  // when the cannon started firing on its own (fire rate 5.75, no thumb lifts).
   const lv = getLevelById('1-6')!;
   const r = play(lv, 'human', 2);
   assert.equal(r.outcome, 'victory');
-  assert.equal(r.seconds, 92.66666666666269);
-  assert.equal(r.fired, 1548);
-  assert.equal(r.peak, 459);
-  assert.equal(r.playerBase, 157 / 330);
+  assert.equal(r.seconds, 88.54999999999626);
+  assert.equal(r.fired, 1530);
+  assert.equal(r.peak, 395);
+  assert.equal(r.playerBase, 290 / 330);
   assert.equal(r.destroyed, 2);
   // An empty mods object is the same as none.
   assert.deepEqual(play({ ...lv, mods: {} }, 'human', 2), r);

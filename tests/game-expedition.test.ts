@@ -145,7 +145,7 @@ test('the boss is the Tin General with the phases of 1-10', () => {
 });
 
 // A typical mid-run build without gate upgrades (Oiled Gears x2, Sharp Bayonets, Pep
-// Talk): about a coin toss against the boss (7/12 over seeds 5000 + 7919k).
+// Talk): about a coin toss against the boss (5/12 over seeds 5000 + 7919k since auto-fire).
 const MID_RUN = { rapid: 2, sharp: 1, pep: 1 };
 const midRun = (level: LevelDef): LevelDef => applyUpgrades(level, MID_RUN);
 
@@ -169,6 +169,6 @@ test('balance (reduced): first battle easy, late battles and elites a coin toss,
 
   const boss = (k: number): PlayResult =>
     play(midRun(generateRunBattle({ seed: 5000 + k * 7919, kind: 'boss', index: 4 })), 'human', k);
-  checkWin(boss(2), 'boss with a mid-run build, attempt 2');
-  assert.equal(boss(0).outcome, 'defeat', 'boss with a mid-run build, attempt 0 should be lost');
+  checkWin(boss(4), 'boss with a mid-run build, attempt 4');
+  assert.equal(boss(2).outcome, 'defeat', 'boss with a mid-run build, attempt 2 should be lost');
 });

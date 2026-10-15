@@ -63,55 +63,54 @@ export function pipLit(i: number, phase: number): boolean {
 
 // ---------- Sticker HUD metrics (CSS px) ----------
 // One source of truth for the DOM HUD's CSS and hudReserve(), so the camera framing
-// keeps exactly the covered strips clear.
+// keeps exactly the covered strips clear. Layout: the pause button alone in the top-left
+// corner; the enemy base HP is a vertical bar on the left under it (top half of the
+// screen); the player base HP is a vertical bar on the right above the CHAMP button
+// (bottom half), lifted off the bottom edge so the bottom strip stays free for the
+// dragging thumb.
 export const HUD_METRICS = {
   edge: 12, // side margin inside the safe area
   topPad: 8, // gap under the top safe-area inset
   pause: 54, // round wooden pause button
-  barH: 34, // enemy base HP bar (wood frame)
-  rowGap: 5,
-  row2H: 30, // level name + goal stars
+  sideGap: 12, // gap between the pause button (or run strip) and the enemy column
+  vbarW: 30, // vertical HP bar width (wood frame)
+  vbarMin: 72, // shortest a vertical bar gets on a small screen
+  vbarMax: 210, // longest a vertical bar gets on a tall screen
+  barBadge: 40, // round badge capping the top end of each vertical bar
+  liftBottom: 112, // free band above the bottom safe-area inset, kept for dragging
+  thumbRow: 110, // band the camera keeps under the cannon row for the dragging thumb
   bottomPad: 10, // gap above the bottom safe-area inset
   champFace: 80, // the CHAMP button itself (>= 76)
   champRing: 98, // outer diameter of the charge ring
   champTagOver: 12, // the CHAMP tag hangs this far below the ring
-  armyBadge: 50, // green army badge row
-  baseBarH: 24, // player base HP bar
-  armyGap: 6,
   clear: 14, // gap kept between the HUD and the battlefield framing
-  cannonRow: 12, // extra room so the cannon row sits above the CHAMP button
-  runGap: 6, // gap between the top bar and the Expedition run strip
+  cannonRow: 12, // extra room so the cannon row sits above the thumb band
+  runGap: 6, // gap between the top row and the Expedition run strip
   runH: 32, // Expedition run strip: run HP, gold, node tag, upgrade icons
   runIcon: 30, // one upgrade icon slot in the run strip
   runIconGap: 4,
 } as const;
 
-// Height of the top HUD block; `run` adds the Expedition run strip under it.
+// Height of the top HUD block (the pause row); `run` adds the Expedition run strip under it.
 export function hudTopHeight(run = false): number {
   const m = HUD_METRICS;
-  const bar = Math.max(m.pause, m.barH + m.rowGap + m.row2H);
-  return run ? bar + m.runGap + m.runH : bar;
-}
-
-export function hudBottomHeight(): number {
-  const m = HUD_METRICS;
-  return Math.max(m.champRing + m.champTagOver, m.armyBadge + m.armyGap + m.baseBarH);
+  return run ? m.pause + m.runGap + m.runH : m.pause;
 }
 
 // CSS px covered at the top and bottom (safe-area insets included) plus the clear gap.
-// `topBar`: bottom of the top HUD's first row (pause + enemy bar). Tall models at the far
-// end (the enemy flag, the boss's plume) may rise past the second row, whose level name
-// fades out early in the battle and whose badges sit at the right edge. With the run strip
-// (`run`) the strip spans the width, so `topBar` drops to its bottom edge.
+// The side columns only cover scenery beside the lane, so they are not reserved. The
+// bottom keeps the thumb band clear so the cannon row sits above the dragging finger.
+// `topBar`: bottom of the top row, which tall models at the far end (the enemy flag, the
+// boss's plume) must stay under. With the run strip (`run`) that is the strip's bottom.
 export function hudReserveFor(
   ins: { top: number; bottom: number },
   run = false,
 ): { top: number; bottom: number; topBar: number } {
   const m = HUD_METRICS;
   return {
-    topBar: Math.round(ins.top + m.topPad + (run ? hudTopHeight(true) : Math.max(m.pause, m.barH))),
+    topBar: Math.round(ins.top + m.topPad + hudTopHeight(run)),
     top: Math.round(ins.top + m.topPad + hudTopHeight(run) + m.clear),
-    bottom: Math.round(ins.bottom + m.bottomPad + hudBottomHeight() + m.clear + m.cannonRow),
+    bottom: Math.round(ins.bottom + m.bottomPad + m.thumbRow + m.clear + m.cannonRow),
   };
 }
 
@@ -127,15 +126,7 @@ export function hpFraction(hp: number, max: number): number {
   return Math.min(1, Math.max(0, hp / max));
 }
 
-// HUD goal star look: pending = gold outline star still in play, met = gold with a tick,
-// failed = grey with a cross. Returned as the star's CSS class and its corner mark.
-export function hudStarLook(s: GoalState): { cls: string; mark: 'none' | 'tick' | 'cross' } {
-  if (s === 'met') return { cls: 'tb-met', mark: 'tick' };
-  if (s === 'failed') return { cls: 'tb-failed', mark: 'cross' };
-  return { cls: 'tb-pending', mark: 'none' };
-}
-
-// Army counts: exact up to 9,999, then '12.3k' so the badge never overflows.
+// Counts (run gold): exact up to 9,999, then '12.3k' so the chip never overflows.
 export function formatCount(n: number): string {
   const v = Math.max(0, Math.round(Number.isFinite(n) ? n : 0));
   if (v < 10000) return String(v);
