@@ -61,6 +61,21 @@ export function parseQuality(v: string | null | undefined): QualityLevel | null 
   return v === 'low' || v === 'medium' || v === 'high' ? v : null;
 }
 
+// Phones (touch screens) share their GPU memory with everything else, and iOS drops
+// or refuses the WebGL context of a page that uses too much (the blank screens of
+// 2026-10-15). On a phone every tier keeps the shadow map at 1024 and anti-aliases with
+// FXAA instead of a 4x multisampled HDR target: about 100 MB less GPU memory on high.
+export const PHONE_SHADOW_MAP_MAX = 1024;
+
+export function withDeviceLimits(q: QualitySettings, phone: boolean): QualitySettings {
+  if (!phone) return q;
+  const shadowMapSize = Math.min(q.shadowMapSize, PHONE_SHADOW_MAP_MAX);
+  const msaa = 1;
+  const fxaa = q.postProcess && (q.fxaa || q.msaa > 1);
+  if (shadowMapSize === q.shadowMapSize && msaa === q.msaa && fxaa === q.fxaa) return q;
+  return { ...q, shadowMapSize, msaa, fxaa };
+}
+
 // Pipeline parts switched off for this device because the canvas stayed blank with them
 // (see blankWatch.ts): 'no-msaa' keeps the pipeline without its multisampled target
 // (FXAA instead), 'off' draws straight to the canvas like the low tier.
