@@ -155,6 +155,9 @@ const CSS = `
 .tb-player{position:absolute;top:50%;bottom:calc(${SAB} + ${M.liftBottom}px);right:calc(${SAR} + ${M.edge}px);width:${M.champRing}px;
   display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:10px}
 .tb-player .tb-vbar{flex:0 1 ${M.vbarMax + M.barBadge / 2}px}
+/* The player's fortress badge caps the bottom end of its bar, next to the CHAMP button. */
+.tb-player .tb-frame{top:0;bottom:${M.barBadge / 2}px;padding:4px 4px ${M.barBadge / 2 - 2}px}
+.tb-player .tb-badge{top:auto;bottom:0}
 .tb-champ-slot{position:relative;flex:none;width:${M.champRing}px;height:${M.champRing + M.champTagOver}px}
 
 .tb-champ{position:absolute;left:0;top:0;width:${M.champRing}px;height:${M.champRing}px;border:0;border-radius:50%;
