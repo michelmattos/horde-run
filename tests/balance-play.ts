@@ -27,7 +27,7 @@ export interface PlayResult {
   peak: number;
   playerBase: number; // fraction of the player base HP left
   enemyBase: number; // fraction of the enemy base HP left
-  fired: number; // mobs fired (the human lifts its thumb now and then)
+  fired: number; // mobs fired
   stars: [boolean, boolean, boolean];
   destroyed: number;
   missed: number;

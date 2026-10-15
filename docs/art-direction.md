@@ -160,10 +160,13 @@ level badges):
 - **Type**: rounded heavy sans (self-hosted, subset, ≤ 60 KB woff2, e.g. a CC0/OFL
   rounded font such as Fredoka or Baloo 2 under OFL with the licence file next to it), white or cream fill with a
   dark outline for text over the 3D scene; ink on cream for panels. Numbers tabular.
-- **HUD**: top bar holds pause (left), stars/goal, enemy base HP as a wood-framed bar
-  with tan fill; bottom holds the player army count and base HP (green fill) and the
-  CHAMP button: a big round plastic button (≥ 72 px) with a charge ring, the kneeling
-  bazooka icon, glows yellow when ready. All targets ≥ 48 px, all within safe areas.
+- **HUD**: pause alone in the top-left corner (level name beside it, then fading); enemy
+  base HP as a vertical wood-framed bar with tan fill and a fortress badge on the left
+  under the pause (top half); player base HP as a vertical bar with green fill on the
+  right, above the CHAMP button (bottom half), lifted off the bottom edge so the bottom
+  strip stays free for dragging. No soldier counts and no live stars (stars belong to
+  the result screen). CHAMP: a big round plastic button (≥ 72 px) with a charge ring,
+  the kneeling bazooka icon, glows yellow when ready. All targets ≥ 48 px, all within safe areas.
 - **Overlays** (pause, result, level card, title card): cream cards on a dimmed,
   slightly warm backdrop; result shows 3 big stars that pop in one by one (scale bounce,
   no screen movement); buttons are the sticker buttons above.

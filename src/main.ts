@@ -24,7 +24,7 @@ import type { Sim } from './sim/index.ts';
 import { createBattle } from './game/battle.ts';
 import type { Battle } from './game/battle.ts';
 import { getLevel, getLevelById, getWorld } from './game/levels.ts';
-import { evaluateStars, goalStatus } from './game/stars.ts';
+import { evaluateStars } from './game/stars.ts';
 import { createRenderer } from './render/index.ts';
 import type { RenderStats } from './render/index.ts';
 import { createRng } from './core/rng.ts';
@@ -561,8 +561,6 @@ function renderFrame(): void {
   hud.update(battle.state, level.name, {
     bossName: level.boss?.name,
     bossPhases: level.boss?.phases.length,
-    // Stars are a campaign goal; an Expedition battle shows the run strip instead.
-    goals: mode === 'campaign' ? goalStatus(level, battle.state, battle.stats) : undefined,
   });
   events.length = 0;
   // Static menu up and this frame drawn under it: stop until resume, retry or next.

@@ -96,34 +96,33 @@ function core(sensitivity = 1) {
   return c;
 }
 
-test('input: aim pointer fires only from the lower 70% (touch), anywhere (mouse)', () => {
+test('input: the cannon fires on its own; only the lower 70% (touch) or anywhere (mouse) aims', () => {
   const c = core();
+  assert.equal(c.sample().firing, true, 'fires with no finger down');
   assert.equal(c.down(1, 200, 100, 400, 800, 'touch', false), false); // top 30%
-  assert.equal(c.sample().firing, false);
+  assert.equal(c.aimPointerId, -1);
   c.up(1);
   assert.equal(c.down(2, 200, 600, 400, 800, 'touch', false), true);
   assert.equal(c.sample().firing, true);
   c.up(2);
-  assert.equal(c.sample().firing, false);
+  assert.equal(c.sample().firing, true, 'keeps firing after the finger lifts');
   assert.equal(c.down(3, 200, 10, 400, 800, 'mouse', false), true);
-  assert.equal(c.sample().firing, true);
 });
 
 test('input: blocked regions never aim; a second pointer never steals aim', () => {
   const c = core();
   assert.equal(c.down(1, 380, 780, 400, 800, 'touch', true), false);
-  assert.equal(c.sample().firing, false);
+  assert.equal(c.aimPointerId, -1);
   assert.equal(c.down(2, 200, 600, 400, 800, 'touch', false), true);
   assert.equal(c.down(3, 100, 600, 400, 800, 'touch', false), false);
   c.move(3, 0, 400);
   assert.equal(c.sample().aimX, 0);
   c.move(2, 240, 400);
   assert.ok(c.sample().aimX > 0);
-  // Releasing the second finger keeps firing; releasing the aim finger stops it, with no promotion.
+  // Releasing the second finger keeps aim; releasing the aim finger frees it, with no promotion.
   c.up(3);
-  assert.equal(c.sample().firing, true);
+  assert.equal(c.aimPointerId, 2);
   c.up(2);
-  assert.equal(c.sample().firing, false);
   assert.equal(c.aimPointerId, -1);
 });
 
@@ -139,7 +138,7 @@ test('input: aim persists between touches and new drags are relative to it', () 
   assert.ok(Math.abs(c.sample().aimX - 2 * a) < 1e-9);
   c.configure(10, 4);
   assert.equal(c.sample().aimX, 0);
-  assert.equal(c.sample().firing, false);
+  assert.equal(c.aimPointerId, -1);
 });
 
 test('input: championPressed is true for exactly one sample per press', () => {
@@ -167,7 +166,7 @@ test('input: pausing releases pointers and drops presses', () => {
   assert.equal(c.down(2, 200, 600, 400, 800, 'touch', false), false);
   c.setPaused(false);
   assert.equal(c.sample().championPressed, false);
-  assert.equal(c.sample().firing, false);
+  assert.equal(c.sample().firing, true, 'auto-fire resumes on unpause');
   assert.equal(c.down(3, 200, 600, 400, 800, 'touch', false), true);
 });
 

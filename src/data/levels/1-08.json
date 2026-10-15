@@ -6,7 +6,7 @@
     "length": 62
   },
   "cannon": {
-    "fireRate": 6,
+    "fireRate": 5.55,
     "unitsPerShot": 3,
     "aimLimit": 4
   },

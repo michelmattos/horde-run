@@ -116,6 +116,9 @@ export const RUN_FREE_BANDS: readonly (readonly [number, number])[] = [
 // 7/12 (110 s), tough + rapid + knights 12/12 (100 s), tough + rapid + pep 0/12, so a
 // run's build decides it about as often as not. A single Doubler, Supply or Fork Gate
 // alone loses; Big Multiplier wins in about 46 s.
+// Since the cannon fires on its own (no thumb lifts) the base cannon fires 5.6/s instead
+// of 6, re-measured: battle 0 20/20, battle 3 16/20, elite 1 9/20, boss rapid x2 + sharp
+// + pep 5/12.
 export const RUN_BATTLE_TARGETS = {
   seeds: 6,
   battle: [

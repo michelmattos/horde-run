@@ -2,8 +2,8 @@
 // so tests can drive it; createInput only translates pointer/keyboard events.
 //
 // Rules: the first pointer that goes down in the lower 70% of the screen (and
-// not on a HUD button) becomes the aim pointer; while it is held the cannon
-// fires. Aiming is relative to where the finger touched down. Other pointers
+// not on a HUD button) becomes the aim pointer. The cannon fires on its own
+// whenever the game is not paused, touched or not. Aiming is relative to where the finger touched down. Other pointers
 // are tracked but never steal aim. Mouse left-drag works the same and may start
 // anywhere. Space presses champion; Escape/P call the onPauseKey callback.
 import type { InputState } from '../contracts.ts';
@@ -148,7 +148,7 @@ export function createInputCore(settings: Settings): InputCore {
     sample() {
       const championPressed = championLatch && !paused;
       if (championPressed) championLatch = false;
-      return { aimX, firing: aimId !== -1 && !paused, championPressed, paused };
+      return { aimX, firing: !paused, championPressed, paused };
     },
     releaseAll,
     reset() {
