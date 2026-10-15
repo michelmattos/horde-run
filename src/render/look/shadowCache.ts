@@ -112,7 +112,16 @@ export class StaticShadowCache {
         undefined,
         map.textureFormat,
       );
-      cache.createDepthStencilTexture(this.scene.getEngine().useReverseDepthBuffer ? 516 : 513, true);
+      const engine = this.scene.getEngine();
+      cache.createDepthStencilTexture(engine.useReverseDepthBuffer ? 516 : 513, true);
+      // Babylon attaches a new depth texture the next time the target is bound as a
+      // framebuffer, and the cache is only ever blitted, never rendered into: bind it once
+      // now, or every blit reads or writes a framebuffer with no depth (INVALID_OPERATION).
+      const rt = cache.renderTarget;
+      if (rt) {
+        engine.bindFramebuffer(rt);
+        engine.unBindFramebuffer(rt, true);
+      }
       this.cache = cache;
     } catch (e) {
       console.warn('shadow cache disabled', e);
