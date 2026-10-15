@@ -112,7 +112,8 @@ const CSS = `
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tb-boss[hidden]{display:none}
 
-/* ----- Vertical HP bars: wooden frame, dark track, fill grows from the bottom ----- */
+/* ----- Vertical HP bars: wooden frame, dark track. The player fill drains toward the bottom (CHAMP);
+   the enemy fill drains toward the top, away from the battle. ----- */
 .tb-vbar{position:relative;flex:1 1 auto;width:${M.barBadge}px;min-height:${M.vbarMin + M.barBadge / 2}px;max-height:${M.vbarMax + M.barBadge / 2}px}
 .tb-frame{position:absolute;top:${M.barBadge / 2}px;bottom:0;left:${(M.barBadge - M.vbarW) / 2}px;width:${M.vbarW}px;
   border-radius:${M.vbarW / 2}px;border:3px solid ${UI.ink};padding:${M.barBadge / 2 - 2}px 4px 4px;box-sizing:border-box;
@@ -121,6 +122,7 @@ const CSS = `
   box-shadow:inset 2px 0 3px rgba(0,0,0,.7),0 0 0 2px #1a0f07;transform:translateZ(0)}
 .tb-fill{position:absolute;inset:0;border-radius:999px;transform-origin:50% 100%;will-change:transform;transition:transform 120ms ease-out}
 .tb-fill::after{content:'';position:absolute;top:6px;bottom:6px;left:2px;width:28%;border-radius:999px;background:rgba(255,255,255,.3)}
+.tb-enemy .tb-fill{transform-origin:50% 0}
 .tb-fill-tan{background:linear-gradient(90deg,#f7ebcf 0%,#e2c896 30%,#d6b47c 62%,#c8a46a 100%);
   box-shadow:inset 0 0 0 1.5px rgba(26,15,7,.9),inset -3px 0 0 rgba(120,82,36,.45)}
 .tb-fill-tan::after{background:rgba(255,255,255,.6)}
