@@ -30,8 +30,15 @@ jobs:
       - run: npm run format:check
       - run: npm test
 
-  smoke:
+  # The three smoke scenarios boot the real game under software GL, so they run as parallel
+  # jobs. The "smoke" job below waits for all of them and is the one to require.
+  smoke-scenario:
+    name: smoke (${{ matrix.scenario }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [campaign, boss, expedition]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -45,10 +52,17 @@ jobs:
       - name: Smoke test
         run: |
           export CHROME_PATH="$(node -e "console.log(require('playwright-core').chromium.executablePath())")"
-          npm run smoke
+          SMOKE=${{ matrix.scenario }} npm run smoke
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: smoke-screenshots
+          name: smoke-screenshots-${{ matrix.scenario }}
           path: smoke-*.png
           if-no-files-found: ignore
+
+  smoke:
+    needs: smoke-scenario
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.smoke-scenario.result }}" = success
