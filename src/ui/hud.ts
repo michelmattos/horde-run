@@ -10,6 +10,9 @@
 // Feedback is colour and small scale pops on HUD widgets only: nothing here moves the
 // camera or the screen. Sizes live in HUD_METRICS (uiLogic.ts), which hudReserve()
 // also uses, so the camera framing keeps exactly the covered strips clear.
+// In an Expedition run, setRun() adds a static strip under the top bar (run HP, gold,
+// the elite/boss tag and the upgrade icons). It is built once per battle, never touched
+// by update(), takes no touches, and hudReserve() grows by its height while it is set.
 import type { Scene } from '@babylonjs/core/scene';
 import type { BattleState } from '../contracts.ts';
 import type { Input } from '../core/input.ts';
@@ -17,15 +20,33 @@ import { readSafeAreaInsets } from './safeArea.ts';
 import {
   HUD_METRICS as M,
   formatCount,
+  formatRunHp,
+  formatStacks,
   hpFraction,
   hudReserveFor,
   hudStarLook,
+  hudTopHeight,
   pipLit,
   ringDashOffset,
+  runIconSlots,
+  runStatusLabel,
+  runTagText,
+  runUpgradesLabel,
+  splitRunIcons,
 } from './uiLogic.ts';
 import type { GoalState } from './uiLogic.ts';
 import { UI, WOOD_BG, injectUiTheme, outlineShadow } from './theme.ts';
-import { championIcon, crossIcon, fortIcon, pauseIcon, soldierIcon, starIcon, tickIcon } from './icons.ts';
+import {
+  championIcon,
+  coinIcon,
+  crossIcon,
+  fortIcon,
+  heartIcon,
+  pauseIcon,
+  soldierIcon,
+  starIcon,
+  tickIcon,
+} from './icons.ts';
 
 // Optional per-level extras. goals: the three stars (win, base above half, target time).
 export interface HudInfo {
@@ -34,8 +55,20 @@ export interface HudInfo {
   goals?: readonly GoalState[];
 }
 
+// Expedition run status for the run strip. Run HP and gold change only between battles.
+export interface HudRunInfo {
+  hp: number;
+  maxHp: number;
+  gold: number;
+  kind: 'battle' | 'elite' | 'boss';
+  upgrades: readonly { icon: string /* inline SVG markup supplied by the caller */; label: string; stacks: number }[];
+}
+
 export interface Hud {
   update(state: BattleState, levelName: string, info?: HudInfo): void;
+  // Call once per battle before the level loads (the framing reads hudReserve() then);
+  // null in the campaign hides the strip.
+  setRun(run: HudRunInfo | null): void;
   setVisible(v: boolean): void;
   dispose(): void;
 }
@@ -47,11 +80,15 @@ const RING_R = (M.champRing - RING_STROKE) / 2;
 const RING_C = 2 * Math.PI * RING_R;
 const PRESS_MS = 120;
 const LEVEL_NAME_SECONDS = 3; // battle seconds the level name stays under the enemy bar
+const RUN_LEFT_GUESS = 190; // left chips' width before the strip has been laid out once
+
+// The HUD whose run strip is showing (one HUD exists at a time; null in the campaign).
+let runStripOwner: object | null = null;
 
 // CSS px of the canvas the HUD covers at the top and bottom (safe-area insets included),
-// for the camera framing.
+// for the camera framing. Includes the run strip while an Expedition battle is set.
 export function hudReserve(): { top: number; bottom: number; topBar: number } {
-  return hudReserveFor(readSafeAreaInsets());
+  return hudReserveFor(readSafeAreaInsets(), runStripOwner !== null);
 }
 
 const SAT = 'env(safe-area-inset-top,0px)';
@@ -176,6 +213,37 @@ const CSS = `
   border:3px solid ${UI.ink};box-sizing:border-box;display:flex;align-items:center;font-size:14px;font-weight:700;letter-spacing:.06em;
   color:${UI.cream};text-shadow:${outlineShadow(1.5)};background:${WOOD_BG};box-shadow:0 3px 0 ${UI.ink};white-space:nowrap}
 .tb-champ.tb-ready .tb-tag{background:linear-gradient(#ffd862,${UI.yellow});color:${UI.ink};text-shadow:none}
+/* ----- Expedition run strip (static; under the top bar, no touches) ----- */
+.tb-run{position:absolute;top:calc(${SAT} + ${M.topPad + hudTopHeight() + M.runGap}px);left:calc(${SAL} + ${M.edge}px);
+  right:calc(${SAR} + ${M.edge}px);height:${M.runH}px;display:flex;align-items:center;gap:6px;pointer-events:none}
+.tb-run[hidden]{display:none}
+.tb-run-l{flex:none;display:flex;align-items:center;gap:6px}
+.tb-rchip{position:relative;flex:none;display:flex;align-items:center;gap:4px;height:${M.runH - 6}px;margin-left:11px;padding:0 8px 0 16px;
+  border-radius:13px;border:2.5px solid ${UI.ink};box-sizing:border-box;background:${WOOD_BG};box-shadow:0 2px 0 ${UI.ink};
+  color:${UI.cream};text-shadow:${outlineShadow(1.6)};font-size:15px;font-weight:700;line-height:1}
+.tb-rchip>svg{position:absolute;left:-12px;top:50%;width:26px;height:26px;margin-top:-13px}
+.tb-rhp-track{position:relative;width:32px;height:9px;border-radius:999px;overflow:hidden;background:#1d1108;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.7),0 0 0 1.5px ${UI.ink}}
+.tb-rhp-fill{position:absolute;inset:0;border-radius:999px;transform-origin:0 50%;
+  background:linear-gradient(180deg,#ff8a7f 0%,${UI.red} 55%,#a8261d 100%)}
+.tb-rhp-fill::after{content:'';position:absolute;left:3px;right:3px;top:1px;height:30%;border-radius:999px;background:rgba(255,255,255,.4)}
+.tb-rgold{color:#ffe08a}
+.tb-rtag{flex:none;height:22px;padding:0 6px;border-radius:9px;border:2.5px solid ${UI.ink};box-sizing:border-box;display:flex;align-items:center;
+  font-size:12px;font-weight:700;letter-spacing:.08em;color:#fff;text-shadow:${outlineShadow(1.3)};box-shadow:0 2px 0 ${UI.ink};transform:rotate(-3deg)}
+.tb-rtag[hidden]{display:none}
+.tb-rtag-elite{background:linear-gradient(#5b8fe6,${UI.blue})}
+.tb-rtag-boss{background:linear-gradient(#f26a5f,${UI.red})}
+.tb-run-r{flex:1;min-width:0;display:flex;justify-content:flex-end;align-items:center;gap:${M.runIconGap}px}
+.tb-rup{position:relative;flex:none;width:${M.runIcon}px;height:${M.runIcon}px;box-sizing:border-box;border-radius:9px;border:2.5px solid ${UI.ink};
+  background:radial-gradient(80% 70% at 35% 25%,#fffaf0,${UI.cream} 55%,#ecd9b4);box-shadow:0 2px 0 ${UI.ink};
+  display:flex;align-items:center;justify-content:center}
+.tb-rup>svg{width:${M.runIcon - 7}px;height:${M.runIcon - 7}px}
+.tb-rstack{position:absolute;right:-6px;bottom:-6px;min-width:17px;height:15px;padding:0 3px;box-sizing:border-box;border-radius:8px;
+  border:2px solid ${UI.ink};background:${UI.yellow};color:${UI.ink};font-size:10px;font-weight:700;line-height:11px;text-align:center}
+.tb-rmore{flex:none;height:${M.runIcon - 4}px;min-width:${M.runIcon}px;padding:0 6px;box-sizing:border-box;border-radius:13px;border:2.5px solid ${UI.ink};
+  background:${WOOD_BG};box-shadow:0 2px 0 ${UI.ink};display:flex;align-items:center;justify-content:center;
+  color:${UI.cream};text-shadow:${outlineShadow(1.4)};font-size:14px;font-weight:700;line-height:1}
+
 @media (prefers-reduced-motion: reduce){.tb-champ.tb-ready .tb-champ-body,.tb-champ.tb-ready .tb-glow{animation:none}}
 `;
 
@@ -301,7 +369,26 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
   const champTag = champ.querySelector('.tb-tag') as HTMLDivElement;
   bottom.append(army, champ);
 
-  hud.append(top, bottom);
+  // ----- Expedition run strip: heart (run HP) + coin (gold) + tag on the left, upgrade icons on the right -----
+  const run = div('tb-run');
+  run.hidden = true;
+  const runLeft = div('tb-run-l');
+  const hpChip = div('tb-rchip', heartIcon(26));
+  const hpTrack = div('tb-rhp-track');
+  const hpFill = div('tb-rhp-fill');
+  hpTrack.append(hpFill);
+  const hpText = document.createElement('span');
+  hpChip.append(hpTrack, hpText);
+  const goldChip = div('tb-rchip', coinIcon(26));
+  const goldText = document.createElement('span');
+  goldText.className = 'tb-rgold';
+  goldChip.append(goldText);
+  const runTag = div('tb-rtag');
+  runLeft.append(hpChip, goldChip, runTag);
+  const runIcons = div('tb-run-r');
+  run.append(runLeft, runIcons);
+
+  hud.append(top, run, bottom);
   host.appendChild(hud);
 
   // ----- Hits -----
@@ -358,6 +445,32 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
   champ.addEventListener('pointerdown', onChampDown);
   pause.addEventListener('pointerdown', onPauseDown);
   canvas.addEventListener('pointerdown', onCanvasDown, { capture: true });
+
+  // Icons that fit the row right now; redone on setRun, on show and on resize only.
+  let runInfo: HudRunInfo | null = null;
+  let laidOutSlots = -1;
+  const layoutRunIcons = (): void => {
+    if (!runInfo || hud.hidden) return;
+    const stripW = run.clientWidth || window.innerWidth - 2 * M.edge;
+    const leftW = runLeft.offsetWidth || RUN_LEFT_GUESS;
+    const slots = runIconSlots(stripW - leftW - 6);
+    if (slots === laidOutSlots) return;
+    laidOutSlots = slots;
+    const { shown, more } = splitRunIcons(runInfo.upgrades, slots);
+    runIcons.replaceChildren();
+    for (const u of shown) {
+      const tile = div('tb-rup', u.icon);
+      const stacks = formatStacks(u.stacks);
+      if (stacks) tile.append(div('tb-rstack', stacks));
+      runIcons.append(tile);
+    }
+    if (more > 0) runIcons.append(div('tb-rmore', `+${more}`));
+  };
+  const onResize = (): void => {
+    laidOutSlots = -1;
+    layoutRunIcons();
+  };
+  window.addEventListener('resize', onResize);
 
   // ----- Per-frame update: only touch what changed -----
   let lastLevel = '';
@@ -478,9 +591,31 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
         champTag.textContent = full ? 'CHAMP!' : 'CHAMP';
       }
     },
+    setRun(info) {
+      if (disposed) return;
+      runInfo = info;
+      runStripOwner = info ? hud : runStripOwner === hud ? null : runStripOwner;
+      run.hidden = !info;
+      laidOutSlots = -1;
+      if (!info) {
+        runIcons.replaceChildren();
+        return;
+      }
+      hpFill.style.transform = `scaleX(${hpFraction(info.hp, info.maxHp)})`;
+      hpText.textContent = formatRunHp(info.hp);
+      goldText.textContent = formatCount(info.gold);
+      const tag = runTagText(info.kind);
+      runTag.hidden = tag === '';
+      runTag.textContent = tag;
+      runTag.className = `tb-rtag tb-rtag-${info.kind}`;
+      runLeft.setAttribute('aria-label', runStatusLabel(info.hp, info.maxHp, info.gold, info.kind));
+      runIcons.setAttribute('aria-label', `Upgrades: ${runUpgradesLabel(info.upgrades)}`);
+      layoutRunIcons();
+    },
     setVisible(v) {
       visible = v;
       hud.hidden = !v;
+      if (v) layoutRunIcons();
     },
     dispose() {
       disposed = true;
@@ -488,6 +623,8 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
       clearTimeout(pauseTimer);
       clearTimeout(pulseTimer);
       for (const t of popTimers) clearTimeout(t);
+      window.removeEventListener('resize', onResize);
+      if (runStripOwner === hud) runStripOwner = null;
       champ.removeEventListener('pointerdown', onChampDown);
       pause.removeEventListener('pointerdown', onPauseDown);
       canvas.removeEventListener('pointerdown', onCanvasDown, { capture: true });

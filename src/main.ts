@@ -3,6 +3,13 @@
 // sim and battle. Flow: world map → level card → battle → result (stars saved via
 // recordResult) → Next opens the next level's card / Map / Retry. `?level=1-1` skips
 // the menus straight into a battle (used by the smoke test).
+// Expedition (concept §4.2): a second flow next to the campaign. The world map's
+// Expedition button opens the start screen (New, Daily, Resume); `?expedition=<seed>`
+// or `?expedition=daily` starts or resumes a run straight onto the run map. The run
+// rules are pure (src/expedition); this file only walks the run's phases: run map →
+// battle (generated level with the upgrades applied) → upgrade pick / lost card → map,
+// plus shop and rest stops, until the run result. Every step is saved, so a reload
+// resumes where the player was (a battle restarts from its beginning).
 // Per rendered frame: loop.advance → input.sample → battle.step (which steps the sim)
 // → renderer.frame → hud.update. The sim runs at a fixed SIM_HZ. While a menu covers
 // the battlefield nothing moves, so the loop draws one frame under it and then stops
@@ -11,7 +18,7 @@
 // The camera only zooms out gently as the crowd grows; it never shakes.
 import { Engine } from '@babylonjs/core/Engines/engine';
 import { LAYOUT, Team, UnitKind, starGoalLabels } from './contracts.ts';
-import type { BattleState, LevelDef, SaveData, SimEvent, WorldDef } from './contracts.ts';
+import type { BattleState, LevelDef, RunBattleSpec, RunState, SaveData, SimEvent, WorldDef } from './contracts.ts';
 import { createSim } from './sim/index.ts';
 import type { Sim } from './sim/index.ts';
 import { createBattle } from './game/battle.ts';
@@ -32,6 +39,32 @@ import { loadSave, recordResult, writeSave } from './core/save.ts';
 import { createWorldMap } from './meta/worldMap.ts';
 import { createHud, hudReserve } from './ui/hud.ts';
 import { createOverlays } from './ui/overlays.ts';
+import {
+  abandonRun,
+  applyUpgrades,
+  availableNodes,
+  battleSpec,
+  buyHeal,
+  buyItem,
+  chooseNode,
+  dailySeed,
+  finishBattle,
+  getUpgrade,
+  leaveShop,
+  loadExpedition,
+  newRun,
+  pickUpgrade,
+  randomRunSeed,
+  recordRunEnd,
+  restHeal,
+  RUN_RULES,
+  runScore,
+  saveExpedition,
+} from './expedition/index.ts';
+import type { ExpeditionSave } from './expedition/index.ts';
+import { generateRunBattle } from './game/expedition.ts';
+import { createExpeditionScreens, upgradeIconSvg } from './ui/expedition/index.ts';
+import type { OwnedUpgrade } from './ui/expedition/index.ts';
 
 // Seconds the battlefield keeps playing after the outcome before the result screen.
 const RESULT_DELAY = 1.2;
@@ -47,6 +80,9 @@ declare global {
       units(): number; // live sim units (stacked units count once)
       goto(levelId: string): boolean; // start a battle on that level, skipping menus
       render(): RenderStats; // last frame's draw calls, active meshes/indices, quality tier
+      expedition(): RunState | null; // the current Expedition run, null when none is active
+      expeditionChoose(nodeId: string): boolean; // enter that run map node, as a tap would
+      win(): void; // debug: drains the enemy base so the battle ends in victory
     };
   }
 }
@@ -88,7 +124,9 @@ const map = createWorldMap(app, {
   onSaveReplaced: (s) => {
     save = s;
   },
+  onExpedition: () => openExpeditionStart(),
 });
+const screens = createExpeditionScreens(app);
 
 // Optional ?seed=N makes a session reproducible; otherwise every battle differs.
 const params = new URLSearchParams(location.search);
@@ -101,6 +139,10 @@ let battle: Battle | undefined;
 let inBattle = false; // a battle is on screen (playing, paused or showing its result)
 let outcomeAt = -1; // sim time the outcome was reached, -1 while playing
 let resultShown = false;
+// Which flow the battle on screen belongs to; an Expedition battle ends in the run's
+// pick / lost card instead of the campaign result.
+let mode: 'campaign' | 'expedition' = 'campaign';
+let runMapShown = false; // the run map is the Expedition screen up (for __horde.level())
 const events: SimEvent[] = []; // sim and battle events since the last rendered frame
 
 function nextLevelId(id: string): string | undefined {
@@ -123,19 +165,39 @@ function openLevelCard(id: string): void {
   });
 }
 
-function showMap(): void {
+// Leaves the battlefield (if any) for a full-screen menu: nothing steps or draws under it.
+function leaveBattlefield(): void {
   overlays.hide();
   inBattle = false;
   input.setPaused(true);
   hud.setVisible(false);
-  map.show(save);
+}
+
+function showMap(): void {
+  screens.hide();
+  leaveBattlefield();
+  map.show(save, {
+    expedition: {
+      active: !!run && run.outcome === 'active',
+      dailyDone: exp.best.daily[dailySeed(new Date()).daily] !== undefined,
+    },
+  });
 }
 
 function startLevel(id: string): void {
+  mode = 'campaign';
+  hud.setRun(null);
+  beginBattle(levelDef(id), seedCounter++);
+}
+
+// Fresh RNG, sim and battle on `def`. hud.setRun must already be set for this battle:
+// the renderer frames the lane from hudReserve() when the level loads.
+function beginBattle(def: LevelDef, seed: number): void {
   map.hide();
   overlays.hide();
-  level = levelDef(id);
-  const rng = createRng(seedCounter++);
+  screens.hide();
+  level = def;
+  const rng = createRng(seed);
   const rand = (): number => rng.next();
   const s = createSim(level, rand);
   sim = s;
@@ -152,6 +214,240 @@ function startLevel(id: string): void {
   wake();
   // Every battle entry path (map, retry, next) honours the portrait-only rule.
   if (isLandscapeTouch()) pause('orientation');
+}
+
+// ---------- Expedition session ----------
+
+let exp: ExpeditionSave = loadExpedition();
+let run: RunState | undefined = exp.run?.outcome === 'active' ? exp.run : undefined;
+
+function ownedUpgrades(r: RunState): OwnedUpgrade[] {
+  const out: OwnedUpgrade[] = [];
+  for (const [id, stacks] of Object.entries(r.upgrades)) {
+    const def = getUpgrade(id);
+    if (def && stacks > 0) out.push({ def, stacks });
+  }
+  return out;
+}
+
+// Saves the run as the current one and returns it.
+function commitRun(r: RunState): RunState {
+  run = r;
+  exp = { ...exp, run: r };
+  saveExpedition(exp);
+  return r;
+}
+
+function openExpeditionStart(): void {
+  map.hide();
+  leaveBattlefield();
+  runMapShown = false;
+  const today = dailySeed(new Date());
+  const r = run;
+  screens.showStart({
+    dailyDate: today.daily,
+    dailyBest: exp.best.daily[today.daily],
+    bestScore: exp.best.bestScore,
+    runsPlayed: exp.best.runsPlayed,
+    runsWon: exp.best.runsWon,
+    resume: r ? { hp: r.hp, maxHp: r.maxHp, gold: r.gold, battlesWon: r.stats.battlesWon, daily: r.daily } : undefined,
+    onNew: () => startRun(randomRunSeed()),
+    onDaily: () => startRun(today.seed, today.daily),
+    onResume: r ? () => showRunStep() : undefined,
+    onBack: () => showMap(),
+  });
+}
+
+// A new run replaces the current one, which counts as abandoned.
+function startRun(seed: number, daily?: string): void {
+  if (run) {
+    exp = recordRunEnd(exp, abandonRun(run));
+    run = undefined;
+  }
+  commitRun(newRun(seed, daily !== undefined ? { daily } : {}));
+  showRunStep();
+}
+
+// Shows whatever the run's phase calls for (also how a saved run resumes).
+function showRunStep(): void {
+  const r = run;
+  if (!r) return openExpeditionStart();
+  runMapShown = false;
+  switch (r.phase) {
+    case 'map':
+      return showRunMap(r);
+    case 'battle':
+      return startRunBattle(r);
+    case 'pick':
+      return showRunPick(r);
+    case 'shop':
+      return showRunShop(r);
+    case 'rest':
+      return showRunRest(r);
+    case 'over':
+      return endRun(r);
+  }
+}
+
+function enterNode(r: RunState, nodeId: string): void {
+  commitRun(chooseNode(r, nodeId));
+  showRunStep();
+}
+
+function showRunMap(r: RunState): void {
+  map.hide();
+  leaveBattlefield();
+  screens.showMap({
+    run: r,
+    available: availableNodes(r),
+    upgrades: ownedUpgrades(r),
+    onChoose: (id) => enterNode(r, id),
+    onBack: () => showMap(),
+    onAbandon: () => endRun(abandonRun(r)),
+  });
+  runMapShown = true;
+}
+
+function startRunBattle(r: RunState): void {
+  const spec: RunBattleSpec = battleSpec(r);
+  const def = applyUpgrades(generateRunBattle(spec), r.upgrades);
+  mode = 'expedition';
+  hud.setRun({
+    hp: r.hp,
+    maxHp: r.maxHp,
+    gold: r.gold,
+    kind: spec.kind,
+    upgrades: ownedUpgrades(r).map(({ def: u, stacks }) => ({
+      icon: upgradeIconSvg(u.icon, '100%'),
+      label: u.name,
+      stacks,
+    })),
+  });
+  // Seeded per node, and per retry for the boss, so a resumed run replays the same battle.
+  beginBattle(def, spec.seed + r.stats.battlesLost);
+}
+
+// The battle's outcome goes into the run; then the pick, lost-battle card or run result.
+function finishRunBattle(b: Battle): void {
+  const r = run;
+  if (!r) return showMap();
+  resultShown = true;
+  input.setPaused(true);
+  hud.setVisible(false);
+  const victory = b.state.outcome === 'victory';
+  const kind = battleSpec(r).kind;
+  const next = commitRun(
+    finishBattle(r, {
+      victory,
+      baseHpFraction: b.state.playerBaseMaxHp > 0 ? b.state.playerBaseHp / b.state.playerBaseMaxHp : 0,
+      seconds: b.stats.endTime ?? outcomeAt,
+    }),
+  );
+  if (next.phase === 'over') return endRun(next);
+  if (next.phase === 'pick') return showRunPick(next);
+  if (!victory) {
+    const hpLost = next.lastBattle?.hpLost ?? 0;
+    screens.showBattleLost({
+      hpLost,
+      hp: next.hp,
+      maxHp: next.maxHp,
+      boss: kind === 'boss',
+      onContinue: () => showRunStep(),
+    });
+    return;
+  }
+  showRunStep(); // a win with nothing left to offer goes straight back to the map
+}
+
+function showRunPick(r: RunState): void {
+  const node = r.map.nodes.find((n) => n.id === r.at);
+  const offer = (r.offer ?? []).map((id) => getUpgrade(id)).filter((u) => u !== undefined);
+  const after = (id: string | null): void => {
+    commitRun(pickUpgrade(r, id));
+    showRunStep();
+  };
+  screens.showPick({
+    title: 'Victory!',
+    elite: node?.kind === 'elite',
+    offer,
+    owned: r.upgrades,
+    hp: r.hp,
+    maxHp: r.maxHp,
+    hpLost: r.lastBattle?.hpLost ?? 0,
+    gold: r.gold,
+    goldGained: r.lastBattle?.gold ?? 0,
+    onPick: (id) => after(id),
+    onSkip: () => after(null),
+  });
+}
+
+function showRunShop(r: RunState): void {
+  leaveBattlefield();
+  const shop = r.shop;
+  if (!shop) return showRunMap(commitRun(leaveShop(r)));
+  screens.showShop({
+    gold: r.gold,
+    hp: r.hp,
+    maxHp: r.maxHp,
+    items: shop.items.flatMap((it) => {
+      const def = getUpgrade(it.upgradeId);
+      return def ? [{ def, price: it.price, sold: it.sold, owned: r.upgrades[def.id] ?? 0 }] : [];
+    }),
+    heal: { price: shop.healPrice, amount: shop.healAmount, done: shop.healed },
+    onBuy: (i) => showRunShop(commitRun(buyItem(r, i))),
+    onHeal: () => showRunShop(commitRun(buyHeal(r))),
+    onLeave: () => {
+      commitRun(leaveShop(r));
+      showRunStep();
+    },
+  });
+}
+
+function showRunRest(r: RunState): void {
+  leaveBattlefield();
+  screens.showRest({
+    hp: r.hp,
+    maxHp: r.maxHp,
+    heal: Math.min(r.maxHp - r.hp, Math.round(r.maxHp * RUN_RULES.restHealFraction)),
+    onRest: () => {
+      commitRun(restHeal(r));
+      showRunStep();
+    },
+  });
+}
+
+// Records a finished run (won, lost or abandoned) and shows its result.
+function endRun(r: RunState): void {
+  const score = runScore(r);
+  const prev = r.daily !== undefined ? exp.best.daily[r.daily] : exp.best.bestScore;
+  exp = recordRunEnd(exp, r);
+  saveExpedition(exp);
+  run = undefined;
+  runMapShown = false;
+  if (!resultShown) leaveBattlefield();
+  screens.showRunResult({
+    outcome: r.outcome === 'won' ? 'won' : 'lost',
+    score,
+    best: r.daily !== undefined ? exp.best.daily[r.daily] : exp.best.bestScore,
+    newBest: prev === undefined || score > prev,
+    daily: r.daily,
+    stats: r.stats,
+    hp: r.hp,
+    maxHp: r.maxHp,
+    upgrades: ownedUpgrades(r),
+    onNewRun: () => openExpeditionStart(),
+    onMap: () => showMap(),
+  });
+}
+
+// ?expedition=<seed>|daily: resumes the saved run when it has that seed, else starts one.
+function bootExpedition(param: string): boolean {
+  const daily = param === 'daily' ? dailySeed(new Date()) : undefined;
+  const seed = daily ? daily.seed : Number(param);
+  if (!Number.isInteger(seed) || seed <= 0) return false;
+  if (run && run.seed === seed && run.daily === daily?.daily) showRunStep();
+  else startRun(seed, daily?.daily);
+  return true;
 }
 
 function pause(reason: 'user' | InterruptReason): void {
@@ -171,7 +467,9 @@ function showPauseOverlay(reason: 'user' | InterruptReason): void {
       hud.setVisible(true);
       wake();
     },
-    onRestart: () => startLevel(level.id),
+    // An Expedition battle restarts as it was entered; leaving keeps the run in its
+    // battle phase, so Resume re-enters it.
+    onRestart: () => (mode === 'expedition' ? showRunStep() : startLevel(level.id)),
     onMap: () => showMap(),
   });
 }
@@ -247,7 +545,10 @@ function renderFrame(): void {
   woke = false;
   if (!input.paused) loop.advance(dt, simStep);
   // After the outcome the crowd keeps settling (the sim keeps stepping) until the result screen.
-  if (outcomeAt >= 0 && !resultShown && battle.state.time - outcomeAt >= RESULT_DELAY) showResult(battle);
+  if (outcomeAt >= 0 && !resultShown && battle.state.time - outcomeAt >= RESULT_DELAY) {
+    if (mode === 'expedition') finishRunBattle(battle);
+    else showResult(battle);
+  }
   renderer.frame({
     view: sim.view,
     battle: battle.state,
@@ -260,7 +561,8 @@ function renderFrame(): void {
   hud.update(battle.state, level.name, {
     bossName: level.boss?.name,
     bossPhases: level.boss?.phases.length,
-    goals: goalStatus(level, battle.state, battle.stats),
+    // Stars are a campaign goal; an Expedition battle shows the run strip instead.
+    goals: mode === 'campaign' ? goalStatus(level, battle.state, battle.stats) : undefined,
   });
   events.length = 0;
   // Static menu up and this frame drawn under it: stop until resume, retry or next.
@@ -293,16 +595,19 @@ engine.onContextRestoredObservable.add(() => {
   wake();
 });
 
-// Boot: ?level=<id> goes straight into that battle, otherwise the world map.
+// Boot: ?level=<id> goes straight into that battle, ?expedition=<seed>|daily onto the
+// run, otherwise the world map.
 const startId = params.get('level');
+const expParam = params.get('expedition');
 if (startId && getLevelById(startId)) startLevel(startId);
-else showMap();
+else if (!(expParam && bootExpedition(expParam))) showMap();
 
 window.__horde = {
   state: () => (battle ? battle.state : ({} as BattleState)),
   fps: () => drawnFps,
   zoom: () => renderer.cameraZoom,
-  level: () => (inBattle ? level.id : 'map'),
+  level: () =>
+    screens.visible && runMapShown ? 'expedition-map' : inBattle ? level.id : screens.visible ? 'expedition' : 'map',
   spawn: (n: number, champion = false) => {
     const count = Math.max(0, Math.floor(n));
     if (count > 0 && sim && battle) {
@@ -334,6 +639,16 @@ window.__horde = {
     return true;
   },
   render: () => renderer.stats(),
+  expedition: () => run ?? null,
+  expeditionChoose: (id: string) => {
+    if (!run || !availableNodes(run).includes(id)) return false;
+    screens.hide();
+    enterNode(run, id);
+    return true;
+  },
+  win: () => {
+    if (battle && battle.state.outcome === 'playing') battle.state.enemyBaseHp = 0;
+  },
 };
 
 // ?debug exposes the Babylon scene for console inspection (draw-call and mesh audits).

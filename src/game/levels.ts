@@ -4,6 +4,7 @@
 // level ids in play order and are checked against the shipped levels the same way.
 
 import type {
+  BattleMods,
   BossDef,
   DefenderDef,
   DefenderKind,
@@ -175,6 +176,35 @@ function validateBoss(raw: unknown, source: string): BossDef {
   return { name, phases };
 }
 
+// Expedition per-battle modifiers (applyUpgrades output). Every number must be positive;
+// knightEvery is a whole cadence of at least 2 and a burst holds at least one shot
+// (its gap may be 0: the whole burst leaves at once). Crowd counts are floored in battle.
+function validateMods(raw: unknown, source: string): BattleMods {
+  const o = obj(raw, source, 'mods');
+  const mods: BattleMods = {};
+  for (const key of ['mobHp', 'mobDamage', 'shotSpread', 'startCrowd', 'championEcho'] as const) {
+    if (o[key] !== undefined) mods[key] = pos(o, key, source, 'mods.');
+  }
+  if (o.knightEvery !== undefined) {
+    const n = posInt(o, 'knightEvery', source, 'mods.');
+    if (n < 2) fail(source, 'mods.knightEvery', `must be at least 2 (got ${n})`);
+    mods.knightEvery = n;
+  }
+  if (o.knight !== undefined) {
+    const k = obj(o.knight, source, 'mods.knight');
+    mods.knight = {
+      hp: pos(k, 'hp', source, 'mods.knight.'),
+      damage: pos(k, 'damage', source, 'mods.knight.'),
+      radius: pos(k, 'radius', source, 'mods.knight.'),
+    };
+  }
+  if (o.burst !== undefined) {
+    const b = obj(o.burst, source, 'mods.burst');
+    mods.burst = { shots: posInt(b, 'shots', source, 'mods.burst.'), gap: nonNeg(b, 'gap', source, 'mods.burst.') };
+  }
+  return mods;
+}
+
 function validateWave(raw: unknown, i: number, source: string): EnemyWaveDef {
   const p = `enemyWaves[${i}].`;
   const o = obj(raw, source, `enemyWaves[${i}]`);
@@ -278,6 +308,7 @@ export function validateLevel(raw: unknown, source: string): LevelDef {
     fail(source, 'goals', 'is no longer supported: every level uses the same three stars; set targetTime instead');
   if (o.targetTime !== undefined) level.targetTime = pos(o, 'targetTime', source, '');
   if (o.intro !== undefined) level.intro = str(o, 'intro', source, '');
+  if (o.mods !== undefined) level.mods = validateMods(o.mods, source);
   return level;
 }
 

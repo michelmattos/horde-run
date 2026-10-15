@@ -5,7 +5,10 @@
 // the menus) and plays ~8 s with a held touch drag, then pushes the crowd past 1000
 // player units, samples fps and checks the camera zoomed out with the crowd. Last it
 // jumps to the boss (1-10), plays a few seconds, then drops the boss's HP to end the
-// battle and saves the result card. Screenshots go to smoke-play.png, smoke-crowd.png,
+// battle and saves the result card. Then an Expedition run (?expedition=<seed>): the run
+// map (smoke-expedition-map.png), the first node tapped into a generated battle that
+// __horde.win() ends, and the upgrade pick (smoke-expedition-pick.png); taking a card
+// must land back on the run map with the upgrade owned. Screenshots go to smoke-play.png, smoke-crowd.png,
 // smoke-boss.png and smoke-result.png; render stats (draw calls, indices) are reported; a JSON summary is printed. Any console error or
 // page error fails the run. Low fps is reported, never failed (software rendering);
 // fps above the 60 cap fails. The battle screenshots (play, crowd, boss) must show the 3D
@@ -188,6 +191,7 @@ try {
   await page.waitForSelector('[data-level="1-1"]', { state: 'visible', timeout: 10000 });
   await sleep(300);
   await page.screenshot({ path: 'smoke-map.png' });
+  await page.waitForSelector('[data-action="expedition"]', { state: 'visible', timeout: 5000 });
   await page.tap('[data-level="1-1"]');
   const play = page.getByRole('button', { name: 'Play', exact: true });
   await play.waitFor({ state: 'visible', timeout: 5000 });
@@ -288,6 +292,46 @@ try {
   await page.screenshot({ path: 'smoke-result.png' });
   const result = await page.evaluate(() => window.__horde.state().outcome);
 
+  // Expedition: a fresh seeded run opens on its map; tap a first-row node twice (select,
+  // then confirm) to enter its battle, win it, then take the first upgrade offered.
+  await page.goto(`${ROOT}?expedition=4242`, { waitUntil: 'load' });
+  await page.waitForFunction(() => window.__horde?.level() === 'expedition-map', null, { timeout: 15000 });
+  const nodeSel = '[data-node-id][data-available="true"]';
+  await page.waitForSelector(nodeSel, { state: 'visible', timeout: 5000 });
+  await sleep(500);
+  await page.screenshot({ path: 'smoke-expedition-map.png' });
+  const firstNode = await page.getAttribute(nodeSel, 'data-node-id');
+  await page.tap(`[data-node-id="${firstNode}"]`);
+  await page.tap(`[data-node-id="${firstNode}"]`);
+  await page.waitForFunction(() => window.__horde.level().startsWith('x') && window.__horde.state().time > 1, null, {
+    timeout: 30000,
+  });
+  const expBattle = await page.evaluate(() => ({
+    level: window.__horde.level(),
+    render: window.__horde.render(),
+  }));
+  await page.evaluate(() => window.__horde.win());
+  const card0 = page.locator('.hx-up[data-upgrade-id]').first();
+  await card0.waitFor({ state: 'visible', timeout: 30000 });
+  await sleep(600);
+  await page.screenshot({ path: 'smoke-expedition-pick.png' });
+  const offered = await page.locator('.hx-up[data-upgrade-id]').count();
+  const picked = await card0.getAttribute('data-upgrade-id');
+  await card0.tap();
+  await page.tap('[data-action="take"]');
+  await page.waitForFunction(() => window.__horde.level() === 'expedition-map', null, { timeout: 10000 });
+  const runAfter = await page.evaluate(() => window.__horde.expedition());
+  const expedition = {
+    node: firstNode,
+    battle: expBattle.level,
+    drawCalls: expBattle.render.drawCalls,
+    offered,
+    picked,
+    hp: runAfter?.hp,
+    gold: runAfter?.gold,
+    upgrades: runAfter?.upgrades,
+  };
+
   const fpsMin = Math.min(...fpsSamples);
   const fpsAvg = fpsSamples.reduce((a, b) => a + b, 0) / fpsSamples.length;
   const content = {};
@@ -332,6 +376,7 @@ try {
     },
     render: { crowd: crowdRender, boss: boss.render },
     result,
+    expedition,
     screenshots: [
       'smoke-title.png',
       'smoke-map.png',
@@ -340,6 +385,8 @@ try {
       'smoke-crowd.png',
       'smoke-boss.png',
       'smoke-result.png',
+      'smoke-expedition-map.png',
+      'smoke-expedition-pick.png',
     ],
     errors,
   };
@@ -354,6 +401,9 @@ try {
   if (fpsAvg > 62) errors.push(`fps ${fpsAvg.toFixed(1)} is above the 60 fps cap`);
   if (boss.level !== '1-10' || !(boss.state.time > 2)) errors.push('boss level did not run');
   if (result !== 'victory') errors.push(`expected a victory result screen, got ${result}`);
+  if (offered !== 3) errors.push(`expected 3 upgrade cards after the expedition win, got ${offered}`);
+  if (!runAfter || runAfter.upgrades[picked] !== 1 || runAfter.stats.battlesWon !== 1)
+    errors.push(`expedition run did not record the win and pick: ${JSON.stringify(expedition)}`);
   if (errors.length) {
     console.error(`smoke FAILED:\n  ${errors.join('\n  ')}`);
     exitCode = 1;

@@ -23,7 +23,8 @@ Ground rules (apply to everything you do):
 - Tests run with Node's type stripping (npm test → node --experimental-strip-types --test tests/*.test.ts): no enums, no namespaces, no parameter properties, and relative imports must include the .ts extension. Pure logic (sim, rules, RNG, input math) must not import Babylon so it stays testable.
 - Do not install, add or upgrade npm packages; use what package.json already has.
 - Do not git commit, push, or create branches. Do not touch /mnt/project-files. Do not call any mcp__hearthbot__ tools.
-- Placeholder art only: primitives and flat colours (player team blue, enemy team red, gates green for good ops and red for bad ops).
+- Visual quality matters to Michel: no low-poly placeholder art. Follow docs/art-direction.md and reuse the shared look in src/render/look/ (materials, palette, lighting, post) and the existing models in src/render/models/ (contract: src/render/models/README.md). New 3D models and HTML/HUD screens must match that toy-diorama look and the existing UI theme (src/ui/theme.ts).
+- Checks: "npm run check" (typecheck, oxlint, oxfmt check, unit tests) must pass; "npm run format" and "npm run lint:fix" fix most issues. "npm run verify" adds build + smoke.
 - Keep code readable: short module-level comments explaining intent, no dead code.
 - Michel's play-test feedback is binding: NO screen shake or camera jitter of any kind (he found it horrible). Feedback for hits should be visual on the units/bases (flashes, particles), never moving the camera.
 - Keep the existing automation hooks working: window.__horde (state, fps, level, spawn, units) and "npm run smoke". If menus are added, the smoke test must still reach a battle (e.g. a URL param like ?level=1-1 that skips menus, or by tapping through).
@@ -108,7 +109,7 @@ Split the work into 3 to 5 tasks that can be built IN PARALLEL by separate agent
 
 For milestone 1 (core feel prototype) the natural split is:
 - sim: src/sim/** + tests/sim*.test.ts. Data-oriented crowd sim per concept section 8 (typed arrays, spatial hash, movement up the lane with separation, player/enemy cancellation on contact, gates applied once per unit with burst spread, unit cap with stacked weights ~1500 on phone, base damage), deterministic with a seeded RNG it receives. Exposes SimView.
-- render: src/render/**. Scene, tilted portrait camera looking up the lane that keeps the whole lane width visible on a tall phone screen, lane/ground, gates with big readable labels, cannon, bases with HP, thin-instance unit renderer fed from SimView each frame, cheap effects (gate burst, base hit flash, light shake), capped hardware scaling with auto-lowering when frames run long.
+- render: src/render/**. Scene, tilted portrait camera looking up the lane that keeps the whole lane width visible on a tall phone screen, lane/ground, gates with big readable labels, cannon, bases with HP, thin-instance unit renderer fed from SimView each frame, cheap effects (gate burst, base hit flash; never any camera shake), capped hardware scaling with auto-lowering when frames run long.
 - control: src/core/** + src/ui/**. Fixed-timestep loop helper, seeded RNG (src/core/rng.ts, used by sim and game), pointer input per concept "Touch controls" (relative drag, hold-to-fire in lower screen, multi-touch by pointer id, champion button ≥56px in a bottom corner clear of safe areas, Space/mouse mapping, sensitivity), pause on visibility/orientation change, haptics with toggle, Babylon GUI HUD (both base HP bars, unit counts, champion charge), win/lose overlay with instant retry and next-level, service worker registration (public/sw.js, cache-first app shell).
 - game: src/game/** + src/data/** + tests/game*.test.ts. Battle rules on top of the sim (cannon fire rate and aim limit from LevelDef, enemy waves and trickle, champion charge and launch, victory/defeat), a level loader, and 3 tuned prototype levels as JSON that ramp from easy to tense (60-120 s battles), using x2/x3/+N gates, one moving gate, and one trap gate.
 Adapt this for later milestones (campaign world, Expedition, progression, editor) using the concept doc.
@@ -136,7 +137,7 @@ You may ONLY create or edit files under: ${t.ownedPaths.join(', ')}. Other folde
 Your brief:
 ${t.brief}
 
-When done, run "npx tsc --noEmit" and "npm test" and make sure nothing in YOUR files causes errors (errors in other folders that are still being written are not yours; mention them). Return the public API precisely so the integrator can wire it up without guessing.`,
+When done, run "npx tsc --noEmit" and "npm test" and make sure nothing in YOUR files causes errors (also run "npx oxlint --type-aware" and "npx oxfmt" on your files) (errors in other folders that are still being written are not yours; mention them). Return the public API precisely so the integrator can wire it up without guessing.`,
     { label: `build:${t.key}`, phase: 'Build', schema: BUILD_SCHEMA },
   ).then(r => r && { key: t.key, ...r }),
 ))
@@ -155,7 +156,7 @@ ${okBuilt.length < plan.tasks.length ? `\nThese tasks produced nothing and you m
 
 Your job, editing any file you need:
 1. Write src/main.ts: boot the engine (antialias off on high-DPR phones is fine), load the first level, run the sim at a fixed 60 Hz step decoupled from rendering, feed input → game → sim → render/HUD each frame, handle win/lose/retry/next level, pause when hidden, register the service worker in production builds only. Expose window.__horde = { state(): BattleState, fps(): number, level(): string, spawn(n:number): void } for automated testing (spawn adds n player mobs at the cannon).
-2. Fix every type error and failing test until "npm test" and "npm run build" both pass.
+2. Fix every type error, lint/format error and failing test until "npm run check" and "npm run build" both pass.
 3. Write scripts/smoke.mjs (run by "npm run smoke"): build is assumed done; start "npx vite preview --port 4173 --strictPort" as a child process, launch Chromium with playwright-core (executablePath: process.env.CHROME_PATH || '/opt/pw-browsers/chromium', args ['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader','--ignore-gpu-blocklist']) in an iPhone-sized portrait viewport (390x844, deviceScaleFactor 3, isMobile, hasTouch). Load http://localhost:4173/horde-run/. Fail on any console error or page error. Simulate a touch drag with fire held using CDP Input.dispatchTouchEvent for ~8 s (sweeping left and right), save smoke-play.png, then call __horde.spawn to push past 1000 player units, sample __horde.fps() and unit counts for a few seconds, save smoke-crowd.png, and print a JSON summary (fps min/avg under swiftshader, peak units, outcome). Exit non-zero on errors. Software rendering is slow, so do not fail on low fps; just report it.
 4. Run "npm run build && npm run smoke", look at both screenshots with the Read tool, and fix anything visibly wrong (black screen, lane off-screen in portrait, unreadable gate labels, HUD under the notch area, nothing moving).
 Report honestly; if something still fails, say what.`,
@@ -199,7 +200,7 @@ if (toFix.length) {
 Fix these verified review findings for milestone ${milestone}, must-fix first. For each, apply the fix (or explain in knownIssues why not), keeping changes minimal.
 ${toFix.map((f, i) => `${i + 1}. [${f.severity}] ${f.file}: ${f.problem}\n   Evidence: ${f.evidence}\n   Suggested fix: ${f.fix}`).join('\n')}
 
-Then run "npm test", "npm run build" and "npm run smoke", look at the screenshots, and report the final state honestly.`,
+Then run "npm run verify" (check + build + smoke), look at the screenshots, and report the final state honestly.`,
     { label: 'fix', phase: 'Fix', schema: STATUS_SCHEMA },
   )
 }

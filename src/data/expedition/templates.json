@@ -1,0 +1,498 @@
+{
+  "lanes": [56, 58, 60, 62, 64],
+  "gateLayouts": [
+    {
+      "name": "twin doubles",
+      "baseHp": 1.0,
+      "waves": 0.8,
+      "gates": [
+        {
+          "op": "mul",
+          "value": 2,
+          "x": 0,
+          "z": 16,
+          "width": 3.2
+        },
+        {
+          "op": "mul",
+          "value": 2,
+          "x": 0,
+          "z": 36,
+          "width": 3.2
+        }
+      ]
+    },
+    {
+      "name": "slider",
+      "baseHp": 0.65,
+      "waves": 0.75,
+      "gates": [
+        {
+          "op": "mul",
+          "value": 3,
+          "x": 0,
+          "z": 18,
+          "width": 3,
+          "move": {
+            "amplitude": 2.2,
+            "period": 5
+          }
+        },
+        {
+          "op": "add",
+          "value": 1,
+          "x": 3,
+          "z": 38,
+          "width": 3
+        }
+      ]
+    },
+    {
+      "name": "fork with a trap",
+      "baseHp": 1.55,
+      "waves": 0.84,
+      "gates": [
+        {
+          "op": "mul",
+          "value": 2,
+          "x": -1,
+          "z": 16,
+          "width": 3.6
+        },
+        {
+          "op": "sub",
+          "value": 2,
+          "x": 2.5,
+          "z": 16,
+          "width": 3
+        },
+        {
+          "op": "mul",
+          "value": 3,
+          "x": 0,
+          "z": 36,
+          "width": 3
+        }
+      ]
+    },
+    {
+      "name": "brittle fork",
+      "baseHp": 1.0,
+      "waves": 0.8,
+      "gates": [
+        {
+          "op": "mul",
+          "value": 3,
+          "x": -2.2,
+          "z": 18,
+          "width": 3.2,
+          "uses": 900
+        },
+        {
+          "op": "mul",
+          "value": 2,
+          "x": 2.2,
+          "z": 18,
+          "width": 3.2
+        },
+        {
+          "op": "mul",
+          "value": 2,
+          "x": 2.2,
+          "z": 36,
+          "width": 3.2,
+          "uses": 1200
+        }
+      ]
+    },
+    {
+      "name": "split lanes",
+      "baseHp": 1.9,
+      "waves": 0.85,
+      "gates": [
+        {
+          "op": "mul",
+          "value": 2,
+          "x": -1.5,
+          "z": 16,
+          "width": 3
+        },
+        {
+          "op": "div",
+          "value": 2,
+          "x": 2.5,
+          "z": 16,
+          "width": 3
+        },
+        {
+          "op": "mul",
+          "value": 2,
+          "x": -1.5,
+          "z": 34,
+          "width": 3
+        },
+        {
+          "op": "add",
+          "value": 1,
+          "x": 0,
+          "z": 40,
+          "width": 3
+        }
+      ]
+    },
+    {
+      "name": "swinging triple",
+      "baseHp": 1.5,
+      "waves": 1,
+      "gates": [
+        {
+          "op": "mul",
+          "value": 3,
+          "x": 0,
+          "z": 17,
+          "width": 3.4,
+          "move": {
+            "amplitude": 1.7,
+            "period": 4.5
+          }
+        },
+        {
+          "op": "sub",
+          "value": 3,
+          "x": -3.3,
+          "z": 34,
+          "width": 2.6
+        },
+        {
+          "op": "mul",
+          "value": 2,
+          "x": 1,
+          "z": 38,
+          "width": 3.4
+        }
+      ]
+    }
+  ],
+  "defenderSets": [
+    {
+      "name": "twin towers",
+      "baseHp": 1.0,
+      "defenders": [
+        {
+          "kind": "tower",
+          "x": -3.8,
+          "z": 22,
+          "hp": 150,
+          "fireRate": 5,
+          "damage": 1,
+          "range": 6
+        },
+        {
+          "kind": "tower",
+          "x": 3.8,
+          "z": 22,
+          "hp": 150,
+          "fireRate": 5,
+          "damage": 1,
+          "range": 6
+        }
+      ],
+      "extras": [
+        {
+          "kind": "wall",
+          "x": 0,
+          "z": 46,
+          "hp": 300,
+          "width": 4
+        },
+        {
+          "kind": "tower",
+          "x": -3.8,
+          "z": 32,
+          "hp": 150,
+          "fireRate": 5,
+          "damage": 1,
+          "range": 6
+        }
+      ]
+    },
+    {
+      "name": "tower gauntlet",
+      "baseHp": 0.95,
+      "defenders": [
+        {
+          "kind": "tower",
+          "x": 3.8,
+          "z": 22,
+          "hp": 150,
+          "fireRate": 5,
+          "damage": 1,
+          "range": 6
+        },
+        {
+          "kind": "tower",
+          "x": -3.8,
+          "z": 32,
+          "hp": 150,
+          "fireRate": 5,
+          "damage": 1,
+          "range": 6
+        }
+      ],
+      "extras": [
+        {
+          "kind": "tower",
+          "x": 3.8,
+          "z": 46,
+          "hp": 150,
+          "fireRate": 5,
+          "damage": 1,
+          "range": 6
+        },
+        {
+          "kind": "wall",
+          "x": -2,
+          "z": 48,
+          "hp": 300,
+          "width": 3
+        }
+      ]
+    },
+    {
+      "name": "block walls",
+      "baseHp": 1.0,
+      "defenders": [
+        {
+          "kind": "wall",
+          "x": 0,
+          "z": 22.5,
+          "hp": 300,
+          "width": 4
+        },
+        {
+          "kind": "wall",
+          "x": -3.5,
+          "z": 46,
+          "hp": 200,
+          "width": 3
+        }
+      ],
+      "extras": [
+        {
+          "kind": "tower",
+          "x": 3.8,
+          "z": 32,
+          "hp": 150,
+          "fireRate": 5,
+          "damage": 1,
+          "range": 6
+        },
+        {
+          "kind": "tower",
+          "x": -3.8,
+          "z": 22,
+          "hp": 150,
+          "fireRate": 5,
+          "damage": 1,
+          "range": 6
+        }
+      ]
+    },
+    {
+      "name": "general's guard",
+      "baseHp": 1.0,
+      "defenders": [
+        {
+          "kind": "wall",
+          "x": 1,
+          "z": 22.5,
+          "hp": 250,
+          "width": 4
+        },
+        {
+          "kind": "tower",
+          "x": -3.8,
+          "z": 22,
+          "hp": 180,
+          "fireRate": 5,
+          "damage": 1,
+          "range": 6
+        },
+        {
+          "kind": "tower",
+          "x": 3.8,
+          "z": 44,
+          "hp": 180,
+          "fireRate": 5,
+          "damage": 1,
+          "range": 6
+        }
+      ],
+      "extras": [
+        {
+          "kind": "wall",
+          "x": -2.5,
+          "z": 48,
+          "hp": 400,
+          "width": 3
+        },
+        {
+          "kind": "tower",
+          "x": -3.8,
+          "z": 32,
+          "hp": 150,
+          "fireRate": 5,
+          "damage": 1,
+          "range": 6
+        }
+      ]
+    },
+    {
+      "name": "lone tower",
+      "baseHp": 1.0,
+      "defenders": [
+        {
+          "kind": "tower",
+          "x": -3.6,
+          "z": 32,
+          "hp": 150,
+          "fireRate": 5,
+          "damage": 1,
+          "range": 6
+        }
+      ],
+      "extras": [
+        {
+          "kind": "tower",
+          "x": 3.8,
+          "z": 22,
+          "hp": 150,
+          "fireRate": 5,
+          "damage": 1,
+          "range": 6
+        },
+        {
+          "kind": "wall",
+          "x": 2,
+          "z": 47,
+          "hp": 300,
+          "width": 4
+        }
+      ]
+    }
+  ],
+  "wavePatterns": [
+    {
+      "name": "steady",
+      "first": 10,
+      "every": 10,
+      "waves": 13,
+      "count": 90,
+      "ramp": 22,
+      "step": 7,
+      "trickle": 8.5,
+      "trickleAt": 8
+    },
+    {
+      "name": "surge",
+      "first": 12,
+      "every": 10,
+      "waves": 13,
+      "count": 78,
+      "ramp": 36,
+      "step": 8,
+      "trickle": 9.5,
+      "trickleAt": 12
+    },
+    {
+      "name": "pressure",
+      "first": 10,
+      "every": 9,
+      "waves": 15,
+      "count": 95,
+      "ramp": 22,
+      "step": 7,
+      "trickle": 8.5,
+      "trickleAt": 10
+    }
+  ],
+  "scale": {
+    "baseHp": [1550, 1450, 1450, 1450],
+    "waves": [0.85, 1, 1.15, 1.34],
+    "trickle": [0.85, 1, 1.15, 1.4],
+    "defenderHp": [0.9, 1, 1.1, 1.2],
+    "extraDefenders": [0, 0, 1, 1]
+  },
+  "elite": {
+    "baseHp": [0.78, 0.75, 0.8, 0.75],
+    "waves": [1.75, 1.6, 1.22, 1.06],
+    "trickle": [1.75, 1.6, 1.22, 1.06],
+    "playerBaseHp": [0.85, 0.85, 0.85, 0.85]
+  },
+  "base": {
+    "cannon": {
+      "fireRate": 6,
+      "unitsPerShot": 3,
+      "aimLimit": 4
+    },
+    "playerBaseHp": 320,
+    "enemyBaseWidth": 6,
+    "champion": {
+      "chargeNeeded": 280,
+      "hp": 120,
+      "damage": 90
+    },
+    "targetTime": 110
+  },
+  "boss": {
+    "enemyBaseHp": 2880,
+    "waves": 1.91,
+    "trickle": 1.66,
+    "playerBaseHp": 240,
+    "gates": [
+      {
+        "op": "mul",
+        "value": 3,
+        "x": 0,
+        "z": 16,
+        "width": 3.2
+      },
+      {
+        "op": "mul",
+        "value": 2,
+        "x": -2,
+        "z": 34,
+        "width": 3
+      },
+      {
+        "op": "mul",
+        "value": 2,
+        "x": 2,
+        "z": 34,
+        "width": 3
+      }
+    ],
+    "targetTime": 140,
+    "intro": "The Tin General himself. His tank strafes and calls in reinforcements as it cracks."
+  },
+  "names": [
+    "Rug Ambush",
+    "Sock Drawer Pass",
+    "Crayon Crossing",
+    "Bookshelf Gap",
+    "Lego Flats",
+    "Marble Run",
+    "Blanket Fort Road",
+    "Toy Chest Hollow",
+    "Slipper Ridge",
+    "Puzzle Piece Plain",
+    "Train Track Bend",
+    "Pillow Pass"
+  ],
+  "eliteNames": ["Sergeant's Stand", "Rocking Horse Redoubt", "Block Castle", "Jack-in-the-Box Keep", "Teddy Bunker"],
+  "eliteIntros": [
+    "An elite squad dug in here. Tougher fort, an extra defender, better pay.",
+    "Veteran Tan Army troops: more waves and a sturdier fort. Worth the gold.",
+    "The General's guard holds this ground. Break it for a richer reward."
+  ]
+}

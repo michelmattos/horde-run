@@ -80,11 +80,17 @@ export const HUD_METRICS = {
   armyGap: 6,
   clear: 14, // gap kept between the HUD and the battlefield framing
   cannonRow: 12, // extra room so the cannon row sits above the CHAMP button
+  runGap: 6, // gap between the top bar and the Expedition run strip
+  runH: 32, // Expedition run strip: run HP, gold, node tag, upgrade icons
+  runIcon: 30, // one upgrade icon slot in the run strip
+  runIconGap: 4,
 } as const;
 
-export function hudTopHeight(): number {
+// Height of the top HUD block; `run` adds the Expedition run strip under it.
+export function hudTopHeight(run = false): number {
   const m = HUD_METRICS;
-  return Math.max(m.pause, m.barH + m.rowGap + m.row2H);
+  const bar = Math.max(m.pause, m.barH + m.rowGap + m.row2H);
+  return run ? bar + m.runGap + m.runH : bar;
 }
 
 export function hudBottomHeight(): number {
@@ -95,12 +101,16 @@ export function hudBottomHeight(): number {
 // CSS px covered at the top and bottom (safe-area insets included) plus the clear gap.
 // `topBar`: bottom of the top HUD's first row (pause + enemy bar). Tall models at the far
 // end (the enemy flag, the boss's plume) may rise past the second row, whose level name
-// fades out early in the battle and whose badges sit at the right edge.
-export function hudReserveFor(ins: { top: number; bottom: number }): { top: number; bottom: number; topBar: number } {
+// fades out early in the battle and whose badges sit at the right edge. With the run strip
+// (`run`) the strip spans the width, so `topBar` drops to its bottom edge.
+export function hudReserveFor(
+  ins: { top: number; bottom: number },
+  run = false,
+): { top: number; bottom: number; topBar: number } {
   const m = HUD_METRICS;
   return {
-    topBar: Math.round(ins.top + m.topPad + Math.max(m.pause, m.barH)),
-    top: Math.round(ins.top + m.topPad + hudTopHeight() + m.clear),
+    topBar: Math.round(ins.top + m.topPad + (run ? hudTopHeight(true) : Math.max(m.pause, m.barH))),
+    top: Math.round(ins.top + m.topPad + hudTopHeight(run) + m.clear),
     bottom: Math.round(ins.bottom + m.bottomPad + hudBottomHeight() + m.clear + m.cannonRow),
   };
 }
@@ -131,4 +141,54 @@ export function formatCount(n: number): string {
   if (v < 10000) return String(v);
   const k = v / 1000;
   return `${k >= 100 ? Math.round(k) : (Math.floor(k * 10) / 10).toFixed(1)}k`;
+}
+
+// ---------- Expedition run strip ----------
+// Run HP, gold, the node tag and the upgrade icons under the top bar. Static during a
+// battle: these helpers run once per setRun / resize, never per frame.
+
+export type RunNodeTag = 'battle' | 'elite' | 'boss';
+export const RUN_MAX_ICONS = 6;
+
+// How many icon slots fit in `width` CSS px (at least 1).
+export function runIconSlots(width: number): number {
+  const m = HUD_METRICS;
+  if (!(width > 0)) return 1;
+  return Math.max(1, Math.floor((width + m.runIconGap) / (m.runIcon + m.runIconGap)));
+}
+
+// Icons to draw and the '+k' overflow: at most RUN_MAX_ICONS icons, and when not all fit,
+// one slot goes to the '+k' chip.
+export function splitRunIcons<T>(items: readonly T[], slots: number = RUN_MAX_ICONS + 1): { shown: T[]; more: number } {
+  const free = Math.max(1, Math.floor(Number.isFinite(slots) ? slots : 1));
+  if (items.length <= Math.min(RUN_MAX_ICONS, free)) return { shown: items.slice(), more: 0 };
+  const n = Math.max(0, Math.min(RUN_MAX_ICONS, free - 1));
+  return { shown: items.slice(0, n), more: items.length - n };
+}
+
+// Stack badge: 'x2', 'x3'..., nothing for a single stack.
+export function formatStacks(stacks: number): string {
+  const n = Math.floor(Number.isFinite(stacks) ? stacks : 0);
+  return n > 1 ? `x${n}` : '';
+}
+
+// Run HP number: whole points, never below 0 (a sliver of HP still reads as 1).
+export function formatRunHp(hp: number): string {
+  return String(Number.isFinite(hp) ? Math.max(0, Math.ceil(hp)) : 0);
+}
+
+export function runTagText(kind: RunNodeTag): string {
+  return kind === 'elite' ? 'ELITE' : kind === 'boss' ? 'BOSS' : '';
+}
+
+// Read-only label list for the icon row: 'Burst Fire x2, Tough Mobs'.
+export function runUpgradesLabel(upgrades: readonly { label: string; stacks: number }[]): string {
+  if (upgrades.length === 0) return 'No upgrades yet';
+  return upgrades.map((u) => (formatStacks(u.stacks) ? `${u.label} ${formatStacks(u.stacks)}` : u.label)).join(', ');
+}
+
+// Screen-reader summary of the left chips.
+export function runStatusLabel(hp: number, maxHp: number, gold: number, kind: RunNodeTag): string {
+  const tag = runTagText(kind);
+  return `Run health ${formatRunHp(hp)} of ${formatRunHp(maxHp)}, ${formatCount(gold)} gold${tag ? `, ${tag.toLowerCase()} battle` : ''}`;
 }
