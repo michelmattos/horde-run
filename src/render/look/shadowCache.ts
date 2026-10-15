@@ -104,13 +104,13 @@ export class StaticShadowCache {
         this.scene,
         false,
         true,
-        map.textureType,
+        0, // UNSIGNED_BYTE: only the depth is ever copied, so the colour target is the cheapest one (GPU memory on phones)
         false,
         undefined,
         false,
         false,
         undefined,
-        map.textureFormat,
+        5, // RGBA
       );
       const engine = this.scene.getEngine();
       cache.createDepthStencilTexture(engine.useReverseDepthBuffer ? 516 : 513, true);

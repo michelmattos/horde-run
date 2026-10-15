@@ -35,6 +35,9 @@ import { isLandscapeTouch, watchInterruptions } from './core/lifecycle.ts';
 import type { InterruptReason } from './core/lifecycle.ts';
 import { createHaptics } from './core/haptics.ts';
 import { registerServiceWorker } from './core/pwa.ts';
+import { planRecovery, readRecovery, takeRecoveryTarget, writeRecovery } from './core/recovery.ts';
+import type { RecoveryTarget } from './core/recovery.ts';
+import { writeSavedRender } from './render/look/quality.ts';
 import { loadSave, recordResult, writeSave } from './core/save.ts';
 import { createWorldMap } from './meta/worldMap.ts';
 import { createHud, hudReserve } from './ui/hud.ts';
@@ -580,15 +583,44 @@ watchInterruptions((r) => pause(r));
 engine.onResizeObservable.add(() => wake());
 
 // GPU context loss (iOS drops WebGL contexts under memory pressure or after a long time
-// in the background). Babylon keeps the data to rebuild buffers, raw/dynamic textures,
-// render targets and effects; the game pauses (the sim must not run blind), stops
-// drawing into a dead context, and once the context is back the renderer recompiles
-// and refits before the battlefield is drawn again under the pause card.
+// in the background). Babylon's in-place restore proved unreliable there (a blank or
+// half-rebuilt battlefield), so the page reloads back to where the player was as soon
+// as it is visible (core/recovery.ts). Only when losses repeat right after a recovery
+// does the game stay put: it pauses, stops drawing into the dead context, and if the
+// context comes back the renderer recompiles and refits under the pause card.
 engine.onContextLostObservable.add(() => {
   contextLost = true;
-  pause('hidden');
   stopLoop();
+  const { plan, count } = planRecovery(readRecovery(), Date.now());
+  const target: RecoveryTarget =
+    inBattle && !resultShown
+      ? mode === 'campaign'
+        ? { kind: 'level', id: level.id }
+        : { kind: 'expedition' }
+      : runMapShown || screens.visible
+        ? { kind: 'expedition' }
+        : { kind: 'map' };
+  if (plan !== 'give-up' && writeRecovery({ at: Date.now(), count, target })) {
+    console.warn(`WebGL context lost: reloading (${plan})`);
+    if (plan === 'reload-low') writeSavedRender({ quality: 'low', post: 'off' });
+    reloadWhenVisible();
+    return;
+  }
+  pause('hidden');
 });
+
+function reloadWhenVisible(): void {
+  if (document.visibilityState === 'visible') {
+    location.reload();
+    return;
+  }
+  const onVisible = (): void => {
+    if (document.visibilityState !== 'visible') return;
+    document.removeEventListener('visibilitychange', onVisible);
+    location.reload();
+  };
+  document.addEventListener('visibilitychange', onVisible);
+}
 engine.onContextRestoredObservable.add(() => {
   contextLost = false;
   renderer.contextRestored();
@@ -596,11 +628,18 @@ engine.onContextRestoredObservable.add(() => {
 });
 
 // Boot: ?level=<id> goes straight into that battle, ?expedition=<seed>|daily onto the
-// run, otherwise the world map.
-const startId = params.get('level');
-const expParam = params.get('expedition');
-if (startId && getLevelById(startId)) startLevel(startId);
-else if (!(expParam && bootExpedition(expParam))) showMap();
+// run; after a context-loss reload, back to where the player was; otherwise the world map.
+function boot(): void {
+  const startId = params.get('level');
+  const expParam = params.get('expedition');
+  const recovered = takeRecoveryTarget();
+  if (startId && getLevelById(startId)) return startLevel(startId);
+  if (expParam && bootExpedition(expParam)) return;
+  if (recovered?.kind === 'level' && getLevelById(recovered.id)) return startLevel(recovered.id);
+  if (recovered?.kind === 'expedition' && run) return showRunStep();
+  showMap();
+}
+boot();
 
 window.__horde = {
   state: () => (battle ? battle.state : ({} as BattleState)),
