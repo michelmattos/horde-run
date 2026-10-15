@@ -1,4 +1,5 @@
-// Sound rules: which sounds a battle frame plays, and the throttle that keeps big crowds quiet.
+// Sound rules: which sounds a battle frame plays, and the throttle that keeps big crowds quiet;
+// the music: the scheduler's loop seam and the songs' notes.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { SimEvent } from '../src/contracts.ts';
@@ -15,6 +16,9 @@ import {
 } from '../src/audio/mapping.ts';
 import type { AudioCue, SoundId } from '../src/audio/mapping.ts';
 import { RECIPES, recipeKey } from '../src/audio/synth.ts';
+import { SONGS, melody, noteMidi } from '../src/audio/songs.ts';
+import { notesBetween, timeline } from '../src/audio/music.ts';
+import { pickTake } from '../src/audio/samples.ts';
 
 const ids = (reqs: { id: SoundId }[]): SoundId[] => reqs.map((r) => r.id).sort();
 
@@ -149,4 +153,83 @@ test('every sound and variant has a recipe', () => {
   assert.equal(recipeKey('ultimate', 'nope'), 'ultimate:barrage');
   assert.equal(recipeKey('shot', 'ignored'), 'shot');
   for (const r of Object.values(RECIPES)) assert.ok(r.dur > 0 && r.dur <= 2.5);
+});
+
+// ---------- Music ----------
+
+test('back-to-back scheduling windows play every note once, across the loop seam', () => {
+  for (const song of Object.values(SONGS)) {
+    const tl = timeline(song);
+    const loops = 3;
+    const expected: number[] = [];
+    for (let k = 0; k < loops; k++) for (const n of tl.notes) expected.push(n.time + k * tl.length);
+    const got: number[] = [];
+    // Uneven windows, like a timer that fires late; one ends exactly on the seam.
+    const edges = [0, 0.37, 1.1, tl.length - 0.05, tl.length, tl.length + 0.61];
+    for (let t = edges[edges.length - 1]; t < loops * tl.length; t += 0.43) edges.push(t);
+    edges.push(loops * tl.length);
+    for (let i = 1; i < edges.length; i++) {
+      for (const n of notesBetween(tl, edges[i - 1], edges[i])) {
+        assert.ok(n.time >= edges[i - 1] && n.time < edges[i], `${song.id} note outside its window`);
+        got.push(n.time);
+      }
+    }
+    assert.equal(got.length, expected.length, song.id);
+    got.forEach((t, i) => assert.ok(Math.abs(t - expected[i]) < 1e-9, `${song.id} note ${i}`));
+  }
+});
+
+test('every note of every song starts and ends inside its loop', () => {
+  for (const song of Object.values(SONGS)) {
+    const beats = song.bars * song.beatsPerBar;
+    for (const p of song.parts) {
+      assert.ok(p.notes.length > 0, `${song.id} ${p.inst} is empty`);
+      for (const n of p.notes) {
+        assert.ok(n.at >= 0 && n.at + n.dur <= beats + 1e-9, `${song.id} ${p.inst} note at beat ${n.at}`);
+      }
+    }
+  }
+});
+
+test('songs stay in key: pitched notes use only their scale', () => {
+  const scale = (root: string, steps: number[]): Set<number> => {
+    const r = noteMidi(`${root}4`) % 12;
+    return new Set(steps.map((s) => (r + s) % 12));
+  };
+  const major = [0, 2, 4, 5, 7, 9, 11];
+  const keys: Record<string, Set<number>> = {
+    menu: scale('F', major),
+    battle: scale('C', major),
+    boss: scale('A', [0, 2, 3, 5, 7, 8, 10, 11]), // A minor, with the raised G# of E major
+  };
+  for (const song of Object.values(SONGS)) {
+    for (const p of song.parts) {
+      for (const n of p.notes) {
+        if (n.midi === 0) continue; // drums
+        assert.ok(keys[song.id].has(n.midi % 12), `${song.id} ${p.inst}: midi ${n.midi} at beat ${n.at}`);
+      }
+    }
+  }
+});
+
+test('a melody bar that does not add up to a full bar is rejected', () => {
+  assert.throws(() => melody('C5:2 D5:2 | E5:8', 4), /bar 1/);
+  assert.throws(() => melody('C5:8 | H5:8', 4), /bad note/);
+  assert.equal(melody('C5:4 r:2 D5:2', 4).length, 2);
+});
+
+test('recorded takes never repeat back to back and all get used', () => {
+  for (const count of [2, 3, 5]) {
+    const seen = new Set<number>();
+    let last = -1;
+    for (let i = 0; i < 200; i++) {
+      const k = pickTake(count, last, (i * 0.618034) % 1);
+      assert.ok(k >= 0 && k < count);
+      assert.notEqual(k, last);
+      seen.add(k);
+      last = k;
+    }
+    assert.equal(seen.size, count);
+  }
+  assert.equal(pickTake(1, 0, 0.9), 0);
 });

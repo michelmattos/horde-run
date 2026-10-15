@@ -63,30 +63,30 @@ export interface SoundRule {
   gapMs: number; // minimum time between two starts of this sound
   voices: number; // most voices of this sound sounding at once
   durMs: number; // how long one voice sounds
-  volume: number; // base volume 0..1 before the master gain
+  volume: number; // base volume 0..1 before the effects bus; set from measured loudness (scripts/render-audio.mjs)
 }
 
 export const SOUND_RULES: Readonly<Record<SoundId, SoundRule>> = {
-  shot: { gapMs: 45, voices: 4, durMs: 90, volume: 0.32 },
-  gateGood: { gapMs: 70, voices: 3, durMs: 220, volume: 0.5 },
-  gateTrap: { gapMs: 90, voices: 2, durMs: 300, volume: 0.48 },
-  gateBreak: { gapMs: 120, voices: 2, durMs: 380, volume: 0.65 },
-  clash: { gapMs: 60, voices: 4, durMs: 90, volume: 0.26 },
-  hitEnemyBase: { gapMs: 90, voices: 3, durMs: 200, volume: 0.5 },
-  hitPlayerBase: { gapMs: 110, voices: 2, durMs: 260, volume: 0.55 },
-  towerShot: { gapMs: 80, voices: 3, durMs: 140, volume: 0.36 },
+  shot: { gapMs: 45, voices: 4, durMs: 90, volume: 0.75 },
+  gateGood: { gapMs: 70, voices: 3, durMs: 300, volume: 0.5 },
+  gateTrap: { gapMs: 90, voices: 2, durMs: 300, volume: 0.72 },
+  gateBreak: { gapMs: 120, voices: 2, durMs: 700, volume: 0.65 },
+  clash: { gapMs: 60, voices: 4, durMs: 140, volume: 0.7 },
+  hitEnemyBase: { gapMs: 90, voices: 3, durMs: 300, volume: 0.5 },
+  hitPlayerBase: { gapMs: 110, voices: 2, durMs: 300, volume: 0.55 },
+  towerShot: { gapMs: 80, voices: 3, durMs: 120, volume: 1 },
   defenderDown: { gapMs: 150, voices: 2, durMs: 600, volume: 0.65 },
-  championLaunch: { gapMs: 250, voices: 1, durMs: 900, volume: 0.75 },
-  ultimate: { gapMs: 300, voices: 2, durMs: 1400, volume: 0.8 },
-  blast: { gapMs: 70, voices: 4, durMs: 320, volume: 0.5 },
-  bossPhase: { gapMs: 500, voices: 1, durMs: 1200, volume: 0.75 },
-  victory: { gapMs: 1000, voices: 1, durMs: 2000, volume: 0.8 },
-  defeat: { gapMs: 1000, voices: 1, durMs: 1900, volume: 0.75 },
-  tap: { gapMs: 40, voices: 3, durMs: 60, volume: 0.45 },
-  coin: { gapMs: 35, voices: 4, durMs: 260, volume: 0.42 },
-  unlock: { gapMs: 300, voices: 1, durMs: 900, volume: 0.7 },
-  build: { gapMs: 200, voices: 2, durMs: 520, volume: 0.65 },
-  upgrade: { gapMs: 200, voices: 2, durMs: 700, volume: 0.65 },
+  championLaunch: { gapMs: 250, voices: 1, durMs: 900, volume: 1 },
+  ultimate: { gapMs: 300, voices: 2, durMs: 1400, volume: 0.56 },
+  blast: { gapMs: 70, voices: 4, durMs: 320, volume: 0.72 },
+  bossPhase: { gapMs: 500, voices: 1, durMs: 1400, volume: 0.49 },
+  victory: { gapMs: 1000, voices: 1, durMs: 1800, volume: 0.25 },
+  defeat: { gapMs: 1000, voices: 1, durMs: 2000, volume: 0.42 },
+  tap: { gapMs: 40, voices: 3, durMs: 60, volume: 0.9 },
+  coin: { gapMs: 35, voices: 4, durMs: 260, volume: 0.34 },
+  unlock: { gapMs: 300, voices: 1, durMs: 1000, volume: 0.44 },
+  build: { gapMs: 200, voices: 2, durMs: 650, volume: 0.65 },
+  upgrade: { gapMs: 200, voices: 2, durMs: 900, volume: 0.59 },
 };
 
 /** Per-sound throttle memory: last start time and the end time of each voice slot. */
