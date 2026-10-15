@@ -1,6 +1,6 @@
 # Single-Player Crowd Shooter: Design Concept
 
-*Revised 2026-10-14. Working title: **Horde Run**. A personal, single-player web game built with **Babylon.js** that keeps Mob Control's core loop, with no ads, no multiplayer, no monetization and no store release. **Phone-first: it is played mainly in a mobile browser, and touch is the primary control scheme.** Background research: [mob-control.md](https://github.com/michelmattos/horde-run).*
+*Revised 2026-10-15. Working title: **Horde Run**. A personal, single-player web game built with **Babylon.js** that keeps Mob Control's core loop, with no ads, no multiplayer, no monetization and no store release. **Phone-first: it is played mainly in a mobile browser, and touch is the primary control scheme.** Background research: [mob-control.md](https://github.com/michelmattos/horde-run).*
 
 ## 1. The idea
 
@@ -184,7 +184,48 @@ Milestones sized for a personal project, each one playable:
 2. **One complete world**: 10 levels from JSON, defenders, one champion, one boss, stars, and saved progress.
 3. **Expedition prototype**: a 5-battle run with 15 to 20 upgrades and a branching map. See whether it's more replayable than the campaign.
 4. **Progression and polish**: loadouts, unlocks, coins, sound, particles, home base.
-5. **Level editor**, then more worlds, unit types, bosses and challenge levels at whatever pace is fun.
+5. **World 2, Freezer / Snow Globe**, after a rebalance of World 1 and upgrades (section 9.2).
+6. **World 3, Clockwork Workshop.**
+7. **World 4, Bathtub.**
+8. **World 5, Science Fair.**
+9. **World 6, Top Shelf Castle.**
+
+Decided 2026-10-15: one milestone per world from milestone 5 on, each adding a few of the section 5 building blocks that suit its room. **No level editor and no challenge levels** for now; objectives other than destroying the base (escort, hold, collect, race, rescue) can be added to a world later.
+
+### 9.1 What each world adds
+
+| Milestone | World | New gates | Lane geometry | Hazards | New enemies | New unit | Boss |
+|---|---|---|---|---|---|---|---|
+| M5 | 2. Freezer / Snow Globe | Freezing gates, forks | Chokepoints | Ice, wind gusts | Snowmen (tanky), wind-up penguins (fast), igloo spawners | Giant | Snow Globe Giant |
+| M6 | 3. Clockwork Workshop | Timed toggling gates | Conveyor belts, rotating platforms | Saws | Wind-up robots, shield walls that need a champion | Archer | Jack-in-the-Box |
+| M7 | 4. Bathtub | Bubble gates (divide), stacked gates | Splits and merges | Draining water pits | Rubber ducks, healers, converters that turn your units | None | Giant Rubber Duck |
+| M8 | 5. Science Fair | Firecracker barrels you trigger | Ramps | Baking-soda lava, pits | Slimes that split on death | None | Slime Volcano |
+| M9 | 6. Top Shelf Castle | Everything combined | Multi-lane battlefields (2-3 lanes, one cannon aiming across) | Everything combined | Enemy cannon that aims at you, the Toy King's army | None | The Toy King |
+
+Knights, sprinters and bombers already exist, so archers and giants are the only unit roles left; worlds 4 to 6 unlock a champion or an ultimate instead.
+
+Each world also adds gear that changes how you play rather than raising stats:
+
+| World | New cannon | New champion or ultimate | Expedition upgrades added |
+|---|---|---|---|
+| 2. Snow Globe | Snowball Launcher: shots roll and grow, picking up mobs until they burst | Ultimate: Blizzard, freezes the enemy crowd for 4 s | 5, around ice and freezing gates |
+| 3. Workshop | Gear Gun: shots ricochet off the lane walls | Champion: Wind-up Robot, walks a gate's line and re-triggers it | 5, around timed gates and conveyors |
+| 4. Bathtub | Water Pistol: a steady stream that pushes enemies back | Ultimate: Bubble Bath, converts the nearest enemies | 5, around splits and routes |
+| 5. Science Fair | Rocket: one slow shot that bursts into a squad far up the lane | Champion: Volcano Kid, leaves lava that hurts enemies | 5, around hazards |
+| 6. Castle | Catapult: arcs over walls and enemy crowds | Ultimate: Royal Decree, doubles every gate for 6 s | 5, around multiple lanes |
+
+Every world milestone includes: 10 levels as JSON (one new idea every few levels, then remixed), a room diorama, a toy faction and a boss at World 1's visual quality with no screen shake, an unlock from the previous world's stars and a title card, its mechanics and boss added to the Expedition pool, fairness with starter gear (tuned against the human-like autoplay bot), and phone GPU memory kept near 65 MB by loading only the current world's assets. Every new item passes the existing fairness check: no strict upgrade over the starter, never required to win.
+
+**World 2 in detail.** Ice patches where mobs slide and keep their momentum (from 2-1); freezing gates that ice over for a few seconds after a set number of units cross, then thaw, with units hitting a frozen gate chipping it open sooner; forks such as left x2 vs right +30 (from 2-3); ice-wall chokepoints; telegraphed wind gusts when the globe is shaken that push the crowd sideways (scenery moves, the camera never does); igloo spawners that release penguins until destroyed; the Giant, slow and very tough, carrying a small crowd that jumps off when it falls (unlocked at 2-5). The Snow Globe Giant lobs snowballs in phase 1, freezes your gates in phase 2 until units chip them open, and adds gusts in phase 3. 2-1 is easy; 2-8 to the boss take a retry or two with starter gear.
+
+### 9.2 Rebalance (first job of milestone 5)
+
+Measured 2026-10-15 with 16 headless tries of the human-like bot per level: World 1 got too easy once loadouts and upgrades landed. It was tuned to about 60% wins on 1-8 to the boss before the starter ultimate existed; the starter loadout (ultimate included) now wins 88-100% there, and maxed gear plus village wins every try with battles of about 30 s instead of 60-120 s.
+
+1. Retune World 1 with the full starter loadout, ultimate included, back to a retry or two on the last levels.
+2. Cut each upgrade tier from about +8% to about +4%, so maxed gear is about +12% instead of +25%. Upgrades make a level comfortable, not trivial.
+3. Add a balance test with maxed gear and village: wins take at least 45 s, and the hard levels still lose now and then.
+4. Tune each new world against the gear a player is likely to own by then, while keeping it winnable with starter gear.
 
 ## 10. Open questions
 
@@ -192,4 +233,5 @@ Milestones sized for a personal project, each one playable:
 - ~~Where the code lives~~ **Decided:** GitHub repo [michelmattos/horde-run](https://github.com/michelmattos/horde-run), live at https://michelmattos.github.io/horde-run/.
 - ~~Your phone~~ **Decided:** iPhone 17 Pro Max (see Phone performance).
 - ~~Name~~ **Decided:** keep "Horde Run".
+- Decided 2026-10-15: one milestone per world from milestone 5 (section 9), no level editor, no challenge levels for now.
 - Also decided 2026-10-14: fixed three-goal stars, moderate difficulty, no story (section 4.1), and no screen shake (section 8).
