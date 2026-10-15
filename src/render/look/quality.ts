@@ -61,6 +61,29 @@ export function parseQuality(v: string | null | undefined): QualityLevel | null 
   return v === 'low' || v === 'medium' || v === 'high' ? v : null;
 }
 
+// Pipeline parts switched off for this device because the canvas stayed blank with them
+// (see blankWatch.ts): 'no-msaa' keeps the pipeline without its multisampled target
+// (FXAA instead), 'off' draws straight to the canvas like the low tier.
+export type PostFallback = 'no-msaa' | 'off';
+
+export function parsePostFallback(v: unknown): PostFallback | null {
+  return v === 'no-msaa' || v === 'off' ? v : null;
+}
+
+// A tier's settings with the device's post fallback applied.
+export function withPostFallback(q: QualitySettings, f: PostFallback | null | undefined): QualitySettings {
+  if (f === 'off') return { ...q, postProcess: false, msaa: 1, fxaa: false, bloom: false, vignette: false };
+  if (f === 'no-msaa' && q.msaa > 1) return { ...q, msaa: 1, fxaa: true };
+  return q;
+}
+
+// The next fallback after `f` for a tier, or null when the pipeline is already off.
+export function nextPostFallback(q: QualitySettings, f: PostFallback | null | undefined): PostFallback | null {
+  const s = withPostFallback(q, f);
+  if (!s.postProcess) return null;
+  return s.msaa > 1 ? 'no-msaa' : 'off';
+}
+
 export function lowerQuality(q: QualityLevel): QualityLevel {
   const i = QUALITY_ORDER.indexOf(q);
   return QUALITY_ORDER[Math.max(0, i - 1)];
@@ -148,6 +171,7 @@ export class QualityGovernor {
 export interface SavedRender {
   quality?: QualityLevel;
   ratio?: number;
+  post?: PostFallback;
 }
 
 const SAVE_KEY = 'horde-run:render-v1';
@@ -165,10 +189,12 @@ export function readSavedRender(): SavedRender {
   try {
     const raw = storage()?.getItem(SAVE_KEY);
     if (!raw) return {};
-    const o = JSON.parse(raw) as { quality?: unknown; ratio?: unknown };
+    const o = JSON.parse(raw) as { quality?: unknown; ratio?: unknown; post?: unknown };
     const out: SavedRender = {};
     const q = parseQuality(typeof o.quality === 'string' ? o.quality : null);
     if (q) out.quality = q;
+    const post = parsePostFallback(o.post);
+    if (post) out.post = post;
     if (typeof o.ratio === 'number' && Number.isFinite(o.ratio) && o.ratio > 0) out.ratio = o.ratio;
     return out;
   } catch {

@@ -30,8 +30,16 @@ import type { DefaultRenderingPipeline } from '@babylonjs/core/PostProcesses/Ren
 import { HEX, lin, srgb } from './palette.ts';
 import { loadEnvironment } from './environment.ts';
 import { applyGrade, createPipeline } from './post.ts';
-import { QUALITY_SETTINGS, QualityGovernor, parseQuality, readSavedRender, writeSavedRender } from './quality.ts';
-import type { QualityLevel, QualitySettings } from './quality.ts';
+import {
+  QUALITY_SETTINGS,
+  QualityGovernor,
+  nextPostFallback,
+  parseQuality,
+  readSavedRender,
+  withPostFallback,
+  writeSavedRender,
+} from './quality.ts';
+import type { PostFallback, QualityLevel, QualitySettings } from './quality.ts';
 
 export * from './palette.ts';
 export * from './materials.ts';
@@ -40,7 +48,8 @@ export { createBlobShadowMesh, BLOB_Y } from './blobShadow.ts';
 export { surfaceTextures, radialTexture } from './textures.ts';
 export type { SurfaceKind, SurfaceTextures } from './textures.ts';
 export { QUALITY_SETTINGS, QualityGovernor, parseQuality, readSavedRender, writeSavedRender } from './quality.ts';
-export type { QualityLevel, QualitySettings } from './quality.ts';
+export type { PostFallback, QualityLevel, QualitySettings } from './quality.ts';
+export { BlankWatch, isBlankSample } from './blankWatch.ts';
 export { GRADE } from './post.ts';
 
 // Sun direction (travels down, to the right and away from the camera): lit faces point
@@ -95,6 +104,10 @@ export interface Look {
   // on/off), deferred from a mid-battle step. Call at a level load, behind the loading.
   applyPending(): void;
   contextRestored(): void; // the WebGL context came back: rebuild the shadow cache
+  // The canvas stayed blank with the current pipeline: switch its riskiest part off for
+  // this device (remembered) and rebuild. False when there is nothing left to drop.
+  degradePost(): boolean;
+  readonly postFallback: PostFallback | null;
   readonly locked: boolean; // the tier was forced from the URL
   material<T extends Material>(key: string, make: () => T): T; // shared per-look material cache
   dispose(): void;
@@ -133,6 +146,8 @@ class LookImpl implements Look {
   private readonly cache = new Map<string, Material>();
   private readonly auto: boolean;
   private readonly remember: boolean;
+  private readonly saveFallback: boolean;
+  postFallback: PostFallback | null;
   private readonly cacheStatic: StaticShadowCache;
   // What the shader-affecting parts are currently built for (they lag the tier mid-battle).
   private appliedFilter: QualitySettings['shadowFilter'];
@@ -149,6 +164,9 @@ class LookImpl implements Look {
     const start = saved && QUALITY_ORDER_INDEX[saved] < QUALITY_ORDER_INDEX[ceiling] ? saved : ceiling;
     this.governor = new QualityGovernor(forced ?? start, !!forced, forced ?? ceiling);
     this.auto = opts.autoQuality ?? true;
+    // A pipeline that left the canvas blank on this device stays off, even on a URL-forced tier.
+    this.saveFallback = !!opts.remember;
+    this.postFallback = opts.remember ? (readSavedRender().post ?? null) : null;
     this.appliedFilter = this.settings.shadowFilter;
     this.appliedPost = this.settings.postProcess;
     this.cacheStatic = new StaticShadowCache(scene);
@@ -193,7 +211,7 @@ class LookImpl implements Look {
   }
 
   get settings(): QualitySettings {
-    return QUALITY_SETTINGS[this.governor.level];
+    return withPostFallback(QUALITY_SETTINGS[this.governor.level], this.postFallback);
   }
 
   get locked(): boolean {
@@ -346,6 +364,16 @@ class LookImpl implements Look {
     const q = this.settings;
     if (this.appliedFilter === q.shadowFilter && this.appliedPost === q.postProcess) return;
     this.applyQuality(true);
+  }
+
+  degradePost(): boolean {
+    const next = nextPostFallback(QUALITY_SETTINGS[this.governor.level], this.postFallback);
+    if (!next) return false;
+    console.warn(`look: canvas stayed blank with the post pipeline, falling back to '${next}'`);
+    this.postFallback = next;
+    if (this.saveFallback) writeSavedRender({ post: next });
+    this.applyQuality(true);
+    return true;
   }
 
   contextRestored(): void {

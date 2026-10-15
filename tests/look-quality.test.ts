@@ -5,8 +5,12 @@ import {
   QualityGovernor,
   higherQuality,
   lowerQuality,
+  nextPostFallback,
+  parsePostFallback,
   parseQuality,
+  withPostFallback,
 } from '../src/render/look/quality.ts';
+import { BLANK_LIMIT, BlankWatch, isBlankSample } from '../src/render/look/blankWatch.ts';
 
 test('quality tiers order and parse', () => {
   assert.equal(lowerQuality('high'), 'medium');
@@ -77,4 +81,47 @@ test('saved render settings are safe without storage', async () => {
   const { readSavedRender, writeSavedRender } = await import('../src/render/look/quality.ts');
   writeSavedRender({ quality: 'low', ratio: 1 }); // no localStorage under Node: a no-op
   assert.deepEqual(readSavedRender(), {});
+});
+
+test('post fallback drops MSAA first, then the pipeline, then nothing', () => {
+  const high = QUALITY_SETTINGS.high;
+  assert.equal(nextPostFallback(high, null), 'no-msaa');
+  const noMsaa = withPostFallback(high, 'no-msaa');
+  assert.equal(noMsaa.postProcess, true);
+  assert.equal(noMsaa.msaa, 1);
+  assert.equal(noMsaa.fxaa, true);
+  assert.equal(nextPostFallback(high, 'no-msaa'), 'off');
+  assert.equal(nextPostFallback(QUALITY_SETTINGS.medium, null), 'off');
+  const off = withPostFallback(high, 'off');
+  assert.equal(off.postProcess, false);
+  assert.equal(off.shadowMapSize, high.shadowMapSize); // the rest of the tier stays
+  assert.equal(nextPostFallback(high, 'off'), null);
+  assert.equal(nextPostFallback(QUALITY_SETTINGS.low, null), null);
+  assert.equal(withPostFallback(QUALITY_SETTINGS.medium, 'no-msaa'), QUALITY_SETTINGS.medium);
+  assert.equal(parsePostFallback('off'), 'off');
+  assert.equal(parsePostFallback('msaa'), null);
+});
+
+test('blank watch probes while watching and gives up only after the blank limit', () => {
+  const w = new BlankWatch();
+  assert.equal(w.tick(1 / 60), false); // not started
+  w.start();
+  assert.equal(w.tick(0), true); // first drawn frame is probed
+  assert.equal(w.report(true), false);
+  let fellBack = false;
+  for (let i = 0; i < 60 * BLANK_LIMIT + 30 && !fellBack; i++) if (w.tick(1 / 60)) fellBack = w.report(true);
+  assert.equal(fellBack, true);
+  assert.equal(w.active, false);
+
+  w.start();
+  assert.equal(w.tick(0), true);
+  assert.equal(w.report(false), false); // an opaque frame ends the watch
+  assert.equal(w.active, false);
+  for (let i = 0; i < 600; i++) assert.equal(w.tick(1 / 60), false);
+});
+
+test('a sample is blank only when no pixel has alpha', () => {
+  assert.equal(isBlankSample(new Uint8Array(12)), true);
+  assert.equal(isBlankSample(new Uint8Array([0, 0, 0, 0, 10, 20, 30, 255, 0, 0, 0, 0])), false);
+  assert.equal(isBlankSample(new Uint8Array([0, 0, 0, 1])), false);
 });
