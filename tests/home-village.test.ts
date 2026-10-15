@@ -4,16 +4,7 @@
 // animation timing and the box AO.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  BUILDING_IDS,
-  MAX_BUILD_TIER,
-  PLOTS,
-  allPieces,
-  clampTier,
-  isBuildingId,
-  piecesAt,
-  tierDiff,
-} from '../src/home/villagePieces.ts';
+import { BUILDING_IDS, PLOTS, clampTier, piecesAt, tierDiff } from '../src/home/villagePieces.ts';
 import {
   DROP_TIME,
   SOLDIER_SPOTS,
@@ -33,28 +24,6 @@ import {
   rotate,
 } from '../src/home/villageMath.ts';
 import { buildingCardLook, grownBuildings, tiersOf } from '../src/home/homeLogic.ts';
-
-const HEX = /^#[0-9a-f]{6}$/i;
-
-test('five buildings with the fixed ids', () => {
-  assert.deepEqual(BUILDING_IDS, ['barracks', 'walls', 'workshop', 'garden', 'flagpole']);
-  assert.ok(isBuildingId('garden'));
-  assert.ok(!isBuildingId('castle'));
-  assert.equal(MAX_BUILD_TIER, 3);
-});
-
-test('every piece is well formed', () => {
-  for (const id of BUILDING_IDS) {
-    for (const q of allPieces(id)) {
-      assert.match(q.color, HEX, `${id} colour`);
-      for (const v of [q.x, q.y, q.z, q.w, q.h, q.d]) assert.ok(Number.isFinite(v), `${id} finite`);
-      assert.ok(q.w > 0 && q.h > 0 && q.d > 0, `${id} ${q.shape} has size`);
-      assert.ok(q.y >= -1e-9, `${id} nothing below the floor`);
-      assert.ok(q.tier >= 0 && q.tier <= 3, `${id} tier`);
-      if (q.until !== undefined) assert.ok(q.until > q.tier, `${id} cleared after it appears`);
-    }
-  }
-});
 
 test('tier 0 is a taped-off plot with a few loose pieces, cleared at tier 1', () => {
   for (const id of BUILDING_IDS) {

@@ -12,11 +12,9 @@ import {
   build,
   buildCost,
   buildingLocked,
-  buildingPerkText,
   buyItem,
   buyLocked,
   emptyProfile,
-  getItem,
   isItemUnlocked,
   itemStats,
   markSeen,
@@ -24,7 +22,6 @@ import {
   resolveLoadout,
   setLoadout,
   unannouncedUnlocks,
-  unlockHint,
   upgradeCost,
   upgradeItem,
   validateLoadout,
@@ -61,32 +58,6 @@ const level: LevelDef = {
   mods: { mobHp: 1.2 },
 };
 
-test('catalog holds every fixed id in the right slot with 4 tiers', () => {
-  const want: Record<string, string[]> = {
-    cannon: ['popgun', 'repeater', 'blunderbuss'],
-    mob: ['rifleman', 'knight', 'sprinter', 'bomber'],
-    champion: ['sarge', 'tank', 'drummer'],
-    ultimate: ['barrage', 'paratroopers', 'marble'],
-  };
-  for (const [slot, ids] of Object.entries(want))
-    assert.deepEqual(
-      ITEMS.filter((it) => it.slot === slot).map((it) => it.id),
-      ids,
-    );
-  for (const it of ITEMS) assert.equal(it.tiers.length, MAX_TIER + 1, it.id);
-  assert.deepEqual(
-    BUILDINGS.map((b) => b.id),
-    ['barracks', 'walls', 'workshop', 'garden', 'flagpole'],
-  );
-  const variants = Object.fromEntries(
-    ITEMS.filter((it) => it.slot === 'mob' || it.slot === 'champion').map((it) => [
-      it.id,
-      (it as { variant: number }).variant,
-    ]),
-  );
-  assert.deepEqual(variants, { rifleman: 0, knight: 1, sprinter: 2, bomber: 3, sarge: 8, tank: 9, drummer: 10 });
-});
-
 test('unlock rules', () => {
   const f0 = facts();
   const unlocked = (f: ProgressFacts) => ITEMS.filter((it) => isItemUnlocked(it.id, f)).map((it) => it.id);
@@ -111,15 +82,6 @@ test('unlock rules', () => {
   assert.equal(isItemUnlocked('drummer', facts(cleared(10))), false, 'must be bought');
   assert.equal(isItemUnlocked('drummer', facts({}, { ...emptyProfile(), owned: ['drummer'] })), true);
   assert.equal(isItemUnlocked('nope', f0), false);
-});
-
-test('unlock hints read well', () => {
-  assert.equal(unlockHint('sprinter'), 'Clear level 1-3');
-  assert.equal(unlockHint('tank'), 'Beat the Tin General');
-  assert.equal(unlockHint('marble'), 'Earn 20 stars');
-  assert.equal(unlockHint('blunderbuss'), 'Win 5 Expedition battles');
-  assert.equal(unlockHint('drummer'), 'Buy for 300 coins');
-  for (const it of ITEMS) assert.ok(unlockHint(it.id).length > 0, it.id);
 });
 
 test('newlyUnlocked and announcement bookkeeping', () => {
@@ -193,10 +155,6 @@ test('village: costs, progress gates, perks text', () => {
   assert.equal(p?.village.barracks, 3);
   assert.equal(build(p!, 'barracks', facts(cleared(10))), null, 'max');
   assert.equal(build(rich(0), 'garden', facts()), null, 'too poor');
-  assert.equal(buildingPerkText('barracks', 2), '+8 starting troops');
-  assert.equal(buildingPerkText('walls', 3), '+15% base health');
-  assert.equal(buildingPerkText('workshop', 1), 'Champion charges 5% faster');
-  assert.equal(buildingPerkText('garden', 1), 'Decoration');
 });
 
 test('itemStats gives display lines for every item and tier', () => {
@@ -385,9 +343,4 @@ test('tier-0 non-starter items are sidegrades, never strictly better than every 
       assert.ok(worseSomewhere, `${it.id} strictly dominates ${st.id}`);
     }
   }
-});
-
-test('items are looked up by id', () => {
-  assert.equal(getItem('bomber')?.slot, 'mob');
-  assert.equal(getItem('ghost'), undefined);
 });

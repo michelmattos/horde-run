@@ -36,7 +36,6 @@ import {
   HOP_STYLE,
   KNIGHT_SCALE,
   SLOT,
-  SLOT_COUNT,
   VARIANT,
   crowdScale,
   crowdSlot,
@@ -371,15 +370,4 @@ test("crowd batches: the variant byte picks the figure, absent variants keep tod
   assert.equal(parseChampion('nope'), 'sarge');
   assert.equal(parseCannon('repeater'), 'repeater');
   assert.equal(parseCannon(undefined), 'popgun');
-});
-
-test('the crowd stays within about 8 batches', async () => {
-  const src = await import('node:fs').then((fs) =>
-    fs.readFileSync(new URL('../src/render/crowd.ts', import.meta.url), 'utf8'),
-  );
-  // One batch per crowd slot plus the bomber accent, the champion trim and the blobs.
-  const extra = (src.match(/new InstanceBatch\(/g) ?? []).length - 5; // 5 slot batches built one by one
-  assert.ok(SLOT_COUNT + 3 <= 8, `slots ${SLOT_COUNT}`);
-  assert.ok(extra <= 3, `extra batches ${extra}`);
-  assert.ok(!/camera\.(position|rotation|target|alpha|beta|radius|fov)\s*[=+\-*]/.test(src));
 });

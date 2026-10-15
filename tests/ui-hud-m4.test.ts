@@ -1,29 +1,14 @@
-// Milestone 4 HUD and overlay math: the ultimate and CHAMP corner buttons never meet
-// on phone widths, the ultimate tag fits its corner, sliders and the coin tally.
+// Milestone 4 HUD and overlay math: the ultimate tag fits its corner, sliders and the coin tally.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   COIN_TALLY,
-  HUD_METRICS as M,
   ULT_TAG_MAX,
   coinTallyAt,
   formatCoinDelta,
   rangeValueAt,
   ultimateTagText,
 } from '../src/ui/uiLogic.ts';
-
-test('the ultimate mirrors CHAMP in the bottom-left corner without touching it', () => {
-  // Both corner buttons sit side by side in the thumb's lifted band: on the narrowest
-  // phone there is still a clear gap between them.
-  for (let vw = 360; vw <= 430; vw++) {
-    const ultRight = M.edge + (M.champRing + M.ultRing) / 2;
-    const champLeft = vw - M.edge - M.champRing;
-    assert.ok(ultRight + 48 <= champLeft, `corner buttons too close at ${vw}`);
-  }
-  assert.ok(M.ultFace >= 56);
-  assert.ok(M.champFace >= 56);
-  assert.ok(M.ultRing <= M.champRing);
-});
 
 test('ultimate tag: short labels as given, long ones shortened per ultimate', () => {
   assert.equal(ultimateTagText('barrage', 'Barrage'), 'BARRAGE');

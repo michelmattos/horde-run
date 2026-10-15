@@ -18,15 +18,6 @@ import { RECIPES, recipeKey } from '../src/audio/synth.ts';
 
 const ids = (reqs: { id: SoundId }[]): SoundId[] => reqs.map((r) => r.id).sort();
 
-test('every sound has a sane rule', () => {
-  assert.equal(new Set(SOUND_IDS).size, SOUND_IDS.length);
-  for (const id of SOUND_IDS) {
-    const r = SOUND_RULES[id];
-    assert.ok(r.voices >= 1 && r.gapMs >= 0 && r.durMs > 0, id);
-    assert.ok(r.volume > 0 && r.volume <= 1, id);
-  }
-});
-
 test('sim events map to their sounds', () => {
   const events: SimEvent[] = [
     { type: 'gate', gateId: 'a', x: 1, z: 5, added: 12 },

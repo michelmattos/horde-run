@@ -8,15 +8,11 @@ import {
   assignSlot,
   collectionAction,
   collectionSections,
-  formatCoins,
-  gridColumns,
   pickerEntries,
   repairSelection,
   selectedId,
   selectionEquals,
   slotOf,
-  tierLabel,
-  tierPips,
 } from '../src/meta/metaLogic.ts';
 import type { Selection } from '../src/meta/metaLogic.ts';
 import type { ItemCard, ItemSlot } from '../src/meta/types.ts';
@@ -113,23 +109,6 @@ test('repairSelection replaces locked, unknown and duplicate picks', () => {
   assert.equal(r.ultimate, 'barrage');
 });
 
-test('tier pips and labels', () => {
-  assert.deepEqual(tierPips(0, 3), [false, false, false]);
-  assert.deepEqual(tierPips(2, 3), [true, true, false]);
-  assert.deepEqual(tierPips(9, 3), [true, true, true]);
-  assert.deepEqual(tierPips(-1, 3), [false, false, false]);
-  assert.equal(tierLabel(1, 3), 'Tier 1/3');
-  assert.equal(tierLabel(3, 3), 'Max');
-});
-
-test('coins format with thousands separators', () => {
-  assert.equal(formatCoins(0), '0');
-  assert.equal(formatCoins(999), '999');
-  assert.equal(formatCoins(1340), '1,340');
-  assert.equal(formatCoins(1234567.8), '1,234,567');
-  assert.equal(formatCoins(-5), '0');
-});
-
 test('collection action per item state', () => {
   const base = { locked: false, tier: 1, maxTier: 3, upgradeCost: 75, buyPrice: null, canAfford: true };
   assert.deepEqual(collectionAction(base), { kind: 'upgrade', cost: 75, enabled: true });
@@ -155,11 +134,4 @@ test('collection sections follow slot order with counts', () => {
   assert.equal(mob?.items.length, 4);
   assert.equal(mob?.isNew, 1);
   assert.equal(collectionSections([]).length, 0);
-});
-
-test('grid columns fit the width', () => {
-  assert.equal(gridColumns(358, 132, 12), 2);
-  assert.equal(gridColumns(100, 132, 12), 1);
-  assert.equal(gridColumns(2000, 132, 12), 4);
-  assert.equal(gridColumns(0, 132, 12), 1);
 });

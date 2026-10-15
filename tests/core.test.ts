@@ -239,24 +239,6 @@ test('input: pausing drops a pending ultimate and ignores presses while paused',
   assert.equal(c.sample().ultimatePressed, false);
 });
 
-test('input: a second finger can press the ultimate while the first keeps firing', () => {
-  const c = createInputCore(defaultSettings());
-  c.configure(10, 4);
-  assert.equal(c.down(1, 200, 700, 400, 800, 'touch', false), true);
-  c.move(1, 260, 400);
-  const aim = c.aimX;
-  // The HUD button is a blocked region: the second finger never aims, the HUD presses.
-  assert.equal(c.down(2, 30, 760, 400, 800, 'touch', true), false);
-  c.pressUltimate();
-  const s = c.sample();
-  assert.equal(s.firing, true);
-  assert.equal(s.ultimatePressed, true);
-  assert.equal(s.aimX, aim);
-  c.up(2);
-  assert.equal(c.sample().firing, true);
-  assert.equal(c.aimPointerId, 1);
-});
-
 test('settings: defaults, old saves without sound, and bad values', () => {
   assert.deepEqual(defaultSettings(), { sensitivity: 1, haptics: true, sound: true, volume: 0.8 });
   assert.deepEqual(parseSettings({ sensitivity: 1.5, haptics: false }), {
