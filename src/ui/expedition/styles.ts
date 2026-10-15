@@ -28,7 +28,7 @@ const CSS = `
 .hx-root .tb-btn[disabled]:active{transform:none}
 
 /* ----- Full-screen card screens ----- */
-.hx-ov{position:fixed;inset:0;height:100dvh;z-index:11;display:none;overflow-y:auto;overflow-x:hidden;touch-action:pan-y;
+.hx-ov{position:fixed;inset:0;height:var(--app-h);z-index:11;display:none;overflow-y:auto;overflow-x:hidden;touch-action:pan-y;
   overscroll-behavior:contain;-webkit-overflow-scrolling:touch;box-sizing:border-box;${SAFE_PAD}}
 .hx-ov.hx-on{display:block}
 .hx-ov.hx-felt{background:${FELT_BG}}
@@ -182,7 +182,7 @@ button.hx-up:active{transform:translateY(3px)}
 .hx-hprow b{min-width:88px;text-align:right;font-size:18px}
 
 /* ----- Run map ----- */
-.hx-map{position:fixed;inset:0;height:100dvh;z-index:11;display:none;flex-direction:column;background:${FELT_BG};color:${UI.cream}}
+.hx-map{position:fixed;inset:0;height:var(--app-h);z-index:11;display:none;flex-direction:column;background:${FELT_BG};color:${UI.cream}}
 .hx-map.hx-on{display:flex}
 .hx-head{position:relative;z-index:3;flex:none;display:flex;flex-direction:column;gap:8px;background:${WOOD_BG};border-bottom:4px solid ${UI.ink};
   box-shadow:inset 0 -4px 0 rgba(0,0,0,.25),0 6px 10px rgba(10,20,10,.45);

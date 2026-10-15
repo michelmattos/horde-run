@@ -75,7 +75,7 @@ const FLOOR_BG =
   `repeating-linear-gradient(90deg,#b58250 0 72px,#a87443 72px 144px,#bd8b58 144px 216px,#a97a49 216px 288px)`;
 
 const CSS = `
-.hm-map{position:fixed;inset:0;height:100dvh;z-index:8;display:none;flex-direction:column;
+.hm-map{position:fixed;inset:0;height:var(--app-h);z-index:8;display:none;flex-direction:column;
   font-family:var(--tb-font);font-variant-numeric:tabular-nums;color:${UI.cream};background:#8a5a32;
   -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
 .hm-map.hm-on{display:flex}
@@ -93,7 +93,7 @@ const CSS = `
 .hm-scroll{position:relative;flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;touch-action:pan-y;overscroll-behavior:contain;
   -webkit-overflow-scrolling:touch;background:${FLOOR_BG};background-attachment:local;
   padding:0 max(0px,env(safe-area-inset-right)) env(safe-area-inset-bottom) max(0px,env(safe-area-inset-left))}
-.hm-shade{position:fixed;inset:0;pointer-events:none;z-index:1;
+.hm-shade{position:fixed;inset:0;height:var(--app-h);pointer-events:none;z-index:1;
   background:radial-gradient(130% 90% at 50% 55%,transparent 55%,rgba(40,20,6,.45) 100%)}
 .hm-soon{position:relative;margin:22px auto 0;width:calc(100% - 40px);max-width:${TRACK_MAX_W - 40}px;box-sizing:border-box;border-radius:20px;
   padding:14px 16px 14px 64px;text-align:left;color:#16405e;border:3.5px solid ${UI.ink};
@@ -136,12 +136,12 @@ const CSS = `
 .hm-node.hm-locked .hm-name{background:#e9dfcc;color:#6b5a48}
 .hm-disc .hm-lock{width:30px;height:30px}
 .hm-node.hm-boss .hm-disc .hm-lock{width:36px;height:36px}
-.hm-nudge{position:fixed;left:50%;bottom:max(24px,calc(env(safe-area-inset-bottom) + 16px));z-index:9;
+.hm-nudge{position:fixed;left:50%;bottom:calc(max(24px,calc(env(safe-area-inset-bottom) + 16px)) - var(--app-under));z-index:9;
   transform:translateX(-50%);padding:12px 22px;border-radius:18px;background:${WOOD_BG};border:3.5px solid ${UI.ink};
   box-shadow:0 4px 0 ${UI.ink},0 10px 14px rgba(20,10,2,.4);font-size:18px;font-weight:700;color:${UI.cream};text-shadow:${outlineShadow(1.6)};
   pointer-events:none;opacity:0;transition:opacity .15s;white-space:nowrap}
 .hm-nudge.hm-on{opacity:1}
-.hm-card{position:fixed;inset:0;z-index:12;display:none;flex-direction:column;align-items:center;justify-content:center;gap:18px;
+.hm-card{position:fixed;inset:0;height:var(--app-h);z-index:12;display:none;flex-direction:column;align-items:center;justify-content:center;gap:18px;
   padding:max(16px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));
   box-sizing:border-box;text-align:center;cursor:pointer;touch-action:manipulation;
   background:radial-gradient(110% 70% at 50% 45%,rgba(122,79,46,.55),rgba(30,16,6,.94)),${FLOOR_BG};

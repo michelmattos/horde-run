@@ -1,6 +1,6 @@
 // Offline service worker. Paths are relative to the SW scope so it works under
 // /horde-run/ on GitHub Pages and / in preview. Bump VERSION to drop old caches.
-const VERSION = 'v3';
+const VERSION = 'v4';
 const CACHE = `horde-run-${VERSION}`;
 // Assets fetched by path (not hashed by the bundler) are precached here and refreshed by
 // bumping VERSION whenever one of them changes: the look's HDRI, the oak floor textures,

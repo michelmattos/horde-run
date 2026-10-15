@@ -87,7 +87,7 @@ export interface Overlays {
 const THUMB = 36; // slider thumb diameter, px
 
 const CSS = `
-.hr-ov{position:fixed;inset:0;z-index:10;display:none;align-items:center;justify-content:center;overflow-y:auto;
+.hr-ov{position:fixed;inset:0;height:var(--app-h);z-index:10;display:none;align-items:center;justify-content:center;overflow-y:auto;
   padding:max(28px,calc(env(safe-area-inset-top) + 20px)) max(16px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));
   font-family:var(--tb-font);font-variant-numeric:tabular-nums;color:${UI.ink};
   -webkit-user-select:none;user-select:none;touch-action:manipulation;box-sizing:border-box}
