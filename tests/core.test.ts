@@ -5,7 +5,7 @@ import { createRng, seedFromString } from '../src/core/rng.ts';
 import { createFixedStep, createFrameCap } from '../src/core/loop.ts';
 import { AIM_GAIN, createInputCore, relativeAim } from '../src/core/input.ts';
 import { SIM_DT } from '../src/contracts.ts';
-import { clampVolume, defaultSettings, parseSettings } from '../src/core/settings.ts';
+import { defaultSettings, parseSettings } from '../src/core/settings.ts';
 
 test('rng is deterministic per seed and stays in range', () => {
   const a = createRng(42);
@@ -239,23 +239,25 @@ test('input: pausing drops a pending ultimate and ignores presses while paused',
   assert.equal(c.sample().ultimatePressed, false);
 });
 
-test('settings: defaults, old saves without sound, and bad values', () => {
-  assert.deepEqual(defaultSettings(), { sensitivity: 1, haptics: true, sound: true, volume: 0.8 });
+test('settings: defaults, old saves without sound or music, and bad values', () => {
+  const defaults = { sensitivity: 1, haptics: true, sound: true, musicVolume: 0.6, sfxVolume: 0.7 };
+  assert.deepEqual(defaultSettings(), defaults);
   assert.deepEqual(parseSettings({ sensitivity: 1.5, haptics: false }), {
+    ...defaults,
     sensitivity: 1.5,
     haptics: false,
-    sound: true,
-    volume: 0.8,
   });
-  assert.deepEqual(parseSettings({ sensitivity: 9, haptics: 'yes', sound: false, volume: 3 }), {
+  // A save from before music: its one volume becomes the effects volume.
+  assert.deepEqual(parseSettings({ sound: true, volume: 0.3 }), { ...defaults, sfxVolume: 0.3 });
+  assert.equal(parseSettings({ volume: 0.3, sfxVolume: 0.9 }).sfxVolume, 0.9);
+  assert.deepEqual(parseSettings({ sensitivity: 9, haptics: 'yes', sound: false, musicVolume: 3, sfxVolume: -1 }), {
+    ...defaults,
     sensitivity: 2,
-    haptics: true,
     sound: false,
-    volume: 1,
+    musicVolume: 1,
+    sfxVolume: 0,
   });
   assert.deepEqual(parseSettings(null), defaultSettings());
   assert.deepEqual(parseSettings('junk'), defaultSettings());
-  assert.equal(parseSettings({ volume: -1 }).volume, 0);
-  assert.equal(parseSettings({ volume: Number.NaN }).volume, 0.8);
-  assert.equal(clampVolume(0.25), 0.25);
+  assert.equal(parseSettings({ musicVolume: Number.NaN }).musicVolume, 0.6);
 });

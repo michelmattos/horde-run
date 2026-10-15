@@ -202,9 +202,12 @@ const settings = loadSettings();
 const renderer = createRenderer(engine, canvas, { hudReserve });
 const input = createInput(canvas, settings);
 const haptics = createHaptics(settings);
-// No AudioContext until the first gesture; the master gain follows settings live.
-const audio = createAudio(settings);
-const overlays = createOverlays(app, settings, { onSound: (id) => audio.play(id) });
+// No AudioContext until the first gesture; music and effect volumes follow settings live.
+const audio = createAudio(settings, { baseUrl: import.meta.env.BASE_URL });
+const overlays = createOverlays(app, settings, {
+  onSound: (id) => audio.play(id),
+  onSettingsChanged: () => audio.applySettings(),
+});
 const loop = createFixedStep();
 const frameCap = createFrameCap();
 const hud = createHud(renderer.scene, input, { onPause: () => pause('user') });
@@ -393,6 +396,7 @@ function openSettings(): void {
 
 // Leaves the battlefield (if any) for a full-screen menu: nothing steps or draws under it.
 function leaveBattlefield(): void {
+  audio.setMusic('menu');
   overlays.hide();
   inBattle = false;
   input.setPaused(true);
@@ -433,6 +437,7 @@ function beginBattle(def: LevelDef, seed: number, loadout?: BattleLoadout): void
   screens.hide();
   hideMeta();
   level = def;
+  audio.setMusic(def.boss ? 'boss' : 'battle');
   const rng = createRng(seed);
   const rand = (): number => rng.next();
   const s = createSim(level, rand);
@@ -584,6 +589,7 @@ function finishRunBattle(b: Battle): void {
   const r = run;
   if (!r) return showMap();
   resultShown = true;
+  audio.setMusic('menu', { delay: 1 }); // after the fanfare
   input.setPaused(true);
   hud.setVisible(false);
   const victory = b.state.outcome === 'victory';
@@ -736,6 +742,7 @@ function showPauseOverlay(reason: 'user' | InterruptReason): void {
 
 function showResult(b: Battle): void {
   resultShown = true;
+  audio.setMusic('menu', { delay: 1 }); // after the fanfare
   input.setPaused(true);
   hud.setVisible(false);
   const victory = b.state.outcome === 'victory';
