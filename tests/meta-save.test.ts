@@ -1,11 +1,16 @@
-// Save system: persistence, merging results, unlocks and export/import validation.
+// Save system: persistence, merging results, unlocks, export/import validation and the
+// v2 format that adds the progression profile (with migration from v1).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   SAVE_KEY,
   emptySave,
+  exportGame,
   exportSave,
+  importGame,
   importSave,
+  loadGame,
+  writeGame,
   isUnlocked,
   loadSave,
   recordResult,
@@ -13,7 +18,9 @@ import {
   writeSave,
 } from '../src/core/save.ts';
 import type { KeyValueStore } from '../src/core/save.ts';
-import type { WorldDef } from '../src/contracts.ts';
+import type { SaveData, WorldDef } from '../src/contracts.ts';
+import { emptyProfile, retroactiveCoins } from '../src/progression/index.ts';
+import type { Profile } from '../src/progression/index.ts';
 
 function memStore(init: Record<string, string> = {}): KeyValueStore & { data: Record<string, string> } {
   const data = { ...init };
@@ -41,7 +48,7 @@ test('missing, corrupt or blocked storage gives an empty save', () => {
   assert.deepEqual(loadSave(memStore()), emptySave());
   assert.deepEqual(loadSave(null), emptySave());
   assert.deepEqual(loadSave(memStore({ [SAVE_KEY]: '{nope' })), emptySave());
-  assert.deepEqual(loadSave(memStore({ [SAVE_KEY]: '{"version":2,"levels":{}}' })), emptySave());
+  assert.deepEqual(loadSave(memStore({ [SAVE_KEY]: '{"version":3,"levels":{}}' })), emptySave());
   assert.deepEqual(loadSave(memStore({ [SAVE_KEY]: '{"version":1,"levels":{"1-1":{"stars":"x"}}}' })), emptySave());
   const throwing: KeyValueStore = {
     getItem: () => {
@@ -125,7 +132,7 @@ test('import rejects garbage with readable messages', () => {
   bad('not json', /not valid JSON/);
   bad('[]', /not a Horde Run save/);
   bad('{"game":"other","version":1,"levels":{}}', /not a Horde Run save/);
-  bad('{"game":"horde-run","version":2,"levels":{}}', /Unsupported save version: 2/);
+  bad('{"game":"horde-run","version":3,"levels":{}}', /Unsupported save version: 3/);
   bad('{"game":"horde-run","version":1}', /no level list/);
   bad('{"game":"horde-run","version":1,"levels":{"1-1":{"stars":[true,false]}}}', /Level "1-1"/);
   bad('{"game":"horde-run","version":1,"levels":{"1-1":{"stars":[1,0,0]}}}', /Level "1-1"/);
@@ -155,4 +162,123 @@ test('import drops unknown keys and ignores bad best times', () => {
       '1-4': { stars: [true, true, true], bestTime: 45 },
     },
   });
+});
+
+// ---------- v2: progression profile ----------
+
+const v1Levels: SaveData['levels'] = {
+  '1-1': { stars: [true, true, true], bestTime: 41.5 },
+  '1-2': { stars: [true, false, false] },
+  '1-3': { stars: [false, false, false] },
+};
+const v1File = JSON.stringify({ version: 1, levels: v1Levels });
+
+function richProfile(): Profile {
+  return {
+    ...emptyProfile(),
+    coins: 420,
+    coinsEarned: 900,
+    owned: ['drummer'],
+    tiers: { rifleman: 2, popgun: 1 },
+    loadout: { cannon: 'popgun', mobs: ['knight', 'rifleman'], champion: 'drummer', ultimate: 'barrage' },
+    village: { barracks: 1 },
+    stats: { expeditionBattlesWon: 6, expeditionRunsFinished: 2, expeditionRunsWon: 0 },
+    seen: ['sprinter'],
+  };
+}
+
+test('a v1 file migrates: stars and best times kept, coins credited', () => {
+  const g = loadGame(memStore({ [SAVE_KEY]: v1File }));
+  assert.equal(g.migrated, true);
+  assert.deepEqual(g.save, { version: 1, levels: v1Levels });
+  const coins = retroactiveCoins(g.save.levels);
+  assert.ok(coins > 0);
+  assert.equal(g.profile.coins, coins);
+  assert.equal(g.profile.coinsEarned, coins);
+  assert.deepEqual(g.profile.loadout, emptyProfile().loadout);
+  assert.deepEqual(loadSave(memStore({ [SAVE_KEY]: v1File })), g.save, 'loadSave still reads v1');
+});
+
+test('writeGame/loadGame roundtrip writes version 2', () => {
+  const store = memStore();
+  const save = recordResult(emptySave(), '1-1', win([true, false, true], 30)).save;
+  writeGame(save, richProfile(), store);
+  assert.equal(JSON.parse(store.data[SAVE_KEY]).version, 2);
+  const g = loadGame(store);
+  assert.equal(g.migrated, false);
+  assert.deepEqual(g.save, save);
+  assert.deepEqual(g.profile, richProfile());
+  assert.deepEqual(loadSave(store), save, 'loadSave reads v2 levels');
+});
+
+test('writeSave keeps the profile already on disk', () => {
+  const store = memStore();
+  writeGame(emptySave(), richProfile(), store);
+  const save = recordResult(emptySave(), '1-2', win([true, true, false], 50)).save;
+  writeSave(save, store);
+  const g = loadGame(store);
+  assert.deepEqual(g.save, save);
+  assert.deepEqual(g.profile, richProfile());
+
+  // Over a v1 file, writeSave migrates the old progress's coins instead of dropping them.
+  const old = memStore({ [SAVE_KEY]: v1File });
+  writeSave(save, old);
+  const m = loadGame(old);
+  assert.equal(m.migrated, false);
+  assert.equal(m.profile.coins, retroactiveCoins(v1Levels));
+  assert.deepEqual(m.save, save);
+});
+
+test('corrupt profile data falls back without losing levels', () => {
+  const levels = { '1-1': { stars: [true, false, false] } };
+  const at = (profile: unknown) => loadGame(memStore({ [SAVE_KEY]: JSON.stringify({ version: 2, levels, profile }) }));
+  for (const bad of [null, 'x', 7, [1, 2]]) {
+    const g = at(bad);
+    assert.deepEqual(g.save.levels, levels);
+    assert.deepEqual(g.profile, emptyProfile());
+  }
+  const g = at({
+    coins: -50,
+    coinsEarned: 'lots',
+    owned: ['drummer', 'nope', 'rifleman', 3],
+    tiers: { rifleman: 9, knight: -1, ghost: 2, sarge: 1.7 },
+    loadout: { cannon: 'rifleman', mobs: ['sprinter', 'sprinter'], champion: 'tank', ultimate: 42 },
+    village: { barracks: 5, castle: 2 },
+    stats: { expeditionBattlesWon: Number.NaN, expeditionRunsWon: 2 },
+    seen: 'all',
+  });
+  assert.deepEqual(g.profile, {
+    coins: 0,
+    coinsEarned: 0,
+    owned: ['drummer'],
+    tiers: { rifleman: 3, sarge: 1 },
+    loadout: { cannon: 'popgun', mobs: ['rifleman', 'knight'], champion: 'tank', ultimate: 'barrage' },
+    village: { barracks: 3 },
+    stats: { expeditionBattlesWon: 0, expeditionRunsFinished: 0, expeditionRunsWon: 2 },
+    seen: [],
+  });
+  // Bad levels in a v2 file keep the profile.
+  const bl = loadGame(memStore({ [SAVE_KEY]: JSON.stringify({ version: 2, levels: 5, profile: richProfile() }) }));
+  assert.deepEqual(bl.save, emptySave());
+  assert.deepEqual(bl.profile, richProfile());
+  assert.deepEqual(loadGame(memStore({ [SAVE_KEY]: '{bad' })).profile, emptyProfile());
+});
+
+test('exportGame -> importGame roundtrip (v2)', () => {
+  const save = recordResult(emptySave(), '1-1', win([true, true, false], 33.3)).save;
+  const text = exportGame(save, richProfile());
+  const p = JSON.parse(text);
+  assert.equal(p.game, 'horde-run');
+  assert.equal(p.version, 2);
+  assert.deepEqual(importGame(text), { save, profile: richProfile() });
+  assert.deepEqual(importSave(text), save, 'importSave reads v2 exports too');
+});
+
+test('importGame migrates v1 exports and rejects v2 without a profile', () => {
+  const save = recordResult(emptySave(), '1-3', win([true, true, true], 70)).save;
+  const g = importGame(exportSave(save));
+  assert.deepEqual(g.save, save);
+  assert.equal(g.profile.coins, retroactiveCoins(save.levels));
+  assert.throws(() => importGame('{"game":"horde-run","version":2,"levels":{}}'), /coins or collection/);
+  assert.throws(() => importGame('{"game":"horde-run","version":9,"levels":{}}'), /Unsupported save version: 9/);
 });

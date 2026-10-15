@@ -1,9 +1,9 @@
 // Bottom sheet for moving progress between devices: Export downloads (and copies)
-// the save JSON, Import reads a file or pasted text, validates it, and asks before
-// replacing anything. Built once and toggled; styles injected once with hm- classes.
-import type { SaveData } from '../contracts.ts';
-import { exportSave, importSave, starCount, writeSave } from '../core/save.ts';
-import type { KeyValueStore } from '../core/save.ts';
+// the save JSON (stars, coins and collection), Import reads a file or pasted text,
+// validates it (old v1 saves migrate), and asks before replacing anything. Built once
+// and toggled; styles injected once with hm- classes.
+import { exportGame, importGame, starCount, writeGame } from '../core/save.ts';
+import type { GameData, KeyValueStore } from '../core/save.ts';
 import { UI, WOOD_BG, injectUiTheme, outlineShadow } from '../ui/theme.ts';
 
 export interface SaveSheet {
@@ -63,11 +63,16 @@ function button(text: string, cls = ''): HTMLButtonElement {
   return b;
 }
 
+// '12 ★, 340 coins' for the replace confirmation.
+function summary(g: GameData): string {
+  return `${starCount(g.save)} ★, ${g.profile.coins} ${g.profile.coins === 1 ? 'coin' : 'coins'}`;
+}
+
 export function createSaveSheet(
   root: HTMLElement,
   opts: {
-    getSave(): SaveData; // current progress, read each time the sheet acts
-    onSaveReplaced(save: SaveData): void; // after a confirmed import, already written to storage
+    getGame(): GameData; // current progress, read each time the sheet acts
+    onGameReplaced(g: GameData): void; // after a confirmed import, already written to storage
     store?: KeyValueStore | null; // defaults to localStorage
   },
 ): SaveSheet {
@@ -119,7 +124,7 @@ export function createSaveSheet(
   bg.append(sheet);
   root.appendChild(bg);
 
-  let pending: SaveData | null = null;
+  let pending: GameData | null = null;
   let visible = false;
   let copiedTimer = 0;
 
@@ -138,11 +143,10 @@ export function createSaveSheet(
 
   const tryImport = (text: string): void => {
     try {
-      const next = importSave(text);
+      const next = importGame(text);
       pending = next;
       errMsg.hidden = true;
-      const cur = starCount(opts.getSave());
-      confirmText.textContent = `Replace your progress (${cur} ★) with this save (${starCount(next)} ★)?`;
+      confirmText.textContent = `Replace your progress (${summary(opts.getGame())}) with this save (${summary(next)})?`;
       showStep('confirm');
     } catch (e) {
       errMsg.textContent = e instanceof Error ? e.message : 'That save could not be read.';
@@ -151,7 +155,8 @@ export function createSaveSheet(
   };
 
   exportBtn.addEventListener('click', () => {
-    const text = exportSave(opts.getSave());
+    const g = opts.getGame();
+    const text = exportGame(g.save, g.profile);
     const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
     const a = document.createElement('a');
     a.href = url;
@@ -201,9 +206,9 @@ export function createSaveSheet(
   replaceBtn.addEventListener('click', () => {
     const next = pending;
     if (!next) return;
-    writeSave(next, opts.store); // undefined falls back to localStorage
+    writeGame(next.save, next.profile, opts.store); // undefined falls back to localStorage
     close();
-    opts.onSaveReplaced(next);
+    opts.onGameReplaced(next);
   });
 
   closeBtn.addEventListener('click', () => close());

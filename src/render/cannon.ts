@@ -1,12 +1,16 @@
-// The player's cannon: the green plastic toy field cannon (models/cannon.ts) at the
-// player base. It follows the game's clamped cannonX (the wooden wheels roll as it
-// slides) and kicks on every shot: the barrel recoils and the carriage tips about its
-// trail spade. Nothing here moves the camera.
+// The player's cannon: the green plastic toy field cannon (models/cannon.ts, the 'popgun')
+// or a loadout variant (models/cannonVariants.ts: the 'repeater' gatling or the
+// 'blunderbuss') at the player base. It follows the game's clamped cannonX (the wooden
+// wheels roll as it slides) and kicks on every shot: the barrel recoils and the carriage
+// tips about its trail spade; the repeater's barrel cluster spins while it fires. Nothing
+// here moves the camera.
 import type { Scene } from '@babylonjs/core/scene';
 import { LAYOUT } from '../contracts.ts';
 import type { Look } from './look/index.ts';
 import { WHEEL_RADIUS, createCannon } from './models/cannon.ts';
 import type { CannonModel } from './models/cannon.ts';
+import { createCannonVariant } from './models/cannonVariants.ts';
+import type { CannonId } from './crowdLogic.ts';
 
 // The cannon is the player's main tool: drawn 1.4x, with the carriage and wheels widened
 // a further 15% so it reads as a chunky toy rather than a thin stick. The root sits so the
@@ -15,24 +19,62 @@ import type { CannonModel } from './models/cannon.ts';
 const CANNON_SCALE = 1.4;
 const CANNON_WIDEN = 1.15;
 const ROOT_Z = LAYOUT.cannonZ - 0.65;
+const SPIN_RATE = 14; // rad/s of the repeater's barrels while firing
+const SPIN_EASE = 3; // per second: how fast the spin winds up and down
 
 export class Cannon {
-  private readonly model: CannonModel;
+  private readonly scene: Scene;
+  private readonly look: Look;
+  private model: CannonModel & { setSpin?(rad: number): void };
+  private id: CannonId = 'popgun';
   private fireRate = 4; // shots per second, from the level
   private lastX = 0;
   private spin = 0;
+  private barrelSpin = 0;
+  private spinSpeed = 0;
 
   constructor(scene: Scene, look: Look) {
-    this.model = createCannon(scene, look);
-    this.model.root.scaling.set(CANNON_SCALE * CANNON_WIDEN, CANNON_SCALE, CANNON_SCALE);
-    this.model.root.position.set(0, 0, ROOT_Z);
+    this.scene = scene;
+    this.look = look;
+    this.model = this.build('popgun');
+  }
+
+  private build(id: CannonId): CannonModel & { setSpin?(rad: number): void } {
+    const m = id === 'popgun' ? createCannon(this.scene, this.look) : createCannonVariant(this.scene, this.look, id);
+    m.root.scaling.set(CANNON_SCALE * CANNON_WIDEN, CANNON_SCALE, CANNON_SCALE);
+    m.root.position.set(this.lastX, 0, ROOT_Z);
+    m.setWheelSpin(this.spin);
+    return m;
+  }
+
+  // Swaps the model (call between battles; a no-op when it is already that cannon).
+  setModel(id: CannonId): void {
+    if (id === this.id) return;
+    this.model.dispose();
+    this.id = id;
+    this.model = this.build(id);
+  }
+
+  get modelId(): CannonId {
+    return this.id;
   }
 
   setFireRate(rate: number): void {
     this.fireRate = rate > 0 ? rate : 4;
   }
 
-  update(x: number, time: number, active: boolean): void {
+  // World position of the muzzle tip at rest (for shot puffs and the barrage flare).
+  muzzleX(): number {
+    return this.model.root.position.x;
+  }
+  muzzleY(): number {
+    return this.model.muzzle.y * CANNON_SCALE;
+  }
+  muzzleZ(): number {
+    return ROOT_Z + this.model.muzzle.z * CANNON_SCALE;
+  }
+
+  update(x: number, time: number, active: boolean, dt = 0): void {
     const root = this.model.root;
     root.position.x = x;
     const dx = x - this.lastX;
@@ -44,6 +86,12 @@ export class Cannon {
     // Saw-tooth recoil at the fire rate: snap back, ease forward.
     const phase = active ? (time * this.fireRate) % 1 : 1;
     this.model.setRecoil(active ? (1 - phase) * (1 - phase) : 0);
+    if (this.model.setSpin) {
+      const target = active ? SPIN_RATE : 0;
+      this.spinSpeed += (target - this.spinSpeed) * Math.min(1, dt * SPIN_EASE);
+      this.barrelSpin = (this.barrelSpin + this.spinSpeed * dt) % (Math.PI * 2);
+      this.model.setSpin(this.barrelSpin);
+    }
   }
 
   dispose(): void {

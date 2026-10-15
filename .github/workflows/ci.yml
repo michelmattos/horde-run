@@ -30,7 +30,7 @@ jobs:
       - run: npm run format:check
       - run: npm test
 
-  # The three smoke scenarios boot the real game under software GL, so they run as parallel
+  # The smoke scenarios boot the real game under software GL, so they run as parallel
   # jobs. The "smoke" job below waits for all of them and is the one to require.
   smoke-scenario:
     name: smoke (${{ matrix.scenario }})
@@ -38,7 +38,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scenario: [campaign, boss, expedition]
+        scenario: [campaign, boss, expedition, meta]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

@@ -1,7 +1,11 @@
-// Campaign progress persisted as one JSON object in localStorage, with a
-// human-portable export/import format. Pure: storage is injected so Node tests
-// can use an in-memory store. Settings live under their own key (settings.ts).
+// Campaign progress and the progression profile persisted as one JSON object in
+// localStorage ({version: 2, levels, profile}), with a human-portable export/import
+// format. v1 files (levels only) migrate on load: levels are kept and the profile starts
+// with coins for the progress already made. Pure: storage is injected so Node tests can
+// use an in-memory store. Settings live under their own key (settings.ts).
 import type { LevelProgress, SaveData, WorldDef } from '../contracts.ts';
+import { emptyProfile, parseProfile, retroactiveCoins } from '../progression/index.ts';
+import type { Profile } from '../progression/index.ts';
 
 export interface KeyValueStore {
   getItem(k: string): string | null;
@@ -55,25 +59,51 @@ function parseLevels(v: unknown): Record<string, LevelProgress> | string {
   return levels;
 }
 
-export function loadSave(store: KeyValueStore | null = defaultStore()): SaveData {
+export interface GameData {
+  save: SaveData;
+  profile: Profile;
+}
+
+// A v1 file had no profile: start one with coins for the progress already made.
+function migratedProfile(levels: SaveData['levels']): Profile {
+  return { ...emptyProfile(), coins: retroactiveCoins(levels), coinsEarned: retroactiveCoins(levels) };
+}
+
+// Reads whatever is on disk. Bad levels give an empty save; a bad profile gives an empty
+// profile; neither takes the other down with it. Never throws.
+export function loadGame(store: KeyValueStore | null = defaultStore()): GameData & { migrated: boolean } {
+  const fresh = { save: emptySave(), profile: emptyProfile(), migrated: false };
   try {
     const raw = store?.getItem(SAVE_KEY);
-    if (!raw) return emptySave();
+    if (!raw) return fresh;
     const p: unknown = JSON.parse(raw);
-    if (!isRecord(p) || p.version !== 1) return emptySave();
-    const levels = parseLevels(p.levels);
-    return typeof levels === 'string' ? emptySave() : { version: 1, levels };
+    if (!isRecord(p) || (p.version !== 1 && p.version !== 2)) return fresh;
+    const parsed = parseLevels(p.levels);
+    const levels = typeof parsed === 'string' ? {} : parsed;
+    const save: SaveData = { version: 1, levels };
+    if (p.version === 1) return { save, profile: migratedProfile(levels), migrated: true };
+    return { save, profile: parseProfile(p.profile) ?? emptyProfile(), migrated: false };
   } catch {
-    return emptySave();
+    return fresh;
   }
 }
 
-export function writeSave(save: SaveData, store: KeyValueStore | null = defaultStore()): void {
+export function loadSave(store: KeyValueStore | null = defaultStore()): SaveData {
+  return loadGame(store).save;
+}
+
+export function writeGame(save: SaveData, profile: Profile, store: KeyValueStore | null = defaultStore()): void {
   try {
-    store?.setItem(SAVE_KEY, JSON.stringify({ version: 1, levels: save.levels }));
+    store?.setItem(SAVE_KEY, JSON.stringify({ version: 2, levels: save.levels, profile }));
   } catch {
     // Storage blocked or full: progress just won't persist this session.
   }
+}
+
+// Campaign-only writer kept for old call sites: reads the profile already on disk (migrating
+// a v1 file) and writes it back unchanged, so saving levels can never wipe coins.
+export function writeSave(save: SaveData, store: KeyValueStore | null = defaultStore()): void {
+  writeGame(save, loadGame(store).profile, store);
 }
 
 // Merges one battle result. Stars only ever turn on; best time counts victories only.
@@ -116,6 +146,15 @@ export function starCount(save: SaveData, levelIds?: readonly string[]): number 
   return n;
 }
 
+export function exportGame(save: SaveData, profile: Profile): string {
+  return JSON.stringify(
+    { game: GAME_TAG, version: 2, exportedAt: new Date().toISOString(), levels: save.levels, profile },
+    null,
+    2,
+  );
+}
+
+// Campaign-only export, kept for old call sites (v1 format: no profile).
 export function exportSave(save: SaveData): string {
   return JSON.stringify(
     { game: GAME_TAG, version: 1, exportedAt: new Date().toISOString(), levels: save.levels },
@@ -124,8 +163,9 @@ export function exportSave(save: SaveData): string {
   );
 }
 
-// Throws an Error with a message fit to show the player when the text is not a valid save.
-export function importSave(text: string): SaveData {
+// Accepts v1 exports (profile migrated like a v1 file on disk) and v2 exports. Throws an
+// Error with a message fit to show the player when the text is not a valid save.
+export function importGame(text: string): GameData {
   let p: unknown;
   try {
     p = JSON.parse(text);
@@ -134,8 +174,16 @@ export function importSave(text: string): SaveData {
   }
   if (!isRecord(p)) throw new Error('That is not a Horde Run save.');
   if (p.game !== GAME_TAG) throw new Error('That is not a Horde Run save.');
-  if (p.version !== 1) throw new Error(`Unsupported save version: ${String(p.version)}.`);
+  if (p.version !== 1 && p.version !== 2) throw new Error(`Unsupported save version: ${String(p.version)}.`);
   const levels = parseLevels(p.levels);
   if (typeof levels === 'string') throw new Error(levels);
-  return { version: 1, levels };
+  const save: SaveData = { version: 1, levels };
+  if (p.version === 1) return { save, profile: migratedProfile(levels) };
+  const profile = parseProfile(p.profile);
+  if (!profile) throw new Error('The save has no coins or collection data.');
+  return { save, profile };
+}
+
+export function importSave(text: string): SaveData {
+  return importGame(text).save;
 }

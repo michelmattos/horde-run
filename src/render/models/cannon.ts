@@ -61,18 +61,18 @@ export const info: ModelInfo = {
 
 // ---------- dimensions (body space: origin = axle centre on the ground) ----------
 export const WHEEL_RADIUS = 0.445; // tyre outer radius; divide a slide distance by it for setWheelSpin
-const AXLE_Y = WHEEL_RADIUS;
+export const AXLE_Y = WHEEL_RADIUS;
 const WHEEL_X = 0.64;
-const BARREL_Y = 0.72; // barrel axis height at rest
-const BARREL_Z = 0.03; // barrel node (trunnion line) z
-const BARREL_PITCH = -0.05; // a touch of elevation (negative rx lifts the muzzle)
+export const BARREL_Y = 0.72; // barrel axis height at rest
+export const BARREL_Z = 0.03; // barrel node (trunnion line) z
+export const BARREL_PITCH = -0.05; // a touch of elevation (negative rx lifts the muzzle)
 const MUZZLE_LOCAL = 0.98; // muzzle face along the barrel axis
-const TRAIL_END_Z = -0.9; // where the trail spade meets the floor: the recoil tip pivot
+export const TRAIL_END_Z = -0.9; // where the trail spade meets the floor: the recoil tip pivot
 const RECOIL_DIST = 0.2;
-const CHEEK_X = 0.305; // cheek plate centre (inner face clears the fat barrel)
+export const CHEEK_X = 0.305; // cheek plate centre (inner face clears the fat barrel)
 const FAT = 1.15; // barrel girth multiplier
 const fat = (p: readonly number[]): [number, number] => [p[0] * FAT, p[1]];
-const RECOIL_TIP = (4 * Math.PI) / 180;
+export const RECOIL_TIP = (4 * Math.PI) / 180;
 
 export interface CannonModel {
   root: TransformNode; // place and slide this (y = 0 on the floor)
@@ -84,7 +84,7 @@ export interface CannonModel {
 }
 
 // ---------- colours (linear, vertex colours over white-albedo materials) ----------
-interface Colors {
+export interface Colors {
   green: Color3;
   greenDark: Color3;
   greenLight: Color3;
@@ -97,7 +97,7 @@ interface Colors {
   tyre: Color3;
 }
 
-function colors(): Colors {
+export function colors(): Colors {
   return {
     green: lin('green'),
     greenDark: lin('greenDark'),
@@ -114,13 +114,13 @@ function colors(): Colors {
 
 // ---------- small part builders ----------
 // Cylinder along X from x0 to x1 at (y, z).
-function rodX(x0: number, x1: number, y: number, z: number, r: number, tess = 10): VertexData {
+export function rodX(x0: number, x1: number, y: number, z: number, r: number, tess = 10): VertexData {
   const vd = CreateCylinderVertexData({ height: Math.abs(x1 - x0), diameter: r * 2, tessellation: tess });
   return place(vd, { rz: Math.PI / 2, x: (x0 + x1) / 2, y, z });
 }
 
 // A small dome rivet / bolt head facing +axis (built facing +Y, then placed).
-function rivet(r: number, tess = 8): VertexData {
+export function rivet(r: number, tess = 8): VertexData {
   return lathe(
     [
       [0, 0],
@@ -135,7 +135,7 @@ function rivet(r: number, tess = 8): VertexData {
 
 // Flat five-point star in the XZ plane (normal +Y), centred on the origin, a thin raised
 // plate so it reads as moulded relief: top face plus side walls.
-function star(outer: number, inner: number, thick: number): VertexData {
+export function star(outer: number, inner: number, thick: number): VertexData {
   const pts: [number, number][] = [];
   for (let i = 0; i < 10; i++) {
     const a = Math.PI / 2 + (i * Math.PI) / 5;
@@ -509,7 +509,7 @@ function mirrorX(vd: VertexData): VertexData {
   return m;
 }
 
-function clone(vd: VertexData): VertexData {
+export function clone(vd: VertexData): VertexData {
   const m = new VertexData();
   m.positions = Float32Array.from(vd.positions!);
   m.normals = Float32Array.from(vd.normals!);

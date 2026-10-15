@@ -85,7 +85,7 @@ test('knightEvery: every Nth mob fired is a knight, a small champion, counted in
   const knights = player(f.spawns, UnitKind.Champion);
   assert.equal(knights.length, 4);
   assert.equal(total(player(f.spawns, UnitKind.Mob)), 12);
-  assert.deepEqual(knights[0].opts, knight);
+  assert.deepEqual(knights[0].opts, { ...knight, variant: 1 }, 'drawn as knights (variant 1)');
   assert.ok(knight.radius < LAYOUT.championRadius);
   assert.equal(b.stats.mobsFired, 16);
   assert.ok(Math.abs(b.state.championCharge - 1) < 1e-9, 'knights charge the meter like mobs');
@@ -101,7 +101,7 @@ test('knightEvery: every Nth mob fired is a knight, a small champion, counted in
   assert.equal(c.stats.mobsFired, 30);
   assert.equal(total(player(g.spawns, UnitKind.Champion)), 3);
   assert.equal(total(player(g.spawns, UnitKind.Mob)), 27);
-  assert.deepEqual(player(g.spawns, UnitKind.Champion)[0].opts, { ...DEFAULT_KNIGHT });
+  assert.deepEqual(player(g.spawns, UnitKind.Champion)[0].opts, { ...DEFAULT_KNIGHT, variant: 1 });
 });
 
 test('burst: one shot becomes 3 shots spaced by the gap, even after the thumb lifts', () => {

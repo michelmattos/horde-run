@@ -1,0 +1,492 @@
+{
+  "upgradeCosts": [40, 75, 125],
+  "items": [
+    {
+      "id": "popgun",
+      "slot": "cannon",
+      "name": "Popgun",
+      "text": "The trusty cork cannon. Steady fire, three toys a shot.",
+      "unlock": {
+        "type": "start"
+      },
+      "tiers": [
+        {
+          "fireRate": 1,
+          "unitsPerShot": 1
+        },
+        {
+          "fireRate": 1.08,
+          "unitsPerShot": 1
+        },
+        {
+          "fireRate": 1.16,
+          "unitsPerShot": 1
+        },
+        {
+          "fireRate": 1.25,
+          "unitsPerShot": 1
+        }
+      ]
+    },
+    {
+      "id": "repeater",
+      "slot": "cannon",
+      "name": "Repeater",
+      "text": "Rattles out small shots fast. Great for threading gates.",
+      "unlock": {
+        "type": "level",
+        "level": "1-4"
+      },
+      "tiers": [
+        {
+          "fireRate": 1.4,
+          "unitsPerShot": 0.67
+        },
+        {
+          "fireRate": 1.51,
+          "unitsPerShot": 0.67
+        },
+        {
+          "fireRate": 1.62,
+          "unitsPerShot": 0.67
+        },
+        {
+          "fireRate": 1.75,
+          "unitsPerShot": 0.67
+        }
+      ]
+    },
+    {
+      "id": "blunderbuss",
+      "slot": "cannon",
+      "name": "Blunderbuss",
+      "text": "Slow, wide blasts of a whole squad at once.",
+      "unlock": {
+        "type": "expeditionWins",
+        "count": 5
+      },
+      "tiers": [
+        {
+          "fireRate": 0.43,
+          "unitsPerShot": 2.4,
+          "shotSpread": 0.9
+        },
+        {
+          "fireRate": 0.46,
+          "unitsPerShot": 2.4,
+          "shotSpread": 0.9
+        },
+        {
+          "fireRate": 0.5,
+          "unitsPerShot": 2.4,
+          "shotSpread": 0.9
+        },
+        {
+          "fireRate": 0.54,
+          "unitsPerShot": 2.4,
+          "shotSpread": 0.9
+        }
+      ]
+    },
+    {
+      "id": "rifleman",
+      "slot": "mob",
+      "name": "Rifleman",
+      "text": "The plastic backbone of your army. Cheap and plentiful.",
+      "unlock": {
+        "type": "start"
+      },
+      "variant": 0,
+      "kind": "mob",
+      "tiers": [
+        {
+          "perShot": null,
+          "hp": 1,
+          "damage": 1,
+          "radius": 0.28,
+          "speed": 7
+        },
+        {
+          "perShot": null,
+          "hp": 1.08,
+          "damage": 1.08,
+          "radius": 0.28,
+          "speed": 7
+        },
+        {
+          "perShot": null,
+          "hp": 1.16,
+          "damage": 1.16,
+          "radius": 0.28,
+          "speed": 7
+        },
+        {
+          "perShot": null,
+          "hp": 1.25,
+          "damage": 1.25,
+          "radius": 0.28,
+          "speed": 7
+        }
+      ]
+    },
+    {
+      "id": "knight",
+      "slot": "mob",
+      "name": "Knight",
+      "text": "A slow tin knight that shrugs off hits and smashes defenders.",
+      "unlock": {
+        "type": "start"
+      },
+      "variant": 1,
+      "kind": "heavy",
+      "tiers": [
+        {
+          "perShot": 1,
+          "hp": 10,
+          "damage": 10,
+          "radius": 0.55,
+          "speed": 5.5
+        },
+        {
+          "perShot": 1,
+          "hp": 10.8,
+          "damage": 10.8,
+          "radius": 0.55,
+          "speed": 5.5
+        },
+        {
+          "perShot": 1,
+          "hp": 11.6,
+          "damage": 11.6,
+          "radius": 0.55,
+          "speed": 5.5
+        },
+        {
+          "perShot": 1,
+          "hp": 12.5,
+          "damage": 12.5,
+          "radius": 0.55,
+          "speed": 5.5
+        }
+      ]
+    },
+    {
+      "id": "sprinter",
+      "slot": "mob",
+      "name": "Sprinter",
+      "text": "Light and quick. Reaches the gates before the enemy closes in.",
+      "unlock": {
+        "type": "level",
+        "level": "1-3"
+      },
+      "variant": 2,
+      "kind": "mob",
+      "tiers": [
+        {
+          "perShot": null,
+          "hp": 1,
+          "damage": 0.8,
+          "radius": 0.24,
+          "speed": 10
+        },
+        {
+          "perShot": null,
+          "hp": 1.08,
+          "damage": 0.86,
+          "radius": 0.24,
+          "speed": 10
+        },
+        {
+          "perShot": null,
+          "hp": 1.16,
+          "damage": 0.93,
+          "radius": 0.24,
+          "speed": 10
+        },
+        {
+          "perShot": null,
+          "hp": 1.25,
+          "damage": 1,
+          "radius": 0.24,
+          "speed": 10
+        }
+      ]
+    },
+    {
+      "id": "bomber",
+      "slot": "mob",
+      "name": "Bomber",
+      "text": "Carries a firecracker that pops on defeat and hurts nearby enemies.",
+      "unlock": {
+        "type": "level",
+        "level": "1-8"
+      },
+      "variant": 3,
+      "kind": "mob",
+      "tiers": [
+        {
+          "perShot": 1.5,
+          "hp": 2,
+          "damage": 1,
+          "radius": 0.32,
+          "speed": 6,
+          "deathBlast": {
+            "radius": 1.4,
+            "damage": 4
+          }
+        },
+        {
+          "perShot": 1.5,
+          "hp": 2.16,
+          "damage": 1.08,
+          "radius": 0.32,
+          "speed": 6,
+          "deathBlast": {
+            "radius": 1.4,
+            "damage": 4.3
+          }
+        },
+        {
+          "perShot": 1.5,
+          "hp": 2.32,
+          "damage": 1.16,
+          "radius": 0.32,
+          "speed": 6,
+          "deathBlast": {
+            "radius": 1.4,
+            "damage": 4.6
+          }
+        },
+        {
+          "perShot": 1.5,
+          "hp": 2.5,
+          "damage": 1.25,
+          "radius": 0.32,
+          "speed": 6,
+          "deathBlast": {
+            "radius": 1.4,
+            "damage": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "sarge",
+      "slot": "champion",
+      "name": "Sarge",
+      "text": "A big green sergeant who marches straight for the base.",
+      "unlock": {
+        "type": "start"
+      },
+      "variant": 8,
+      "tiers": [
+        {
+          "hpMul": 1,
+          "damageMul": 1,
+          "radius": 1,
+          "speed": 4.5,
+          "chargeMul": 1,
+          "echo": 0
+        },
+        {
+          "hpMul": 1.08,
+          "damageMul": 1.08,
+          "radius": 1,
+          "speed": 4.5,
+          "chargeMul": 1,
+          "echo": 0
+        },
+        {
+          "hpMul": 1.16,
+          "damageMul": 1.16,
+          "radius": 1,
+          "speed": 4.5,
+          "chargeMul": 1,
+          "echo": 0
+        },
+        {
+          "hpMul": 1.25,
+          "damageMul": 1.25,
+          "radius": 1,
+          "speed": 4.5,
+          "chargeMul": 1,
+          "echo": 0
+        }
+      ]
+    },
+    {
+      "id": "tank",
+      "slot": "champion",
+      "name": "Wind-up Tank",
+      "text": "Slow to charge and slow to roll, but very hard to stop.",
+      "unlock": {
+        "type": "level",
+        "level": "1-10"
+      },
+      "variant": 9,
+      "tiers": [
+        {
+          "hpMul": 1.6,
+          "damageMul": 1.25,
+          "radius": 1.2,
+          "speed": 3.2,
+          "chargeMul": 1.3,
+          "echo": 0
+        },
+        {
+          "hpMul": 1.73,
+          "damageMul": 1.35,
+          "radius": 1.2,
+          "speed": 3.2,
+          "chargeMul": 1.3,
+          "echo": 0
+        },
+        {
+          "hpMul": 1.86,
+          "damageMul": 1.45,
+          "radius": 1.2,
+          "speed": 3.2,
+          "chargeMul": 1.3,
+          "echo": 0
+        },
+        {
+          "hpMul": 2,
+          "damageMul": 1.56,
+          "radius": 1.2,
+          "speed": 3.2,
+          "chargeMul": 1.3,
+          "echo": 0
+        }
+      ]
+    },
+    {
+      "id": "drummer",
+      "slot": "champion",
+      "name": "Drummer",
+      "text": "Charges fast and drums up a squad of riflemen every launch.",
+      "unlock": {
+        "type": "buy",
+        "price": 300,
+        "after": "1-2"
+      },
+      "variant": 10,
+      "tiers": [
+        {
+          "hpMul": 0.75,
+          "damageMul": 0.8,
+          "radius": 0.9,
+          "speed": 5,
+          "chargeMul": 0.85,
+          "echo": 24
+        },
+        {
+          "hpMul": 0.81,
+          "damageMul": 0.86,
+          "radius": 0.9,
+          "speed": 5,
+          "chargeMul": 0.85,
+          "echo": 26
+        },
+        {
+          "hpMul": 0.87,
+          "damageMul": 0.93,
+          "radius": 0.9,
+          "speed": 5,
+          "chargeMul": 0.85,
+          "echo": 28
+        },
+        {
+          "hpMul": 0.94,
+          "damageMul": 1,
+          "radius": 0.9,
+          "speed": 5,
+          "chargeMul": 0.85,
+          "echo": 30
+        }
+      ]
+    },
+    {
+      "id": "barrage",
+      "slot": "ultimate",
+      "name": "Barrage",
+      "text": "Rains toy shells across the enemy crowd.",
+      "unlock": {
+        "type": "start"
+      },
+      "tiers": [
+        {
+          "chargeNeeded": 360,
+          "power": 20
+        },
+        {
+          "chargeNeeded": 360,
+          "power": 21.5
+        },
+        {
+          "chargeNeeded": 360,
+          "power": 23
+        },
+        {
+          "chargeNeeded": 360,
+          "power": 25
+        }
+      ]
+    },
+    {
+      "id": "paratroopers",
+      "slot": "ultimate",
+      "name": "Paratroopers",
+      "text": "Drops a squad of your soldiers deep in the lane.",
+      "unlock": {
+        "type": "level",
+        "level": "1-6"
+      },
+      "tiers": [
+        {
+          "chargeNeeded": 450,
+          "power": 27
+        },
+        {
+          "chargeNeeded": 450,
+          "power": 29
+        },
+        {
+          "chargeNeeded": 450,
+          "power": 31
+        },
+        {
+          "chargeNeeded": 450,
+          "power": 34
+        }
+      ]
+    },
+    {
+      "id": "marble",
+      "slot": "ultimate",
+      "name": "Giant Marble",
+      "text": "Rolls a huge glass marble down the lane, flattening enemies.",
+      "unlock": {
+        "type": "stars",
+        "count": 20
+      },
+      "tiers": [
+        {
+          "chargeNeeded": 420,
+          "power": 40
+        },
+        {
+          "chargeNeeded": 420,
+          "power": 43
+        },
+        {
+          "chargeNeeded": 420,
+          "power": 46
+        },
+        {
+          "chargeNeeded": 420,
+          "power": 50
+        }
+      ]
+    }
+  ]
+}

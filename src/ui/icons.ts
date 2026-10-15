@@ -226,3 +226,105 @@ export function compassIcon(size: number | string): string {
     'tb-ico',
   );
 }
+
+// ---------- Milestone 4: champions and ultimates ----------
+
+// Toy tank, facing right (the Tank champion). Tread line and road wheels in ink.
+const TANK: Stroke[] = [
+  { d: 'M13 44 L51 44 A6 6 0 0 1 51 56 L13 56 A6 6 0 0 1 13 44 Z', w: 2 }, // tread
+  { d: 'M9 44 L14 34 L50 34 L56 44 Z', w: 2 }, // hull
+  { d: 'M19 34 C19 21 42 21 42 34 Z', w: 2 }, // turret
+  { d: 'M38 28 L60 25', w: 6 }, // barrel
+  { d: 'M26 21.5 L34 21.5', w: 3.5 }, // hatch
+];
+const TANK_DETAIL =
+  `<path d="M11 44.5 L54 44.5" stroke="${INK}" stroke-width="2.4" stroke-linecap="round"/>` +
+  [17, 26, 35, 44].map((x) => `<circle cx="${x}" cy="50" r="2.9" fill="${INK}"/>`).join('') +
+  `<path d="M59.5 22.5 L60.5 28" stroke="${INK}" stroke-width="2.4" stroke-linecap="round"/>`;
+
+// Drummer: a soldier in a tall shako with a side drum and raised sticks, facing right.
+const DRUMMER: Stroke[] = [
+  { d: 'M23.5 16 L25 4.5 L37 4.5 L38.5 16 Z', w: 2 }, // shako
+  { d: 'M20 16 L42 16', w: 3.5 }, // brim
+  { d: 'M31 21 L31 22', w: 9 }, // head
+  { d: 'M30 27 L30 39', w: 12.5 }, // torso
+  { d: 'M28 40 L24.5 56 L19.5 56.5', w: 7 }, // back leg
+  { d: 'M32.5 40 L37 56 L42 56', w: 7 }, // front leg
+  { d: 'M34 36 L52 36 L52 47 L34 47 Z', w: 3 }, // drum
+  { d: 'M27 28 L37 31.5', w: 5 }, // arm to the first stick
+  { d: 'M37 31.5 L49 21', w: 2.6 }, // stick
+  { d: 'M33 29 L44 34', w: 5 }, // second arm
+  { d: 'M44 34 L55 27.5', w: 2.6 }, // second stick
+];
+const DRUMMER_DETAIL =
+  `<path d="M36 38.5 L39.5 45 L43 38.5 L46.5 45 L50 38.5" fill="none" stroke="${INK}" stroke-width="1.8" stroke-linejoin="round"/>` +
+  `<path d="M34 36.5 L52 36.5 M34 46.5 L52 46.5" stroke="${INK}" stroke-width="2"/>`;
+
+export type ChampionIconId = 'sarge' | 'tank' | 'drummer';
+
+/** The champion's sticker figure: Sarge (bazooka), Tank or Drummer. */
+export function championIconFor(id: ChampionIconId, size: number | string, color: string = HEX.uiCream): string {
+  if (id === 'tank') return svg('0 0 64 64', figure(TANK, color, 2.6, TANK_DETAIL), size, 'tb-ico');
+  if (id === 'drummer') return svg('0 0 64 64', figure(DRUMMER, color, 2.6, DRUMMER_DETAIL), size, 'tb-ico');
+  return championIcon(size, color);
+}
+
+// Shared base for the round ultimate stickers: an ink extrusion under an ink-rimmed disc.
+function disc(cx: number, cy: number, r: number, fill: string): string {
+  return (
+    `<circle cx="${cx}" cy="${cy + 2.2}" r="${r + 1.5}" fill="${INK}"/>` +
+    `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" stroke="${INK}" stroke-width="3"/>`
+  );
+}
+
+// Barrage: an iron cannonball with a lit fuse.
+function barrageBody(): string {
+  return (
+    `<path d="M41 23 C44 17 47 15 50 12" fill="none" stroke="${INK}" stroke-width="6.5" stroke-linecap="round"/>` +
+    `<path d="M41 23 C44 17 47 15 50 12" fill="none" stroke="#d8b680" stroke-width="2.6" stroke-linecap="round"/>` +
+    disc(30, 37, 18, '#3d3f4a') +
+    `<path d="M18.5 32 C20 25.5 25 21.5 31 21" fill="none" stroke="#9aa0b0" stroke-width="3.2" stroke-linecap="round"/>` +
+    `<circle cx="22" cy="27" r="2.2" fill="#e8ebf2"/>` +
+    `<path d="M51 4.5 L53 9.5 L58.5 8.5 L54.5 12.5 L58 17 L52.5 15.5 L50.5 20.5 L49 15 L43.5 15.5 L47.5 11.5 L45 6.5 L49.5 9 Z" fill="${HEX.uiYellow}" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/>` +
+    `<circle cx="51" cy="12.5" r="2.4" fill="#ff8a3d"/>`
+  );
+}
+
+// Paratroopers: a striped green canopy with strings down to a little soldier.
+function paratroopersBody(): string {
+  const canopy = 'M7 31 C7 11 57 11 57 31 C52 27 45 27 40 31 C36 27 28 27 24 31 C19 27 12 27 7 31 Z';
+  const lines = [7, 24, 40, 57]
+    .map((x) => `<path d="M${x} 30.5 L32 47" stroke="${INK}" stroke-width="1.8" stroke-linecap="round"/>`)
+    .join('');
+  return (
+    `<path d="${canopy}" fill="${INK}" stroke="${INK}" stroke-width="6" stroke-linejoin="round" transform="translate(0 1.8)"/>` +
+    `<path d="${canopy}" fill="${HEX.green}" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>` +
+    `<path d="M24 31 C24 21 28 14.5 32 13.6 C36 14.5 40 21 40 31 C36 27 28 27 24 31 Z" fill="${HEX.uiCream}" stroke="${INK}" stroke-width="2.2" stroke-linejoin="round"/>` +
+    `<path d="M13 21 C16 17 20 15 24 14.6" fill="none" stroke="#a5dc84" stroke-width="2.4" stroke-linecap="round"/>` +
+    lines +
+    `<path d="M32 50 L32 57" stroke="${INK}" stroke-width="10" stroke-linecap="round"/>` +
+    `<path d="M32 50 L32 57" stroke="${HEX.green}" stroke-width="5" stroke-linecap="round"/>` +
+    `<circle cx="32" cy="45.5" r="4.6" fill="${HEX.uiCream}" stroke="${INK}" stroke-width="2.4"/>` +
+    `<path d="M27.5 44.5 C27.5 39.5 36.5 39.5 36.5 44.5 Z" fill="${HEX.greenDark}" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/>`
+  );
+}
+
+// Marble: a glass marble with a red and yellow swirl and two glints.
+function marbleBody(): string {
+  return (
+    disc(32, 33, 22, '#6fc3ef') +
+    `<path d="M14 38 C20 30 28 42 36 34 C42 28 48 30 52 26" fill="none" stroke="${HEX.uiRed}" stroke-width="5" stroke-linecap="round"/>` +
+    `<path d="M16 44 C24 38 32 48 40 42 C45 38 49 40 52 37" fill="none" stroke="${HEX.uiYellow}" stroke-width="3.6" stroke-linecap="round"/>` +
+    `<circle cx="32" cy="33" r="20.2" fill="none" stroke="#c8ecff" stroke-width="1.6" opacity=".7"/>` +
+    `<ellipse cx="24" cy="22" rx="7.5" ry="4.6" fill="#fff" opacity=".85" transform="rotate(-30 24 22)"/>` +
+    `<circle cx="42.5" cy="45.5" r="2.4" fill="#fff" opacity=".7"/>`
+  );
+}
+
+export type UltimateIconId = 'barrage' | 'paratroopers' | 'marble';
+
+/** Colourful sticker for an ultimate (HUD button, loadout, collection). */
+export function ultimateIcon(id: UltimateIconId, size: number | string): string {
+  const body = id === 'paratroopers' ? paratroopersBody() : id === 'marble' ? marbleBody() : barrageBody();
+  return svg('0 0 64 64', body, size, 'tb-ico');
+}

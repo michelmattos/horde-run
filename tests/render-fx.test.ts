@@ -1,5 +1,6 @@
-// Pure render bookkeeping for milestone 2: HP bar fractions, one-use gate labels,
-// pop/break curves, the particle and tracer pools, and scenery placement.
+// Pure render bookkeeping: HP bar fractions, one-use gate labels, pop/break curves, the
+// particle and tracer pools, scenery placement and (Milestone 4) throttles, emitters,
+// the marble and parachute paths and the crowd's variant batches.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -21,7 +22,28 @@ import {
   writeBillboard,
   writeStreak,
   writeTRS,
+  Cooldown,
+  TimedEmitters,
+  emitCount,
+  marbleAt,
+  MARBLE_SPEED,
+  MARBLE_POP,
+  parachuteAt,
+  PARA_OPEN,
 } from '../src/render/fxLogic.ts';
+import type { MarblePose, ParachutePose } from '../src/render/fxLogic.ts';
+import {
+  HOP_STYLE,
+  KNIGHT_SCALE,
+  SLOT,
+  VARIANT,
+  crowdScale,
+  crowdSlot,
+  parseCannon,
+  parseChampion,
+  slotStyle,
+} from '../src/render/crowdLogic.ts';
+import { LAYOUT, UnitKind } from '../src/contracts.ts';
 
 test('hp fraction clamps and the bar hides at full and zero HP', () => {
   assert.equal(hpFraction(50, 100), 0.5);
@@ -233,15 +255,119 @@ test('tracers report the slot of each landed dart', () => {
   assert.equal(t.x0[t.endedSlot[0]], 1);
 });
 
-test('effects pools stay within the 400-particle budget', async () => {
+test('effects pools stay within the 600-particle budget', async () => {
   const src = await import('node:fs').then((fs) =>
     fs.readFileSync(new URL('../src/render/effects.ts', import.meta.url), 'utf8'),
   );
   const num = (name: string) => Number(new RegExp(`const ${name} = (\\d+)`).exec(src)![1]);
-  const total = ['TRACERS', 'FALLEN', 'SOLIDS', 'CONFETTI', 'PUFFS', 'SPARKS', 'RINGS'].reduce((a, k) => a + num(k), 0);
-  assert.ok(total <= 400, `pooled ${total}`);
+  const total = ['TRACERS', 'FALLEN', 'SOLIDS', 'CONFETTI', 'PUFFS', 'SPARKS', 'RINGS', 'STREAMERS', 'FLARES'].reduce(
+    (a, k) => a + num(k),
+    0,
+  );
+  assert.ok(total <= 600, `pooled ${total}`);
+  // At most nine thin-instance batches (draw calls) for every effect together.
+  assert.ok((src.match(/new FxBatch\(/g) ?? []).length <= 9);
   assert.ok(
     !/camera\.(position|rotation|target|alpha|beta|radius|fov)\s*[=+\-*]/.test(src),
     'effects never move the camera',
   );
+});
+
+// ---------- Milestone 4: throttles, emitters, ultimate paths, crowd batches ----------
+
+test('cooldown passes once per interval', () => {
+  const c = new Cooldown(0.12);
+  assert.ok(c.ready());
+  assert.ok(!c.ready());
+  c.tick(0.1);
+  assert.ok(!c.ready());
+  c.tick(0.03);
+  assert.ok(c.ready());
+  c.clear();
+  assert.ok(c.ready());
+});
+
+test('emitCount spreads a rate evenly over frames and carries the fraction', () => {
+  const acc = new Float32Array(1);
+  let total = 0;
+  for (let i = 0; i < 60; i++) total += emitCount(acc, 0, 30, 1 / 60);
+  assert.equal(total, 30);
+  assert.equal(emitCount(acc, 0, 0, 1), 0);
+  assert.equal(emitCount(acc, 0, 10, -1), 0);
+});
+
+test('timed emitters reuse free slots, then the one closest to finishing', () => {
+  const e = new TimedEmitters(2);
+  const a = e.start(0, 0, 0, 1, 2);
+  const b = e.start(1, 0, 0, 1, 1);
+  assert.deepEqual([a, b], [0, 1]);
+  const c = e.start(0, 5, 5, 1, 3);
+  assert.equal(c, 1, 'full: overwrites the emitter with the least time left');
+  assert.equal(e.x[1], 5);
+  e.step(2.5);
+  assert.ok(!e.isLive(0) && e.isLive(1));
+  assert.ok(Math.abs(e.progress(1) - 2.5 / 3) < 1e-6);
+  assert.equal(e.start(1, 0, 0, 1, 1), 0, 'a finished slot is reused');
+  e.clear();
+  assert.ok(!e.isLive(0) && !e.isLive(1));
+});
+
+test('the marble rolls up the lane at 12 u/s for its duration, then pops away', () => {
+  const p: MarblePose = { x: 0, z: 0, roll: 0, scale: 0, done: false };
+  marbleAt(0.5, 1, 1.5, 2, 1.1, p);
+  assert.equal(p.x, 1);
+  assert.ok(Math.abs(p.z - (1.5 + MARBLE_SPEED * 0.5)) < 1e-9);
+  assert.ok(Math.abs(p.roll - (MARBLE_SPEED * 0.5) / 1.1) < 1e-9);
+  assert.equal(p.scale, 1);
+  assert.ok(!p.done);
+  marbleAt(2 + MARBLE_POP * 0.2, 1, 1.5, 2, 1.1, p);
+  assert.ok(Math.abs(p.z - (1.5 + MARBLE_SPEED * 2)) < 1e-9, 'stops where its roll ends');
+  assert.ok(p.scale > 1, 'swells as it pops');
+  marbleAt(2 + MARBLE_POP * 0.9, 1, 1.5, 2, 1.1, p);
+  assert.ok(p.scale < 0.5 && !p.done);
+  marbleAt(2 + MARBLE_POP, 1, 1.5, 2, 1.1, p);
+  assert.ok(p.done);
+  assert.equal(Number(p.scale), 0);
+  marbleAt(0, 0, 0, 1, 1, p);
+  assert.ok(p.scale < 1 && p.scale > 0, 'settles in at the start');
+});
+
+test('parachutes open, drift down to the floor and crumple after landing', () => {
+  const p: ParachutePose = { y: 0, open: 0, sway: 0, tilt: 0, crumple: 0 };
+  parachuteAt(0, 7, 0, 0.3, p);
+  assert.equal(p.y, 7);
+  assert.ok(p.open < 1);
+  let last = 8;
+  for (let k = 0; k <= 1; k += 0.1) {
+    parachuteAt(k, 7, 1, 0.3, p);
+    assert.ok(p.y <= last + 1e-9, 'never climbs');
+    last = p.y;
+  }
+  parachuteAt(1, 7, 1, 0.3, p);
+  assert.ok(Math.abs(p.y) < 1e-9 && Math.abs(p.sway) < 1e-9 && p.crumple === 0);
+  parachuteAt(PARA_OPEN, 7, 0, 0.3, p);
+  assert.equal(p.open, 1);
+  parachuteAt(1.15, 7, 0, 0.3, p);
+  assert.ok(Math.abs(p.crumple - 0.5) < 1e-9);
+  parachuteAt(2, 7, 0, 0.3, p);
+  assert.equal(p.crumple, 1);
+});
+
+test("crowd batches: the variant byte picks the figure, absent variants keep today's look", () => {
+  assert.equal(crowdSlot(UnitKind.Mob, VARIANT.rifleman), SLOT.rifleman);
+  assert.equal(crowdSlot(UnitKind.Mob, VARIANT.sprinter), SLOT.sprinter);
+  assert.equal(crowdSlot(UnitKind.Mob, VARIANT.bomber), SLOT.bomber);
+  assert.equal(crowdSlot(UnitKind.Champion, VARIANT.knight), SLOT.knight);
+  for (const v of [0, VARIANT.sarge, VARIANT.tank, VARIANT.drummer])
+    assert.equal(crowdSlot(UnitKind.Champion, v), SLOT.champion);
+  assert.equal(crowdSlot(UnitKind.Mob, 200), SLOT.rifleman, 'unknown bytes fall back to the rifleman');
+  assert.equal(crowdScale(SLOT.rifleman, LAYOUT.mobRadius), 1);
+  assert.equal(crowdScale(SLOT.champion, LAYOUT.championRadius), 1);
+  assert.ok(Math.abs(crowdScale(SLOT.knight, 0.55) - (0.55 / LAYOUT.mobRadius) * KNIGHT_SCALE) < 1e-9);
+  assert.equal(slotStyle(SLOT.champion, 'tank'), HOP_STYLE.tank);
+  assert.equal(slotStyle(SLOT.sprinter, 'sarge'), HOP_STYLE.sprinter);
+  assert.equal(parseChampion('drummer'), 'drummer');
+  assert.equal(parseChampion('nope'), 'sarge');
+  assert.equal(parseCannon('repeater'), 'repeater');
+  assert.equal(parseCannon(undefined), 'popgun');
 });

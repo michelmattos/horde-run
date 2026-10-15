@@ -5,23 +5,32 @@
 // the newest unlocked level on show(). The first show() opens with a brief world
 // title card (no story): a tap or a short timeout dismisses it. When the caller handles
 // Expedition runs, a wooden footer plank holds a big yellow Expedition button (badges for
-// a run in progress and an unplayed Daily run); the scroll area ends above it.
+// a run in progress and an unplayed Daily run); the scroll area ends above it. Milestone 4
+// adds, each only when its handler is given: Home base and Collection buttons on a dock row
+// of the footer (Collection wears a 'new items' count), a settings cog on the header, and a
+// coin chip next to the star total when show() passes coins.
 import type { SaveData, WorldDef } from '../contracts.ts';
-import { emptySave, isUnlocked, starCount } from '../core/save.ts';
+import { emptySave, isUnlocked, loadGame, starCount } from '../core/save.ts';
+import type { GameData } from '../core/save.ts';
 import { MAP_NODE_SIZE, MAP_STEP, TITLE_CARD_MS, mapLayout, worldTitle } from './mapLayout.ts';
 import { createSaveSheet } from './saveSheet.ts';
 import { expeditionEntryLook } from './expeditionEntry.ts';
 import type { ExpeditionEntryFlags } from './expeditionEntry.ts';
 import { UI, WOOD_BG, injectUiTheme, outlineShadow } from '../ui/theme.ts';
-import { compassIcon, lockIcon as lockSvg, soldierIcon, starIcon } from '../ui/icons.ts';
+import { coinIcon, compassIcon, lockIcon as lockSvg, soldierIcon, starIcon } from '../ui/icons.ts';
+import { formatCoins } from './metaLogic.ts';
+import { cardsIcon, cogIcon, homeIcon } from './metaUi.ts';
 
 export { mapLayout } from './mapLayout.ts';
 export type { MapLayoutOptions } from './mapLayout.ts';
 export type { ExpeditionEntryFlags } from './expeditionEntry.ts';
 
-// Optional extras for show(): the Expedition button's badges.
+// Optional extras for show(): the Expedition button's badges, the coin balance (shows the
+// coin chip) and how many collection items are new (a badge on the Collection button).
 export interface WorldMapExtra {
   expedition?: ExpeditionEntryFlags;
+  coins?: number;
+  newItems?: number;
 }
 
 export interface MapLevel {
@@ -171,6 +180,21 @@ const CSS = `
 .hm-exp-run[hidden],.hm-exp-dot[hidden]{display:none}
 .hm-map.hm-has-foot .hm-scroll{padding-bottom:0}
 .hm-map.hm-has-foot .hm-nudge{bottom:calc(max(10px,env(safe-area-inset-bottom)) + 100px)}
+.hm-map.hm-has-dock .hm-nudge{bottom:calc(max(10px,env(safe-area-inset-bottom)) + 186px)}
+.hm-coin-total{display:inline-flex;align-items:center;gap:4px;padding:2px 10px 2px 3px;border-radius:999px;border:2.5px solid ${UI.ink};
+  background:${UI.cream};color:${UI.ink};text-shadow:none;font-weight:700;box-shadow:0 2px 0 ${UI.ink}}
+.hm-coin-total svg{width:22px;height:22px}
+.hm-coin-total[hidden]{display:none}
+.hm-head .tb-btn.hm-cog{min-width:0;width:52px;padding:0}
+.hm-dock{display:flex;gap:10px;max-width:${TRACK_MAX_W - 60}px;margin:0 auto 18px}
+.hm-meta.hm-wrap{flex-wrap:wrap;row-gap:5px}
+.hm-faction{white-space:nowrap}
+.hm-dock .tb-btn{flex:1;min-width:0;margin:0 0 6px;min-height:56px;font-size:19px;gap:8px;padding:0 10px}
+.hm-dock .tb-btn svg{width:32px;height:32px}
+.hm-dock-new{position:absolute;top:-12px;right:-6px;min-width:26px;box-sizing:border-box;padding:2px 7px 3px;border-radius:999px;border:3px solid ${UI.ink};
+  background:linear-gradient(#f26a5f,${UI.red});box-shadow:0 2px 0 ${UI.ink};color:#fff;text-shadow:${outlineShadow(1.2)};
+  font-size:13px;font-weight:700;line-height:1.1;text-align:center}
+.hm-dock-new[hidden]{display:none}
 @media (prefers-reduced-motion: reduce){.hm-card{transition:none}.hm-card-hint,.hm-node.hm-current .hm-disc::after{animation:none}}
 `;
 
@@ -240,6 +264,13 @@ export function createWorldMap(
     onPlay(levelId: string): void; // only fires for unlocked levels
     onSaveReplaced(save: SaveData): void; // after a confirmed import (already written to storage)
     onExpedition?(): void; // shows the Expedition button when given
+    onHome?(): void; // shows the Home base button when given
+    onCollection?(): void; // shows the Collection button when given
+    onSettings?(): void; // shows the settings cog when given
+    // The save sheet exports and imports the whole game (stars, coins, collection). It reads
+    // the profile from storage unless getGame is given; onGameReplaced also gets the profile.
+    getGame?(): GameData;
+    onGameReplaced?(g: GameData): void;
     whenUncovered?(): Promise<void>; // resolves once the loading screen is gone (the title card waits for it)
   },
 ): WorldMap {
@@ -255,11 +286,25 @@ export function createWorldMap(
   const title = el('div', 'hm-title');
   const meta = el('p', 'hm-meta');
   const totalEl = el('span', 'hm-star-total');
-  meta.append(`vs ${world.faction}`, totalEl);
+  const coinEl = el('span', 'hm-coin-total');
+  coinEl.hidden = true;
+  coinEl.dataset.coins = '';
+  meta.append(el('span', 'hm-faction', `vs ${world.faction}`), totalEl, coinEl);
   title.append(el('h1', 'hm-world', world.name), meta);
   const saveBtn = el('button', 'tb-btn tb-small', 'Save');
   saveBtn.type = 'button';
-  head.append(title, saveBtn);
+  head.append(title);
+  const onSettings = opts.onSettings;
+  if (onSettings) {
+    const cog = el('button', 'tb-btn tb-small hm-cog');
+    cog.type = 'button';
+    cog.dataset.action = 'settings';
+    cog.setAttribute('aria-label', 'Settings');
+    cog.innerHTML = cogIcon(30);
+    cog.addEventListener('click', () => onSettings());
+    head.append(cog);
+  }
+  head.append(saveBtn);
 
   // ----- Scrolling body: coming-soon card on top, then the path track -----
   const scroll = el('div', 'hm-scroll');
@@ -281,9 +326,37 @@ export function createWorldMap(
   let expSub: HTMLElement | null = null;
   let expRun: HTMLElement | null = null;
   let expDot: HTMLElement | null = null;
+  let newBadge: HTMLElement | null = null;
   const onExpedition = opts.onExpedition;
+  const { onHome, onCollection } = opts;
+  const foot = el('footer', 'hm-foot');
+  if (onHome || onCollection) {
+    // Dock row: Home base and Collection, above the Expedition button.
+    const dock = el('div', 'hm-dock');
+    if (onHome) {
+      const b = el('button', 'tb-btn tb-small');
+      b.type = 'button';
+      b.dataset.action = 'home';
+      b.innerHTML = homeIcon(32);
+      b.append(el('span', '', 'Home base'));
+      b.addEventListener('click', () => onHome());
+      dock.append(b);
+    }
+    if (onCollection) {
+      const b = el('button', 'tb-btn tb-small');
+      b.type = 'button';
+      b.dataset.action = 'collection';
+      b.innerHTML = cardsIcon(32);
+      newBadge = el('span', 'hm-dock-new');
+      newBadge.hidden = true;
+      b.append(el('span', '', 'Collection'), newBadge);
+      b.addEventListener('click', () => onCollection());
+      dock.append(b);
+    }
+    foot.append(dock);
+    map.classList.add('hm-has-dock');
+  }
   if (onExpedition) {
-    const foot = el('footer', 'hm-foot');
     expBtn = el('button', 'tb-btn tb-yellow');
     expBtn.type = 'button';
     expBtn.dataset.action = 'expedition';
@@ -296,9 +369,27 @@ export function createWorldMap(
     expBtn.append(iconSpan('hm-exp-ico', compassIcon(38)), txt, expRun, expDot);
     expBtn.addEventListener('click', () => onExpedition());
     foot.append(expBtn);
+  }
+  if (foot.childElementCount > 0) {
     map.append(foot);
     map.classList.add('hm-has-foot');
   }
+  const renderExtras = (extra?: WorldMapExtra): void => {
+    const coins = extra?.coins;
+    coinEl.hidden = coins === undefined;
+    meta.classList.toggle('hm-wrap', coins !== undefined);
+    if (coins !== undefined) {
+      coinEl.innerHTML = coinIcon(22);
+      coinEl.append(formatCoins(coins));
+      coinEl.setAttribute('aria-label', `${formatCoins(coins)} coins`);
+    }
+    if (newBadge) {
+      const n = Math.max(0, Math.floor(extra?.newItems ?? 0));
+      newBadge.hidden = n === 0;
+      newBadge.textContent = String(n);
+      newBadge.parentElement?.setAttribute('aria-label', n > 0 ? `Collection, ${n} new` : 'Collection');
+    }
+  };
   const renderExpedition = (flags?: ExpeditionEntryFlags): void => {
     if (!expBtn || !expSub || !expRun || !expDot) return;
     const look = expeditionEntryLook(flags);
@@ -350,11 +441,12 @@ export function createWorldMap(
   const nodes: HTMLButtonElement[] = [];
 
   const sheet = createSaveSheet(root, {
-    getSave: () => save,
-    onSaveReplaced: (next) => {
-      save = next;
+    getGame: () => opts.getGame?.() ?? { save, profile: loadGame().profile },
+    onGameReplaced: (next) => {
+      save = next.save;
       render();
-      opts.onSaveReplaced(next);
+      opts.onGameReplaced?.(next);
+      opts.onSaveReplaced(next.save);
     },
   });
   saveBtn.addEventListener('click', () => sheet.open());
@@ -493,6 +585,7 @@ export function createWorldMap(
       save = next;
       visible = true;
       renderExpedition(extra?.expedition);
+      renderExtras(extra);
       map.classList.add('hm-on');
       layout(); // needs the map displayed to measure width
       render();

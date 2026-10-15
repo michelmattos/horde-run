@@ -90,21 +90,22 @@ const SHADE = {
   base: 1,
 };
 
-type V3 = [number, number, number];
+export type V3 = [number, number, number];
 
-const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-const add = (a: V3, b: V3): V3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
-const mul = (a: V3, s: number): V3 => [a[0] * s, a[1] * s, a[2] * s];
+export const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+export const add = (a: V3, b: V3): V3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+export const mul = (a: V3, s: number): V3 => [a[0] * s, a[1] * s, a[2] * s];
 const dot = (a: V3, b: V3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const cross = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const norm = (a: V3): V3 => {
   const l = Math.hypot(a[0], a[1], a[2]) || 1;
   return [a[0] / l, a[1] / l, a[2] / l];
 };
-const lerp3 = (a: V3, b: V3, t: number): V3 => add(a, mul(sub(b, a), t));
+export const lerp3 = (a: V3, b: V3, t: number): V3 => add(a, mul(sub(b, a), t));
 
+// Figure helpers below are exported for the mob variants (soldierVariants.ts).
 // One ring of a tube: centre, half-size along the side axis (a) and the other axis (b).
-interface Ring {
+export interface Ring {
   p: V3;
   a: number;
   b?: number; // defaults to a (round)
@@ -115,7 +116,7 @@ interface Ring {
 // by capStart / capEnd x the end radius; 0 leaves that end open). `ref` picks the side
 // axis (the 'a' half-size), projected square to the tube. `twist` rotates the polygon
 // (e.g. PI/sides for a flat underside).
-function tube(rings: Ring[], sides: number, ref: V3, capStart = 0.6, capEnd = 0.6, twist = 0): VertexData {
+export function tube(rings: Ring[], sides: number, ref: V3, capStart = 0.6, capEnd = 0.6, twist = 0): VertexData {
   const positions: number[] = [];
   const normals: number[] = [];
   const indices: number[] = [];
@@ -189,7 +190,7 @@ function tube(rings: Ring[], sides: number, ref: V3, capStart = 0.6, capEnd = 0.
 }
 
 // Non-uniform scale with correct normals (place() would skew them), then place.
-function scaled(vd: VertexData, sx: number, sy: number, sz: number): VertexData {
+export function scaled(vd: VertexData, sx: number, sy: number, sz: number): VertexData {
   const p = vd.positions as number[] | Float32Array;
   const nr = vd.normals as number[] | Float32Array;
   for (let i = 0; i < p.length; i += 3) {
@@ -212,7 +213,7 @@ function scaled(vd: VertexData, sx: number, sy: number, sz: number): VertexData 
 // radius 0 becomes one apex vertex (a triangle fan). Normals come from the profile, so a
 // profile with gently turning points gives broad, soft highlights. `shades` is an
 // optional greyscale per profile point.
-function revolve(profile: [number, number][], sides: number, shades?: number[], twist = 0): VertexData {
+export function revolve(profile: [number, number][], sides: number, shades?: number[], twist = 0): VertexData {
   const n = profile.length;
   const apex = profile[n - 1][0] === 0;
   const ringCount = apex ? n - 1 : n;
@@ -264,7 +265,7 @@ function revolve(profile: [number, number][], sides: number, shades?: number[], 
   return fixWinding(vd);
 }
 
-function shade(vd: VertexData, v: number): VertexData {
+export function shade(vd: VertexData, v: number): VertexData {
   return paint(vd, [v, v, v]);
 }
 
@@ -512,7 +513,7 @@ function buildSoldier(detail: Detail): VertexData {
   return vd;
 }
 
-const AO_OPTIONS = {
+export const AO_OPTIONS = {
   full: { samples: 24, strength: 0.6, maxDist: 0.45 },
   lite: { samples: 12, strength: 0.55, maxDist: 0.45 },
 } as const;
@@ -577,7 +578,7 @@ export function soldierGeometryRaw(detail: Detail = 'full'): VertexData {
 // the ground instead of merging into one green band.
 const FOOT_SHADE_TOP = 0.32;
 const FOOT_SHADE_MIN = 0.7;
-function footShade(vd: VertexData): void {
+export function footShade(vd: VertexData): void {
   const p = vd.positions as ArrayLike<number>;
   const c = vd.colors as number[] | Float32Array;
   const nv = p.length / 3;

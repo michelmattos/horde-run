@@ -15,32 +15,68 @@
 // shots can come in bursts, a crowd can wait in front of the cannon at the start and
 // champions can bring an echo of mobs. A level without mods plays exactly as before:
 // no extra rand() calls, no extra spawns.
+//
+// Milestone 4 loadouts (BattleLoadout, src/game/loadout.ts): the cannon fires the main mob
+// and every mixEvery-th shot the mix mob (a crowd mob is always the main one; a 'heavy'
+// slot fires small champions), the champion
+// takes its multipliers, radius, speed, variant and echo from the loadout, and a second
+// meter charges an ultimate (barrage, paratroopers or marble). Mods still apply on top.
+// Without a loadout nothing of this runs, so the rand() sequence is unchanged. Cues for
+// the renderer and audio (shots, ultimates, death blasts) go to an optional array.
 
 import type { BattleState, DefenderView, InputState, LevelDef, SimEvent, SimView } from '../contracts.ts';
 import { LAYOUT, SIM_DT, Team, UnitKind } from '../contracts.ts';
+import type { BattleLoadout, MobSpec } from './loadout.ts';
+import { firingOrder } from './loadout.ts';
+
+// Spawn options the battle layer passes to the sim (mirrors the sim's SpawnOpts).
+export interface BattleSpawnOpts {
+  hp?: number;
+  damage?: number;
+  radius?: number;
+  spread?: number;
+  speed?: number;
+  variant?: number;
+  deathBlast?: { radius: number; damage: number };
+}
 
 export interface BattleSim {
   readonly view: SimView;
   readonly time: number;
-  spawn(
-    team: Team,
-    kind: UnitKind,
-    x: number,
-    z: number,
-    count: number,
-    opts?: { hp?: number; damage?: number; radius?: number; spread?: number },
-  ): void;
+  spawn(team: Team, kind: UnitKind, x: number, z: number, count: number, opts?: BattleSpawnOpts): void;
   step(dt: number, events: SimEvent[]): void; // baseHit.team = owner of the base that was hit
   totals(): { player: number; enemy: number };
   readonly defenders?: readonly DefenderView[];
   setEnemyBaseX?(x: number): void;
+  takeBlasts?(out: { x: number; z: number; radius: number }[]): void;
+  damageArea?(team: Team, x: number, z: number, radius: number, maxWeight: number): number;
+  damageDefender?(index: number, amount: number): void;
 }
+
+// Things the renderer and audio react to. 'shot' per cannon shot; 'ultimate' when one
+// fires (marble: z is where it starts rolling and duration the roll time); 'blast' per
+// death blast in the sim.
+export type BattleCue =
+  | {
+      type: 'ultimate';
+      id: 'barrage' | 'paratroopers' | 'marble';
+      x: number;
+      z: number;
+      radius: number;
+      duration: number;
+    }
+  | { type: 'blast'; x: number; z: number; radius: number }
+  | { type: 'shot'; x: number; count: number };
+
+// Battle input: the shared InputState plus the ultimate button (edge-triggered like the champion's).
+export type BattleInput = InputState & { ultimatePressed?: boolean };
 
 // What the player did this battle. Counted only while playing. endTime decides the
 // target-time star; the counters are for the result screen and tuning.
 export interface BattleStats {
   mobsFired: number;
   championsLaunched: number;
+  ultimatesFired?: number; // loadout battles only
   endTime?: number; // state.time when the outcome was decided
 }
 
@@ -49,7 +85,10 @@ export interface Battle {
   readonly state: BattleState; // same object every step, mutated in place
   readonly stats: BattleStats;
   readonly cannonX: number;
-  step(input: InputState, events: SimEvent[]): void; // one fixed SIM_DT step; no-op when paused
+  readonly ultimateCharge: number; // 0..1; always 0 without a loadout
+  readonly hasUltimate: boolean; // true when the battle was given a loadout
+  // One fixed SIM_DT step; no-op when paused. Cues are pushed only when the array is given.
+  step(input: BattleInput, events: SimEvent[], cues?: BattleCue[]): void;
 }
 
 const SHOT_SPREAD = 0.3; // x jitter half-width when a shot holds several mobs
@@ -61,12 +100,23 @@ const ECHO_SPREAD = 0.8;
 const DEFAULT_WAVE_INTERVAL = 0.05;
 const EPS = 1e-9; // absorbs float drift in accumulators so steady rates stay exact
 export const BOSS_AMP_EASE = 1; // seconds for the strafe amplitude to reach a new phase's
+// Ultimates (loadout battles).
+export const ULTIMATE = {
+  barrageAhead: 2, // barrage lands at z = cannonZ + this, across the full aim width
+  paraZ: 0.55, // paratroopers land at this share of the lane length
+  paraSpread: 1.6, // x half-width of the paratrooper drop
+  paraTime: 1, // seconds the drop takes
+  marbleRadius: 1.6,
+  marbleSpeed: 12, // world units / s
+  marbleStop: 6, // the marble stops this far before the enemy base (never hits it)
+  marbleDefender: 0.5, // each defender it rolls over takes power x this
+} as const;
 
 function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
 }
 
-export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number): Battle {
+export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number, loadout?: BattleLoadout): Battle {
   const state: BattleState = {
     time: 0,
     playerBaseHp: level.playerBase.hp,
@@ -90,7 +140,7 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
   if (phases.length) state.bossPhase = 0;
 
   const shotInc = level.cannon.fireRate * SIM_DT; // shots accrued per step
-  const chargePerMob = 1 / level.champion.chargeNeeded;
+  const chargePerMob = 1 / (level.champion.chargeNeeded * (loadout?.champion.chargeMul ?? 1));
   const enemyZ = level.lane.length - LAYOUT.enemySpawnInset;
   const waves = level.enemyWaves;
   const waveSpawned = new Int32Array(waves.length);
@@ -109,7 +159,8 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
   if (mods?.mobDamage !== undefined) mobOpts.damage = mods.mobDamage;
   const knightEvery = mods?.knightEvery ?? 0;
   const knight = mods?.knight ?? DEFAULT_KNIGHT;
-  const knightOpts = { hp: knight.hp, damage: knight.damage, radius: knight.radius };
+  // Knights from mods.knightEvery (the Expedition mod) render as knights: variant 1.
+  const knightOpts = { hp: knight.hp, damage: knight.damage, radius: knight.radius, variant: 1 };
   const burstShots = mods?.burst ? Math.max(1, Math.floor(mods.burst.shots)) : 0;
   const burstGap = mods?.burst?.gap ?? 0;
   const startCrowd = Math.max(0, Math.floor(mods?.startCrowd ?? 0));
@@ -118,9 +169,31 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
   const echoOpts = { ...mobOpts, spread: ECHO_SPREAD };
   let burstQueue = 0; // burst shots still to fire
   let burstCd = 0; // seconds until the next queued burst shot
+  let cues: BattleCue[] | undefined; // the current step's cue array, if any
+
+  // Loadout, resolved once (see the header). Absent: none of this is used.
+  const lo = loadout ? resolveLoadout(level, loadout) : undefined;
+  let shotNo = 0; // cannon shots fired, for the slot-2 mix
+  const carry = [0.5, 0.5]; // fixed-count slots: fractional units owed (0.5 rounds to nearest)
+  let ultimateCharge = 0;
+  const ultPerMob = loadout ? 1 / Math.max(1, loadout.ultimate.chargeNeeded) : 0;
+  let paraLeft = 0; // paratrooper drop: units still to land, steps left, where
+  let paraSteps = 0;
+  let paraX = 0;
+  let marbleOn = false; // marble: rolling, where, weight left to remove, defenders hit
+  let marbleZ = 0;
+  let marbleX = 0;
+  let marbleLeft = 0;
+  let marbleHit = 0;
+  const blastScratch: { x: number; z: number; radius: number }[] = [];
 
   function fire(): void {
+    if (lo) {
+      fireLoadout(lo);
+      return;
+    }
     const n = level.cannon.unitsPerShot;
+    cues?.push({ type: 'shot', x: cannonX, count: n });
     // Every knightEvery-th mob counted over the battle is a knight instead.
     const knights = knightEvery
       ? Math.floor((stats.mobsFired + n) / knightEvery) - Math.floor(stats.mobsFired / knightEvery)
@@ -129,6 +202,114 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
     if (knights > 0) sim.spawn(Team.Player, UnitKind.Champion, cannonX, LAYOUT.cannonZ, knights, knightOpts);
     stats.mobsFired += n;
     state.championCharge = Math.min(1, state.championCharge + n * chargePerMob);
+  }
+
+  // A loadout shot: slot 1, or slot 2 on every mixEvery-th shot. Mob slots still get
+  // knightEvery knights from the mods; heavy slots fire small champions.
+  // A fixed-count slot's fractional perShot (scaled by the cannon) carries over between
+  // its shots, so its units per second follow the cannon's; a mix shot that comes up
+  // empty fires slot 1 instead.
+  function fireLoadout(l: ResolvedLoadout): void {
+    shotNo++;
+    let slot = l.mixEvery > 0 && shotNo % l.mixEvery === 0 ? 1 : 0;
+    let n = slotCount(l, slot);
+    if (n === 0 && slot === 1) n = slotCount(l, (slot = 0));
+    if (n === 0) return;
+    const spec = l.specs[slot];
+    cues?.push({ type: 'shot', x: cannonX, count: n });
+    if (spec.kind === 'heavy') {
+      sim.spawn(Team.Player, UnitKind.Champion, cannonX, LAYOUT.cannonZ, n, l.shotOpts[slot]);
+    } else {
+      const knights = knightEvery
+        ? Math.floor((stats.mobsFired + n) / knightEvery) - Math.floor(stats.mobsFired / knightEvery)
+        : 0;
+      if (n > knights) sim.spawn(Team.Player, UnitKind.Mob, cannonX, LAYOUT.cannonZ, n - knights, l.shotOpts[slot]);
+      if (knights > 0) sim.spawn(Team.Player, UnitKind.Champion, cannonX, LAYOUT.cannonZ, knights, knightOpts);
+    }
+    stats.mobsFired += n;
+    state.championCharge = Math.min(1, state.championCharge + n * chargePerMob);
+    ultimateCharge = Math.min(1, ultimateCharge + n * ultPerMob);
+  }
+
+  // Units the next shot of `slot` fires: the cannon's count for a crowd slot, the
+  // carried fixed count otherwise.
+  function slotCount(l: ResolvedLoadout, slot: number): number {
+    if (l.specs[slot].perShot === null) return l.perShot[slot];
+    carry[slot] += l.perShot[slot];
+    const n = Math.floor(carry[slot]);
+    carry[slot] -= n;
+    return n;
+  }
+
+  // Spawns `units` slot-1 units (slot1Units turns a weight of mobs into a unit count).
+  function spawnSlot1(l: ResolvedLoadout, x: number, z: number, units: number, opts: BattleSpawnOpts): void {
+    sim.spawn(Team.Player, l.specs[0].kind === 'heavy' ? UnitKind.Champion : UnitKind.Mob, x, z, units, opts);
+  }
+
+  function fireUltimate(l: ResolvedLoadout): void {
+    const u = l.ultimate;
+    const lim = level.cannon.aimLimit;
+    if (u.id === 'barrage') {
+      const z = LAYOUT.cannonZ + ULTIMATE.barrageAhead;
+      spawnSlot1(l, 0, z, slot1Units(l, u.power), l.barrageOpts);
+      cues?.push({ type: 'ultimate', id: u.id, x: 0, z, radius: lim, duration: 0 });
+    } else if (u.id === 'paratroopers') {
+      if (paraLeft > 0) spawnSlot1(l, paraX, l.paraZ, paraLeft, l.paraOpts); // an unfinished drop lands at once
+      const edge = level.lane.width / 2 - ULTIMATE.paraSpread;
+      paraX = clamp(cannonX, -Math.max(0, edge), Math.max(0, edge));
+      paraLeft = slot1Units(l, u.power);
+      paraSteps = Math.max(1, Math.round(ULTIMATE.paraTime / SIM_DT));
+      cues?.push({
+        type: 'ultimate',
+        id: u.id,
+        x: paraX,
+        z: l.paraZ,
+        radius: ULTIMATE.paraSpread,
+        duration: ULTIMATE.paraTime,
+      });
+    } else {
+      marbleOn = true;
+      marbleX = cannonX;
+      marbleZ = LAYOUT.cannonZ;
+      marbleLeft = u.power;
+      marbleHit = 0;
+      cues?.push({
+        type: 'ultimate',
+        id: u.id,
+        x: marbleX,
+        z: marbleZ,
+        radius: ULTIMATE.marbleRadius,
+        duration: Math.max(0, l.marbleEnd - marbleZ) / ULTIMATE.marbleSpeed,
+      });
+    }
+  }
+
+  // Paratroopers land evenly over paraTime; the marble rolls on, spending its power on
+  // enemy units and bumping each defender it passes once.
+  function stepUltimates(l: ResolvedLoadout): void {
+    if (paraLeft > 0) {
+      const n = Math.ceil(paraLeft / paraSteps);
+      paraSteps--;
+      paraLeft -= n;
+      spawnSlot1(l, paraX, l.paraZ, n, l.paraOpts);
+    }
+    if (!marbleOn) return;
+    marbleZ += ULTIMATE.marbleSpeed * SIM_DT;
+    if (marbleZ >= l.marbleEnd) {
+      marbleOn = false;
+      return;
+    }
+    const r = ULTIMATE.marbleRadius;
+    if (marbleLeft > 0 && sim.damageArea) marbleLeft -= sim.damageArea(Team.Enemy, marbleX, marbleZ, r, marbleLeft);
+    const defs = sim.defenders;
+    if (defs && sim.damageDefender) {
+      for (let k = 0; k < defs.length && k < 31; k++) {
+        const d = defs[k];
+        if ((marbleHit >>> k) & 1 || d.hp <= 0 || !circleTouches(d, marbleX, marbleZ, r)) continue;
+        marbleHit |= 1 << k;
+        sim.damageDefender(k, l.ultimate.power * ULTIMATE.marbleDefender);
+      }
+    }
   }
 
   // A shot released by the fire rate: one shot, or a burst queued at the current aim.
@@ -214,8 +395,9 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
     }
   }
 
-  function step(input: InputState, events: SimEvent[]): void {
+  function step(input: BattleInput, events: SimEvent[], cueOut?: BattleCue[]): void {
     if (input.paused) return;
+    cues = cueOut;
     const t = steps * SIM_DT;
     steps++;
     const playing = state.outcome === 'playing';
@@ -237,14 +419,29 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
       if (burstShots > 0) drainBurst();
 
       if (input.championPressed && state.championCharge >= 1 - EPS) {
-        sim.spawn(Team.Player, UnitKind.Champion, cannonX, LAYOUT.cannonZ, 1, {
-          hp: level.champion.hp,
-          damage: level.champion.damage,
-        });
-        if (echo > 0) sim.spawn(Team.Player, UnitKind.Mob, cannonX, LAYOUT.cannonZ - ECHO_BEHIND, echo, echoOpts);
+        if (lo) {
+          sim.spawn(Team.Player, UnitKind.Champion, cannonX, LAYOUT.cannonZ, 1, lo.championOpts);
+          const all = echo + lo.echo;
+          if (all > 0) spawnSlot1(lo, cannonX, LAYOUT.cannonZ - ECHO_BEHIND, slot1Units(lo, all), lo.echoOpts);
+        } else {
+          sim.spawn(Team.Player, UnitKind.Champion, cannonX, LAYOUT.cannonZ, 1, {
+            hp: level.champion.hp,
+            damage: level.champion.damage,
+          });
+          if (echo > 0) sim.spawn(Team.Player, UnitKind.Mob, cannonX, LAYOUT.cannonZ - ECHO_BEHIND, echo, echoOpts);
+        }
         state.championCharge = 0;
         stats.championsLaunched++;
         events.push({ type: 'championLaunched', x: cannonX });
+      }
+
+      if (lo) {
+        if (input.ultimatePressed && ultimateCharge >= 1 - EPS) {
+          fireUltimate(lo);
+          ultimateCharge = 0;
+          stats.ultimatesFired = (stats.ultimatesFired ?? 0) + 1;
+        }
+        stepUltimates(lo);
       }
 
       spawnEnemies(t);
@@ -253,6 +450,11 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
     moveBase();
     const first = events.length;
     sim.step(SIM_DT, events);
+    if (cues && sim.takeBlasts) {
+      sim.takeBlasts(blastScratch);
+      for (const b of blastScratch) cues.push({ type: 'blast', x: b.x, z: b.z, radius: b.radius });
+      blastScratch.length = 0;
+    }
     if (playing) {
       for (let i = first; i < events.length; i++) {
         const e = events[i];
@@ -288,6 +490,93 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
     get cannonX() {
       return cannonX;
     },
+    get ultimateCharge() {
+      return ultimateCharge;
+    },
+    hasUltimate: loadout !== undefined,
     step,
   };
+}
+
+// A loadout with every spawn option object built once, so step() stays allocation-free.
+interface ResolvedLoadout {
+  specs: [MobSpec, MobSpec];
+  perShot: [number, number];
+  shotOpts: [BattleSpawnOpts, BattleSpawnOpts];
+  mixEvery: number;
+  championOpts: BattleSpawnOpts;
+  echo: number;
+  echoOpts: BattleSpawnOpts;
+  barrageOpts: BattleSpawnOpts;
+  paraOpts: BattleSpawnOpts;
+  paraZ: number;
+  marbleEnd: number;
+  ultimate: BattleLoadout['ultimate'];
+}
+
+function resolveLoadout(level: LevelDef, l: BattleLoadout): ResolvedLoadout {
+  const mods = level.mods;
+  const spread = mods?.shotSpread ?? SHOT_SPREAD;
+  // Mob slots scale with the mods' per-weight hp and damage (1 = the spec as is).
+  const opts = (spec: MobSpec, sp: number): BattleSpawnOpts => {
+    const mob = spec.kind === 'mob';
+    const o: BattleSpawnOpts = {
+      hp: spec.hp * (mob ? (mods?.mobHp ?? 1) : 1),
+      damage: spec.damage * (mob ? (mods?.mobDamage ?? 1) : 1),
+      radius: spec.radius,
+      speed: spec.speed,
+      variant: spec.variant,
+      spread: sp,
+    };
+    if (spec.deathBlast) o.deathBlast = { radius: spec.deathBlast.radius, damage: spec.deathBlast.damage };
+    return o;
+  };
+  // Fixed counts stay fractional (progression scales them by the cannon); see slotCount.
+  const count = (spec: MobSpec) => (spec.perShot === null ? level.cannon.unitsPerShot : Math.max(0, spec.perShot));
+  const c = l.champion;
+  const [a, b] = firingOrder(l.mobs);
+  return {
+    specs: [a, b],
+    // Two fixed-count mobs: the main one fires no more hp per shot than the crowd would
+    // (gates do not copy knights, so a knight-only army steamrolled at one a shot).
+    perShot: [a.perShot === null ? count(a) : Math.min(count(a), level.cannon.unitsPerShot / a.hp), count(b)],
+    shotOpts: [opts(a, spread), opts(b, spread)],
+    mixEvery: Math.max(0, Math.floor(l.mixEvery)),
+    championOpts: {
+      hp: level.champion.hp * c.hpMul,
+      damage: level.champion.damage * c.damageMul,
+      radius: c.radius,
+      speed: c.speed,
+      variant: c.variant,
+    },
+    echo: Math.max(0, Math.floor(c.echo)),
+    echoOpts: opts(a, ECHO_SPREAD),
+    barrageOpts: opts(a, level.cannon.aimLimit),
+    paraOpts: opts(a, ULTIMATE.paraSpread),
+    paraZ: ULTIMATE.paraZ * level.lane.length,
+    marbleEnd: level.lane.length - ULTIMATE.marbleStop,
+    ultimate: l.ultimate,
+  };
+}
+
+// A weight of mobs as slot-1 units: itself for a mob slot, weight / hp (at least one) for a heavy slot.
+function slot1Units(l: ResolvedLoadout, weight: number): number {
+  const spec = l.specs[0];
+  const w = Math.max(0, Math.round(weight));
+  return spec.kind === 'heavy' ? Math.max(1, Math.round(w / spec.hp)) : w;
+}
+
+// Does a circle overlap a defender's footprint (tower disc or wall rectangle)?
+function circleTouches(d: DefenderView, x: number, z: number, r: number): boolean {
+  const dx = x - d.x;
+  const dz = z - d.z;
+  if (d.kind === 'tower') {
+    const rs = r + d.width / 2;
+    return dx * dx + dz * dz < rs * rs;
+  }
+  const hx = d.width / 2;
+  const hz = d.depth / 2;
+  const ox = dx < -hx ? dx + hx : dx > hx ? dx - hx : 0;
+  const oz = dz < -hz ? dz + hz : dz > hz ? dz - hz : 0;
+  return ox * ox + oz * oz < r * r;
 }

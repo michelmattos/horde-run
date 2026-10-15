@@ -5,9 +5,14 @@
 // not on a HUD button) becomes the aim pointer. The cannon fires on its own
 // whenever the game is not paused, touched or not. Aiming is relative to where the finger touched down. Other pointers
 // are tracked but never steal aim. Mouse left-drag works the same and may start
-// anywhere. Space presses champion; Escape/P call the onPauseKey callback.
+// anywhere. Space presses champion, E the ultimate; Escape/P call the onPauseKey
+// callback. Champion and ultimate presses are latched and edge-triggered: each press
+// shows up in exactly one sample, and pausing drops a pending one.
 import type { InputState } from '../contracts.ts';
 import type { Settings } from './settings.ts';
+
+/** What sample() returns: the shared InputState plus the ultimate button's edge. */
+export type InputSample = InputState & { ultimatePressed: boolean };
 
 /** Gain from screen-width fraction to lane width (before sensitivity). */
 export const AIM_GAIN = 1.15;
@@ -62,11 +67,12 @@ export interface InputCore {
   move(id: number, clientX: number, width: number): void;
   up(id: number): void;
   pressChampion(): void;
+  pressUltimate(): void;
   setPaused(p: boolean): void;
   readonly paused: boolean;
   readonly aimX: number;
   readonly aimPointerId: number; // -1 when none
-  sample(): InputState;
+  sample(): InputSample;
   releaseAll(): void;
   reset(): void;
 }
@@ -78,6 +84,7 @@ export function createInputCore(settings: Settings): InputCore {
   let aimId = -1;
   let paused = false;
   let championLatch = false;
+  let ultimateLatch = false;
   const anchor: AimAnchor = { aimAtDown: 0, downX: 0 };
   // Every live pointer id, so a second finger is known and never promoted to aim.
   const ids = new Float64Array(MAX_POINTERS).fill(NaN);
@@ -129,11 +136,15 @@ export function createInputCore(settings: Settings): InputCore {
     pressChampion() {
       if (!paused) championLatch = true;
     },
+    pressUltimate() {
+      if (!paused) ultimateLatch = true;
+    },
     setPaused(p) {
       paused = p;
       if (p) {
         releaseAll();
         championLatch = false;
+        ultimateLatch = false;
       }
     },
     get paused() {
@@ -148,27 +159,31 @@ export function createInputCore(settings: Settings): InputCore {
     sample() {
       const championPressed = championLatch && !paused;
       if (championPressed) championLatch = false;
-      return { aimX, firing: !paused, championPressed, paused };
+      const ultimatePressed = ultimateLatch && !paused;
+      if (ultimatePressed) ultimateLatch = false;
+      return { aimX, firing: !paused, championPressed, ultimatePressed, paused };
     },
     releaseAll,
     reset() {
       releaseAll();
       aimX = 0;
       championLatch = false;
+      ultimateLatch = false;
     },
   };
 }
 
 export interface Input {
   configure(opts: { laneWidth: number; aimLimit: number }): void; // per level; resets aim to 0 and releases pointers
-  sample(): InputState; // once per sim step; championPressed is true for exactly one sample after a press
+  sample(): InputSample; // once per sim step; championPressed / ultimatePressed are true for exactly one sample after a press
   pressChampion(): void; // HUD button and Space call this
-  setPaused(p: boolean): void; // pausing releases all pointers and drops a pending champion press
+  pressUltimate(): void; // HUD button and E call this
+  setPaused(p: boolean): void; // pausing releases all pointers and drops pending champion / ultimate presses
   readonly paused: boolean;
   addBlockedRegion(test: (clientX: number, clientY: number) => boolean): void; // pointers starting where test() is true are ignored
   /** Escape or P was pressed (not auto-repeat). The integrator toggles pause here. */
   onPauseKey(cb: () => void): void;
-  reset(): void; // releases pointers, aim back to 0, clears champion press; does not change paused
+  reset(): void; // releases pointers, aim back to 0, clears champion and ultimate presses; does not change paused
   dispose(): void;
 }
 
@@ -210,6 +225,10 @@ export function createInput(target: HTMLElement, settings: Settings): Input {
       if (core.paused) return; // let Space activate focused overlay buttons
       e.preventDefault();
       core.pressChampion();
+    } else if (e.code === 'KeyE') {
+      if (core.paused || e.ctrlKey || e.metaKey || e.altKey) return; // leave browser shortcuts alone
+      e.preventDefault();
+      core.pressUltimate();
     } else if (e.code === 'Escape' || e.code === 'KeyP') {
       e.preventDefault();
       pauseCb?.();
@@ -230,6 +249,7 @@ export function createInput(target: HTMLElement, settings: Settings): Input {
     configure: (o) => core.configure(o.laneWidth, o.aimLimit),
     sample: () => core.sample(),
     pressChampion: () => core.pressChampion(),
+    pressUltimate: () => core.pressUltimate(),
     setPaused: (p) => core.setPaused(p),
     get paused() {
       return core.paused;

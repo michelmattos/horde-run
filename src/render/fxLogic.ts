@@ -624,3 +624,165 @@ export function scatterScenery(
   }
   return props;
 }
+
+// ---------- Milestone 4: throttles, emitters and ultimate paths ----------
+
+// One-key rate limiter: ready() passes at most once per `interval` seconds (cannon shot
+// puffs arrive at the fire rate, up to ~10 a second).
+export class Cooldown {
+  readonly interval: number;
+  private left = 0;
+
+  constructor(interval: number) {
+    this.interval = interval;
+  }
+
+  tick(dt: number): void {
+    this.left = this.left > dt ? this.left - dt : 0;
+  }
+
+  ready(): boolean {
+    if (this.left > 0) return false;
+    this.left = this.interval;
+    return true;
+  }
+
+  clear(): void {
+    this.left = 0;
+  }
+}
+
+// Continuous emission at `rate` per second: the whole particles due this frame, carrying
+// the fraction over in acc[i] so a low rate still emits evenly at any frame rate.
+export function emitCount(acc: Float32Array, i: number, rate: number, dt: number): number {
+  if (!(rate > 0) || !(dt > 0)) return 0;
+  const due = acc[i] + rate * dt;
+  const n = Math.floor(due);
+  acc[i] = due - n;
+  return n;
+}
+
+// Long-running emitters (the victory shower, the defeat collapse): a few fixed slots with
+// a kind, a centre, a width and a life. start() takes a free slot or the one closest to
+// finishing, so a burst of events never allocates.
+export class TimedEmitters {
+  readonly capacity: number;
+  readonly kind: Uint8Array;
+  readonly x: Float32Array;
+  readonly z: Float32Array;
+  readonly width: Float32Array;
+  readonly life: Float32Array; // seconds left; <= 0 is free
+  readonly maxLife: Float32Array;
+  readonly acc: Float32Array; // emitCount carry, one per slot
+
+  constructor(capacity: number) {
+    this.capacity = capacity;
+    this.kind = new Uint8Array(capacity);
+    this.x = new Float32Array(capacity);
+    this.z = new Float32Array(capacity);
+    this.width = new Float32Array(capacity);
+    this.life = new Float32Array(capacity);
+    this.maxLife = new Float32Array(capacity);
+    this.acc = new Float32Array(capacity);
+  }
+
+  start(kind: number, x: number, z: number, width: number, life: number): number {
+    let slot = 0;
+    let least = Infinity;
+    for (let i = 0; i < this.capacity; i++) {
+      if (this.life[i] <= 0) {
+        slot = i;
+        break;
+      }
+      if (this.life[i] < least) {
+        least = this.life[i];
+        slot = i;
+      }
+    }
+    this.kind[slot] = kind;
+    this.x[slot] = x;
+    this.z[slot] = z;
+    this.width[slot] = width;
+    this.life[slot] = life;
+    this.maxLife[slot] = life;
+    this.acc[slot] = 0;
+    return slot;
+  }
+
+  step(dt: number): void {
+    for (let i = 0; i < this.capacity; i++) if (this.life[i] > 0) this.life[i] -= dt;
+  }
+
+  isLive(i: number): boolean {
+    return this.life[i] > 0;
+  }
+
+  // 0 at start → 1 at the end.
+  progress(i: number): number {
+    const m = this.maxLife[i];
+    return m > 0 ? 1 - Math.max(0, this.life[i]) / m : 1;
+  }
+
+  clear(): void {
+    this.life.fill(0);
+  }
+}
+
+// The marble ultimate: it rolls from (x0, z0) straight up the lane at MARBLE_SPEED for
+// `duration` seconds, then pops away (a quick swell and shrink) where it stopped.
+export const MARBLE_SPEED = 12;
+export const MARBLE_POP = 0.3; // seconds of the pop at the end
+const MARBLE_DROP = 0.15; // seconds it takes to settle in at the start
+
+export interface MarblePose {
+  x: number;
+  z: number;
+  roll: number; // radians about +X, distance / radius
+  scale: number; // 1 while rolling
+  done: boolean; // finished popping: hide it
+}
+
+// Writes the pose at `t` seconds after the cue into out (no allocation).
+export function marbleAt(t: number, x0: number, z0: number, duration: number, radius: number, out: MarblePose): void {
+  const d = Math.max(0, duration);
+  const r = radius > 0 ? radius : 1;
+  const tt = t < 0 ? 0 : t;
+  const rollT = tt < d ? tt : d;
+  out.x = x0;
+  out.z = z0 + MARBLE_SPEED * rollT;
+  out.roll = (MARBLE_SPEED * rollT) / r;
+  out.done = tt >= d + MARBLE_POP;
+  if (out.done) out.scale = 0;
+  else if (tt < d) out.scale = tt < MARBLE_DROP ? 0.7 + 0.3 * (tt / MARBLE_DROP) : 1;
+  else {
+    const k = (tt - d) / MARBLE_POP; // 0 → 1
+    out.scale = k < 0.35 ? 1 + 0.25 * (k / 0.35) : 1.25 * (1 - (k - 0.35) / 0.65);
+  }
+}
+
+// A paper parachute drifting down: canopy pops open over the first OPEN share of the
+// fall, then sinks with a gentle ease and sway, lands at y = 0 when k = 1 and crumples
+// away over the next PARA_CRUMPLE seconds' share (k > 1).
+export const PARA_OPEN = 0.15;
+
+export interface ParachutePose {
+  y: number; // height of the trooper's feet
+  open: number; // canopy scale 0..1 (with a little overshoot)
+  sway: number; // x offset
+  tilt: number; // roll radians, follows the sway
+  crumple: number; // 0 flying → 1 collapsed on the floor
+}
+
+// k: 0 → 1 over the fall (beyond 1 while crumpling, up to 1 + crumpleShare).
+export function parachuteAt(k: number, startY: number, phase: number, crumpleShare: number, out: ParachutePose): void {
+  const f = k < 0 ? 0 : k > 1 ? 1 : k;
+  // Ease-out fall: quick drop while the canopy opens, then a slow float onto the floor.
+  const fall = 1 - (1 - f) * (1 - f * 0.35);
+  out.y = startY * (1 - fall);
+  const o = f / PARA_OPEN;
+  out.open = o >= 1 ? 1 : o < 0.7 ? 0.35 + (o / 0.7) * 0.75 : 1.1 - ((o - 0.7) / 0.3) * 0.1;
+  const s = Math.sin(phase + f * 7);
+  out.sway = s * 0.25 * (1 - f);
+  out.tilt = Math.cos(phase + f * 7) * 0.22 * (1 - f);
+  out.crumple = k <= 1 || !(crumpleShare > 0) ? 0 : Math.min(1, (k - 1) / crumpleShare);
+}

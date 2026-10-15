@@ -1,10 +1,11 @@
-// Pure core logic: RNG, fixed-step loop, relative aim and the input state machine.
+// Pure core logic: RNG, fixed-step loop, relative aim, the input state machine and settings parsing.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRng, seedFromString } from '../src/core/rng.ts';
 import { createFixedStep, createFrameCap } from '../src/core/loop.ts';
 import { AIM_GAIN, createInputCore, relativeAim } from '../src/core/input.ts';
 import { SIM_DT } from '../src/contracts.ts';
+import { clampVolume, defaultSettings, parseSettings } from '../src/core/settings.ts';
 
 test('rng is deterministic per seed and stays in range', () => {
   const a = createRng(42);
@@ -91,7 +92,7 @@ test('relativeAim clamps and rebases the anchor so reversing responds at once', 
 });
 
 function core(sensitivity = 1) {
-  const c = createInputCore({ sensitivity, haptics: true });
+  const c = createInputCore({ ...defaultSettings(), sensitivity });
   c.configure(10, 4);
   return c;
 }
@@ -171,7 +172,7 @@ test('input: pausing releases pointers and drops presses', () => {
 });
 
 test('input: sensitivity is read live from settings', () => {
-  const settings = { sensitivity: 1, haptics: true };
+  const settings = defaultSettings();
   const c = createInputCore(settings);
   c.configure(10, 100);
   c.down(1, 0, 600, 400, 800, 'touch', false);
@@ -204,4 +205,57 @@ test('frame cap: 120 Hz rAF draws every other frame, 60 Hz draws every frame', (
   assert.ok(Math.abs(c.tick(1016.7) - 0.0167) < 1e-6);
   c.reset();
   assert.equal(c.tick(1020), 0, 'after a reset the next frame draws at once');
+});
+
+test('input: ultimatePressed is true for exactly one sample per press', () => {
+  const c = createInputCore(defaultSettings());
+  c.configure(10, 4);
+  assert.equal(c.sample().ultimatePressed, false);
+  c.pressUltimate();
+  c.pressUltimate(); // two presses before a step collapse into one
+  const s = c.sample();
+  assert.equal(s.ultimatePressed, true);
+  assert.equal(s.championPressed, false);
+  assert.equal(c.sample().ultimatePressed, false);
+  c.pressUltimate();
+  c.pressChampion();
+  const both = c.sample();
+  assert.equal(both.ultimatePressed, true);
+  assert.equal(both.championPressed, true);
+  assert.equal(c.sample().ultimatePressed, false);
+});
+
+test('input: pausing drops a pending ultimate and ignores presses while paused', () => {
+  const c = createInputCore(defaultSettings());
+  c.configure(10, 4);
+  c.pressUltimate();
+  c.setPaused(true);
+  assert.equal(c.sample().ultimatePressed, false);
+  c.pressUltimate();
+  c.setPaused(false);
+  assert.equal(c.sample().ultimatePressed, false);
+  c.pressUltimate();
+  c.reset();
+  assert.equal(c.sample().ultimatePressed, false);
+});
+
+test('settings: defaults, old saves without sound, and bad values', () => {
+  assert.deepEqual(defaultSettings(), { sensitivity: 1, haptics: true, sound: true, volume: 0.8 });
+  assert.deepEqual(parseSettings({ sensitivity: 1.5, haptics: false }), {
+    sensitivity: 1.5,
+    haptics: false,
+    sound: true,
+    volume: 0.8,
+  });
+  assert.deepEqual(parseSettings({ sensitivity: 9, haptics: 'yes', sound: false, volume: 3 }), {
+    sensitivity: 2,
+    haptics: true,
+    sound: false,
+    volume: 1,
+  });
+  assert.deepEqual(parseSettings(null), defaultSettings());
+  assert.deepEqual(parseSettings('junk'), defaultSettings());
+  assert.equal(parseSettings({ volume: -1 }).volume, 0);
+  assert.equal(parseSettings({ volume: Number.NaN }).volume, 0.8);
+  assert.equal(clampVolume(0.25), 0.25);
 });

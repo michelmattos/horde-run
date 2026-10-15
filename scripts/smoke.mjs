@@ -1,12 +1,15 @@
 // Smoke test against the production build: serves dist/ with `vite preview` and plays the
 // real game in a phone-sized headless Chromium (SwiftShader GL). Three scenarios, all by
-// default or one with SMOKE=campaign|boss|expedition (CI runs them as parallel jobs):
-// - campaign: title card, world map and level card (taps through the menus into 1-1), ~3 s
+// default or one with SMOKE=campaign|boss|expedition|meta (CI runs them as parallel jobs):
+// - campaign: title card, world map, level card and loadout (taps through the menus and
+//   Fight into 1-1, which must show the ultimate button), ~3 s
 //   of held touch drag, and a crowd pushed past 1000 units (camera must zoom out).
 // - boss: level 1-10 played briefly, then its base dropped to reach the victory result card.
 // - expedition: a seeded run map, the first node tapped into a generated battle that
 //   __horde.win() ends, and the upgrade pick; taking a card must land back on the run map
 //   with the upgrade owned.
+// - meta: the collection with debug coins buys an upgrade, then the 3D home village puts up
+//   a building.
 // Each step saves a smoke-*.png screenshot and a JSON summary is printed. Any console error,
 // page error, shader compile error or blank-canvas fallback fails the run. The battle
 // screenshots are decoded and a flat, featureless frame (a grey void with only the HUD)
@@ -109,14 +112,15 @@ const MIN_LUMA_STD = 14;
 const MIN_COLOURS = 60;
 const MIN_DRAW_CALLS = 20;
 
-// SMOKE=campaign|boss|expedition runs one scenario (CI runs them as parallel jobs); unset
-// runs all three.
-const SCENARIOS = ['campaign', 'boss', 'expedition'];
+// SMOKE=campaign|boss|expedition|meta runs one scenario (CI runs them as parallel jobs);
+// unset runs them all.
+const SCENARIOS = ['campaign', 'boss', 'expedition', 'meta'];
 const ONLY = process.env.SMOKE;
 if (ONLY && !SCENARIOS.includes(ONLY)) throw new Error(`unknown SMOKE=${ONLY}`);
 const CAMPAIGN = !ONLY || ONLY === 'campaign';
 const BOSS = !ONLY || ONLY === 'boss';
 const EXPEDITION = !ONLY || ONLY === 'expedition';
+const META = !ONLY || ONLY === 'meta';
 
 const PORT = Number(process.env.PORT) || (await freePort());
 const ROOT = `http://localhost:${PORT}/horde-run/`;
@@ -221,6 +225,13 @@ try {
     await sleep(500); // let the card's pop-in settle
     await shot('smoke-card.png');
     await play.tap({ timeout: 5000 });
+    // The loadout comes between the card and the battle.
+    const fight = page.locator('[data-screen="loadout"] [data-action="fight"]');
+    await fight.waitFor({ state: 'visible', timeout: 5000 });
+    await sleep(500);
+    await shot('smoke-loadout.png');
+    const loadoutSlots = await page.locator('[data-screen="loadout"] [data-slot]').count();
+    await fight.tap({ timeout: 5000 });
     await page.waitForFunction(() => window.__horde.level() === '1-1' && window.__horde.state().time > 0.5, null, {
       timeout: 15000,
     });
@@ -235,6 +246,7 @@ try {
     }
     await shot('smoke-play.png');
     sceneShots.push('smoke-play.png');
+    const ultButton = await page.locator('.tb-ult').isVisible();
     const afterPlay = await page.evaluate(() => ({
       state: { ...window.__horde.state() },
       units: window.__horde.units(),
@@ -265,6 +277,7 @@ try {
     peakPlayer = Math.max(peakPlayer, final.state.playerUnits);
     Object.assign(summary, {
       titleCard: titleText,
+      loadout: { slots: loadoutSlots, ultButton },
       level: final.level,
       afterPlay: {
         time: +afterPlay.state.time.toFixed(2),
@@ -278,6 +291,8 @@ try {
 
     if (!/World 1 · Bedroom Floor/.test(titleText)) errors.push(`title card read "${titleText}"`);
     if (final.level !== '1-1') errors.push(`expected level 1-1, got ${final.level}`);
+    if (loadoutSlots !== 5) errors.push(`expected 5 loadout slots, got ${loadoutSlots}`);
+    if (!ultButton) errors.push('the ultimate button is not showing in a campaign battle');
     if (afterPlay.state.time <= 1) errors.push('battle clock did not advance');
     if (peakPlayer < 1000) errors.push(`player units peaked at ${peakPlayer}, expected 1000+`);
     if (!(final.zoom >= 0.08 && final.zoom > afterPlay.zoom))
@@ -379,6 +394,45 @@ try {
     if (offered !== 3) errors.push(`expected 3 upgrade cards after the expedition win, got ${offered}`);
     if (!runAfter || runAfter.upgrades[picked] !== 1 || runAfter.stats.battlesWon !== 1)
       errors.push(`expedition run did not record the win and pick: ${JSON.stringify(summary.expedition)}`);
+  }
+
+  if (META) {
+    // Collection: a debug coin grant, then the first affordable upgrade.
+    await page.goto(`${ROOT}?screen=collection`, { waitUntil: 'load' });
+    await page.waitForFunction(() => window.__horde?.screen() === 'collection', null, { timeout: 15000 });
+    const coinsBefore = await page.evaluate(() => window.__horde.coins(600));
+    const upgrade = page.locator('[data-screen="collection"] [data-action="upgrade"]:not([disabled])').first();
+    await upgrade.waitFor({ state: 'visible', timeout: 5000 });
+    const upgradedId = await upgrade.evaluate((b) => b.closest('[data-item]')?.getAttribute('data-item'));
+    await upgrade.tap();
+    await sleep(700);
+    await shot('smoke-collection.png');
+    const afterUpgrade = await page.evaluate(() => window.__horde.profile());
+    const collection = {
+      coinsBefore,
+      upgraded: upgradedId,
+      tier: afterUpgrade.tiers[upgradedId] ?? 0,
+      coinsAfter: afterUpgrade.coins,
+    };
+
+    // Home base: the 3D village with one building put up.
+    await page.goto(`${ROOT}?screen=home`, { waitUntil: 'load' });
+    await page.waitForFunction(() => window.__horde?.screen() === 'home', null, { timeout: 15000 });
+    const buildBtn = page.locator('[data-screen="home"] [data-action="build"]:not([disabled])').first();
+    await buildBtn.waitFor({ state: 'visible', timeout: 15000 });
+    await sleep(1500); // loads and the first frames of the village
+    const builtId = await buildBtn.evaluate((b) => b.closest('[data-building]')?.getAttribute('data-building'));
+    await buildBtn.tap();
+    await sleep(3000); // the new pieces drop in, then confetti
+    await shot('smoke-home.png');
+    sceneShots.push('smoke-home.png');
+    const afterBuild = await page.evaluate(() => window.__horde.profile());
+    const home = { built: builtId, tier: afterBuild.village[builtId] ?? 0, coins: afterBuild.coins };
+    Object.assign(summary, { collection, home });
+
+    if (!upgradedId || collection.tier !== 1 || collection.coinsAfter >= coinsBefore)
+      errors.push(`collection upgrade did not apply: ${JSON.stringify(collection)}`);
+    if (!builtId || home.tier !== 1) errors.push(`home build did not apply: ${JSON.stringify(home)}`);
   }
 
   // The battle screenshots must show the 3D scene, not a flat clear colour behind the HUD.

@@ -1,7 +1,7 @@
 // Small DOM builders shared by the Expedition screens: elements, sticker buttons,
 // HP and gold chips, and the upgrade card used by the pick and shop screens.
 import type { UpgradeDef } from '../../contracts.ts';
-import { tickIcon } from '../icons.ts';
+import { coinIcon, tickIcon } from '../icons.ts';
 import { CATEGORY_COLORS, RARITY_COLORS, coinSvg, heartSvg, upgradeIconSvg } from './icons.ts';
 import { formatGold, formatHp, hpPercent, hpTone } from './layout.ts';
 
@@ -94,6 +94,20 @@ export function goldChip(gold: number, extra?: HTMLElement): HTMLSpanElement {
   c.append(iconSpan('', coinSvg(28)), v);
   if (extra) c.append(extra);
   return c;
+}
+
+// Campaign coins paid out by a run or battle: '+N coins' and the wallet total.
+export function coinsRow(earned: number, total: number): HTMLDivElement {
+  const row = el('div', 'hx-coins');
+  row.setAttribute('role', 'img');
+  row.setAttribute('aria-label', `${formatGold(earned)} coins earned, ${formatGold(total)} coins in total`);
+  row.append(
+    iconSpan('', coinIcon(34)),
+    el('b', '', `+${formatGold(earned)}`),
+    el('span', '', 'coins'),
+    el('span', 'hx-chip hx-coins-total', `Total ${formatGold(total)}`),
+  );
+  return row;
 }
 
 // The upgrade card: big icon, name, rule text, red drawback, rarity ribbon, category

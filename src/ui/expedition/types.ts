@@ -66,6 +66,7 @@ export interface BattleLostOptions {
   hp: number; // run HP after the loss
   maxHp: number;
   boss: boolean;
+  coins?: { earned: number; total: number }; // campaign coins this battle paid out
   onContinue(): void;
 }
 
@@ -79,6 +80,7 @@ export interface RunResultOptions {
   hp: number;
   maxHp: number;
   upgrades: readonly OwnedUpgrade[];
+  coins?: { earned: number; total: number }; // campaign coins the run paid out
   onNewRun(): void;
   onMap(): void;
 }
