@@ -183,7 +183,7 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
   window.addEventListener('resize', onResize);
   window.addEventListener('orientationchange', onResize);
   window.visualViewport?.addEventListener('resize', onResize);
-  // The canvas can change size without a window resize (100dvh toolbar collapse).
+  // The canvas can change size without a window resize (toolbar collapse; --app-h in index.html).
   const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(onResize) : null;
   observer?.observe(canvas);
 

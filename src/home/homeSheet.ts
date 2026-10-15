@@ -41,7 +41,7 @@ export interface HomeSheetOptions {
 const INK = HEX.uiInk;
 
 const CSS = `
-.hr-home{position:fixed;inset:0;height:100dvh;z-index:11;display:none;pointer-events:none}
+.hr-home{position:fixed;inset:0;height:var(--app-h);z-index:11;display:none;pointer-events:none}
 .hr-home.hr-on{display:block}
 .hr-home .hr-head{position:absolute;left:0;right:0;top:0;pointer-events:auto}
 .hr-home-tap{position:absolute;inset:0;pointer-events:auto;touch-action:none;cursor:pointer}
@@ -250,7 +250,8 @@ export function createHomeSheet(root: HTMLElement, opts: HomeSheetOptions): Home
       }
     },
     band() {
-      const h = window.innerHeight || 1;
+      // The screen's own height, not innerHeight: it matches the canvas on iOS Home Screen apps too.
+      const h = wrap.getBoundingClientRect().height || window.innerHeight || 1;
       const top = head.getBoundingClientRect().bottom / h;
       const bottom = (h - sheet.getBoundingClientRect().top) / h;
       return { top: Math.max(0, top), bottom: Math.max(0, bottom) };

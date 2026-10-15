@@ -1,7 +1,7 @@
 // Shared look and DOM helpers of the milestone 4 meta screens (loadout, collection,
 // world map extras, home base sheet), on top of the toy-box sticker theme
 // (src/ui/theme.ts, docs/art-direction.md section 7). Everything is scoped under hr-.
-// Screens are phone portrait first: 100dvh, safe-area padding, every control >= 48 px,
+// Screens are phone portrait first: full height (--app-h, index.html), safe-area padding, every control >= 48 px,
 // native touch scrolling with overscroll contained, tap-to-inspect (no hover). Motion is
 // quick and small (<= 150 ms, overshoot <= 10%), scale or opacity only, and never moves
 // the screen; prefers-reduced-motion turns it off.
@@ -28,7 +28,7 @@ const CSS = `
 .hr-root .tb-btn[disabled]:active{transform:none}
 
 /* ----- Full-screen menu: header plank, scrolling body, optional footer plank ----- */
-.hr-screen{position:fixed;inset:0;height:100dvh;z-index:11;display:none;flex-direction:column;background:${FLOOR_BG};color:${UI.cream}}
+.hr-screen{position:fixed;inset:0;height:var(--app-h);z-index:11;display:none;flex-direction:column;background:${FLOOR_BG};color:${UI.cream}}
 .hr-screen.hr-on{display:flex}
 .hr-head{position:relative;z-index:3;flex:none;display:flex;align-items:center;gap:10px;background:${WOOD_BG};border-bottom:4px solid ${UI.ink};
   box-shadow:inset 0 -4px 0 rgba(0,0,0,.25),0 6px 10px rgba(20,10,2,.45);
@@ -94,7 +94,7 @@ const CSS = `
 @keyframes hr-burst{0%{transform:scale(.3);opacity:1}70%{opacity:1}100%{transform:scale(1.5);opacity:0}}
 
 /* ----- Toast (swap, locked) ----- */
-.hr-toast{position:fixed;left:50%;bottom:calc(max(16px,env(safe-area-inset-bottom)) + 110px);z-index:15;transform:translateX(-50%);
+.hr-toast{position:fixed;left:50%;bottom:calc(max(16px,env(safe-area-inset-bottom)) + 110px - var(--app-under));z-index:15;transform:translateX(-50%);
   max-width:calc(100% - 40px);box-sizing:border-box;padding:11px 18px;border-radius:16px;background:${WOOD_BG};border:3.5px solid ${UI.ink};
   box-shadow:0 4px 0 ${UI.ink},0 10px 14px rgba(20,10,2,.4);font-size:17px;font-weight:700;color:${UI.cream};text-shadow:${outlineShadow(1.6)};
   text-align:center;pointer-events:none;opacity:0;transition:opacity .15s}

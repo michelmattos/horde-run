@@ -14,7 +14,7 @@ export interface SaveSheet {
 }
 
 const CSS = `
-.hm-sheet-bg{position:fixed;inset:0;z-index:20;display:none;align-items:flex-end;justify-content:center;
+.hm-sheet-bg{position:fixed;inset:0;height:var(--app-h);z-index:20;display:none;align-items:flex-end;justify-content:center;
   font-family:var(--tb-font);color:${UI.ink};-webkit-user-select:none;user-select:none;touch-action:manipulation}
 .hm-sheet-bg.hm-on{display:flex}
 .hm-sheet{width:100%;max-width:480px;max-height:90dvh;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;
