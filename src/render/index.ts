@@ -14,7 +14,7 @@ import type { Engine } from '@babylonjs/core/Engines/engine';
 import { Scene } from '@babylonjs/core/scene';
 import type { BattleState, DefenderView, LevelDef, SimEvent, SimView } from '../contracts.ts';
 import { DEFENDER_DEFAULTS, LAYOUT } from '../contracts.ts';
-import { createLook, readSavedRender, writeSavedRender } from './look/index.ts';
+import { BlankWatch, createLook, isBlankSample, readSavedRender, writeSavedRender } from './look/index.ts';
 import type { Look } from './look/index.ts';
 import { LevelVisuals } from './level.ts';
 import { CrowdRenderer } from './crowd.ts';
@@ -145,6 +145,9 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
   engine.setHardwareScalingLevel(scaler.scalingLevel);
 
   let level: LevelVisuals | null = null;
+  // Watches for a canvas the pipeline never draws into (look/blankWatch.ts).
+  const blank = new BlankWatch();
+  const probe = new Uint8Array(12);
   const lastStats: RenderStats = {
     drawCalls: 0,
     activeMeshes: 0,
@@ -285,6 +288,7 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
       scaler.warmUp();
       look.warmUp();
       reframe();
+      blank.start();
     },
 
     frame(f: RenderFrame): void {
@@ -322,6 +326,11 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
       lastStats.totalVertices = scene.getTotalVertices();
       lastStats.quality = look.quality;
       lastStats.pixelRatio = scaler.ratio;
+      if (blank.tick(f.dt) && blank.report(canvasBlank(engine, probe)) && look.degradePost()) {
+        scaler.warmUp();
+        look.warmUp();
+        blank.start();
+      }
     },
 
     stats(): RenderStats {
@@ -347,6 +356,7 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
       look.contextRestored();
       scaler.warmUp();
       reframe();
+      blank.start();
     },
 
     dispose(): void {
@@ -368,6 +378,22 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
       scene.dispose();
     },
   };
+}
+
+// Reads three canvas pixels (centre, upper and lower third) right after the frame was
+// drawn, before the browser composites and clears it; blank when none has any alpha.
+function canvasBlank(engine: Engine, out: Uint8Array): boolean {
+  const gl = (engine as unknown as { _gl?: WebGLRenderingContext | null })._gl;
+  if (!gl || gl.isContextLost()) return false;
+  const w = gl.drawingBufferWidth;
+  const h = gl.drawingBufferHeight;
+  if (w <= 0 || h <= 0) return false;
+  engine.restoreDefaultFramebuffer();
+  const x = w >> 1;
+  const rows = [h >> 1, Math.floor(h / 3), Math.floor((2 * h) / 3)];
+  for (let i = 0; i < rows.length; i++)
+    gl.readPixels(x, rows[i], 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, out.subarray(i * 4, i * 4 + 4));
+  return isBlankSample(out);
 }
 
 function defenderWidth(level: LevelDef, id: string): number {

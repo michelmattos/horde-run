@@ -42,6 +42,50 @@
         outline: none;
       }
     </style>
+    <script>
+      // Boot guard: if the game fails to start (a script that won't load, an error before
+      // the first screen, no WebGL), say so on screen instead of leaving an empty page.
+      (function () {
+        var shown = false;
+        function show(msg, title) {
+          if (shown || (!title && window.__hordeBooted)) return;
+          shown = true;
+          var d = document.createElement('div');
+          d.id = 'boot-error';
+          d.setAttribute(
+            'style',
+            'position:fixed;left:16px;right:16px;top:30%;padding:16px;border-radius:12px;background:#fff8e7;' +
+              'color:#3b2a1a;font:15px/1.4 -apple-system,system-ui,sans-serif;z-index:99;white-space:pre-wrap',
+          );
+          d.textContent = (title || 'Horde Run could not start.') + '\n\n' + msg;
+          (document.body || document.documentElement).appendChild(d);
+        }
+        window.__hordeBootError = function (msg) {
+          show(msg);
+        };
+        // Also after boot (the graphics gave up for good).
+        window.__hordeFatal = function (msg) {
+          show(msg, 'The graphics stopped working.');
+        };
+        addEventListener(
+          'error',
+          function (e) {
+            var t = e.target;
+            // A missing image or font is not fatal; a script that will not load is.
+            if (t && t !== window && t.tagName && t.tagName !== 'SCRIPT') return;
+            show(e.message || 'Could not load ' + ((t && (t.src || t.href)) || 'a file') + '.');
+          },
+          true,
+        );
+        addEventListener('unhandledrejection', function (e) {
+          var r = e.reason;
+          show(String((r && r.message) || r));
+        });
+        setTimeout(function () {
+          show('Loading took too long. Check the connection and open the game again.');
+        }, 20000);
+      })();
+    </script>
   </head>
   <body>
     <div id="app"><canvas id="game"></canvas></div>

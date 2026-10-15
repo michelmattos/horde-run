@@ -34,7 +34,7 @@ import type { Sim } from './sim/index.ts';
 import { createBattle } from './game/battle.ts';
 import type { Battle, BattleCue } from './game/battle.ts';
 import { getLevel, getLevelById, getWorld } from './game/levels.ts';
-import { evaluateStars, goalStatus } from './game/stars.ts';
+import { evaluateStars } from './game/stars.ts';
 import { createRenderer } from './render/index.ts';
 import type { RenderStats } from './render/index.ts';
 import { parseCannon, parseChampion } from './render/crowdLogic.ts';
@@ -49,6 +49,9 @@ import { createHaptics } from './core/haptics.ts';
 import { registerServiceWorker } from './core/pwa.ts';
 import { loadGame, recordResult, writeGame } from './core/save.ts';
 import type { GameData } from './core/save.ts';
+import { planRecovery, readRecovery, takeRecoveryTarget, writeRecovery } from './core/recovery.ts';
+import type { RecoveryTarget } from './core/recovery.ts';
+import { writeSavedRender } from './render/look/quality.ts';
 import { createWorldMap } from './meta/worldMap.ts';
 import { createLoadoutScreen } from './meta/loadout.ts';
 import { createCollectionScreen } from './meta/collection.ts';
@@ -105,6 +108,9 @@ const RESULT_DELAY = 1.2;
 
 declare global {
   interface Window {
+    __hordeBooted?: boolean; // set once the first screen is up (index.html boot guard)
+    __hordeBootError?: (message: string) => void; // shows a start-up failure on screen (index.html)
+    __hordeFatal?: (message: string) => void; // shows a later, unrecoverable failure on screen (index.html)
     __horde?: {
       state(): BattleState;
       fps(): number; // frames actually drawn per second (capped at 60)
@@ -131,12 +137,56 @@ const app = document.getElementById('app') as HTMLElement;
 
 // MSAA is expensive at phone DPRs and barely visible there; keep it for low-DPR screens.
 const antialias = window.devicePixelRatio < 2;
-const engine = new Engine(
-  canvas,
-  antialias,
-  { stencil: false, preserveDrawingBuffer: false, powerPreference: 'high-performance', audioEngine: false },
-  false, // the renderer owns hardware scaling (automatic resolution scaling)
-);
+const engine = createEngine();
+// iOS can hand out a WebGL context that is already lost. Babylon then reads every GPU
+// limit as 0, and building the bloom blur on those limits throws (the "e.toFixed" start-up
+// error). Recover the same way as a context lost mid-game, before anything is built on it.
+if (!contextUsable(engine)) recoverDeadContextAtBoot();
+
+// True when the context is alive and reported real limits.
+function contextUsable(e: Engine): boolean {
+  const gl = (e as unknown as { _gl?: WebGLRenderingContext | null })._gl;
+  if (!gl || gl.isContextLost()) return false;
+  const caps = e.getCaps();
+  return caps.maxVaryingVectors > 0 && caps.maxTextureSize > 0;
+}
+
+function recoverDeadContextAtBoot(): never {
+  const prev = readRecovery();
+  const { plan, count } = planRecovery(prev, Date.now());
+  // Keep the place an earlier recovery asked to return to (this boot has not used it yet).
+  const target: RecoveryTarget = prev?.target ?? { kind: 'map' };
+  if (plan !== 'give-up' && writeRecovery({ at: Date.now(), count, target })) {
+    console.warn(`WebGL context lost at start-up: reloading (${plan})`);
+    if (plan === 'reload-low') writeSavedRender({ quality: 'low', post: 'off' });
+    window.__hordeBooted = true; // a reload is coming: the boot guard must not report this stop
+    reloadWhenVisible();
+  } else {
+    window.__hordeBootError?.(
+      'The phone did not give the game its graphics (the WebGL context was lost at start-up).\n\n' +
+        'Close the game and Safari completely, then open it again. If that does not help, restart the phone.',
+    );
+  }
+  throw new Error('WebGL context lost at start-up');
+}
+
+function createEngine(): Engine {
+  try {
+    return new Engine(
+      canvas,
+      antialias,
+      { stencil: false, preserveDrawingBuffer: false, powerPreference: 'high-performance', audioEngine: false },
+      false, // the renderer owns hardware scaling (automatic resolution scaling)
+    );
+  } catch (e) {
+    // No WebGL context (the browser refused one): the index.html boot guard shows why.
+    window.__hordeBootError?.(
+      `The graphics (WebGL) would not start: ${e instanceof Error ? e.message : String(e)}\n\n` +
+        'Close the game and Safari completely, then open it again. If that does not help, restart the phone.',
+    );
+    throw e;
+  }
+}
 
 const world: WorldDef = getWorld('w1') ?? {
   id: 'w1',
@@ -159,10 +209,10 @@ const hud = createHud(renderer.scene, input, { onPause: () => pause('user') });
 
 // ---------- Progress: stars + profile, saved together (save v2) ----------
 
-const boot = loadGame();
-let save: SaveData = boot.save;
-let profile: Profile = boot.profile;
-if (boot.migrated) writeGame(save, profile); // a v1 save gets its retroactive coins once
+const loaded = loadGame();
+let save: SaveData = loaded.save;
+let profile: Profile = loaded.profile;
+if (loaded.migrated) writeGame(save, profile); // a v1 save gets its retroactive coins once
 
 const facts = (): ProgressFacts => ({ levels: save.levels, profile });
 function commitProfile(p: Profile): void {
@@ -781,8 +831,6 @@ function renderFrame(): void {
   hud.update(battle.state, level.name, {
     bossName: level.boss?.name,
     bossPhases: level.boss?.phases.length,
-    // Stars are a campaign goal; an Expedition battle shows the run strip instead.
-    goals: mode === 'campaign' ? goalStatus(level, battle.state, battle.stats) : undefined,
     ultimate:
       battleLoadout && battle.hasUltimate
         ? {
@@ -812,15 +860,49 @@ document.addEventListener('visibilitychange', () => (document.hidden ? audio.sus
 engine.onResizeObservable.add(() => wake());
 
 // GPU context loss (iOS drops WebGL contexts under memory pressure or after a long time
-// in the background). Babylon keeps the data to rebuild buffers, raw/dynamic textures,
-// render targets and effects; the game pauses (the sim must not run blind), stops
-// drawing into a dead context, and once the context is back the renderer recompiles
-// and refits before the battlefield is drawn again under the pause card.
+// in the background). Babylon's in-place restore proved unreliable there (a blank or
+// half-rebuilt battlefield), so the page reloads back to where the player was as soon
+// as it is visible (core/recovery.ts). Only when losses repeat right after a recovery
+// does the game stay put: it pauses, stops drawing into the dead context, and if the
+// context comes back the renderer recompiles and refits under the pause card.
 engine.onContextLostObservable.add(() => {
   contextLost = true;
-  pause('hidden');
   stopLoop();
+  const { plan, count } = planRecovery(readRecovery(), Date.now());
+  const target: RecoveryTarget =
+    inBattle && !resultShown
+      ? mode === 'campaign'
+        ? { kind: 'level', id: level.id }
+        : { kind: 'expedition' }
+      : runMapShown || screens.visible
+        ? { kind: 'expedition' }
+        : { kind: 'map' };
+  if (plan !== 'give-up' && writeRecovery({ at: Date.now(), count, target })) {
+    console.warn(`WebGL context lost: reloading (${plan})`);
+    if (plan === 'reload-low') writeSavedRender({ quality: 'low', post: 'off' });
+    reloadWhenVisible();
+    return;
+  }
+  // Lost again right after two reloads: stop reloading and say so instead of a blank screen.
+  window.__hordeFatal?.(
+    "This phone keeps dropping the game's graphics (WebGL context lost). " +
+      'Close the game and Safari completely, then open it again. If that does not help, restart the phone.',
+  );
+  pause('hidden');
 });
+
+function reloadWhenVisible(): void {
+  if (document.visibilityState === 'visible') {
+    location.reload();
+    return;
+  }
+  const onVisible = (): void => {
+    if (document.visibilityState !== 'visible') return;
+    document.removeEventListener('visibilitychange', onVisible);
+    location.reload();
+  };
+  document.addEventListener('visibilitychange', onVisible);
+}
 engine.onContextRestoredObservable.add(() => {
   contextLost = false;
   renderer.contextRestored();
@@ -861,12 +943,22 @@ function refreshScreen(): void {
 }
 
 // Boot: ?level=<id> goes straight into that battle, ?expedition=<seed>|daily onto the
-// run, ?screen=loadout|collection|home onto that screen, otherwise the world map.
-const startId = params.get('level');
-const expParam = params.get('expedition');
-const screenParam = params.get('screen');
-if (startId && getLevelById(startId)) startLevel(startId);
-else if (!(expParam && bootExpedition(expParam)) && !(screenParam && openScreen(screenParam))) showMap();
+// run, ?screen=loadout|collection|home onto that screen; after a context-loss reload,
+// back to where the player was; otherwise the world map.
+function boot(): void {
+  const startId = params.get('level');
+  const expParam = params.get('expedition');
+  const screenParam = params.get('screen');
+  const recovered = takeRecoveryTarget();
+  if (startId && getLevelById(startId)) return startLevel(startId);
+  if (expParam && bootExpedition(expParam)) return;
+  if (screenParam && openScreen(screenParam)) return;
+  if (recovered?.kind === 'level' && getLevelById(recovered.id)) return startLevel(recovered.id);
+  if (recovered?.kind === 'expedition' && run) return showRunStep();
+  showMap();
+}
+boot();
+window.__hordeBooted = true; // the first screen is up: the index.html boot guard stands down
 
 window.__horde = {
   state: () => (battle ? battle.state : ({} as BattleState)),

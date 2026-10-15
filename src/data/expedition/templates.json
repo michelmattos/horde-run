@@ -431,7 +431,7 @@
   },
   "base": {
     "cannon": {
-      "fireRate": 6,
+      "fireRate": 5.6,
       "unitsPerShot": 3,
       "aimLimit": 4
     },

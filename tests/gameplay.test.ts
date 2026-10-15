@@ -49,7 +49,7 @@ test('a held stream through a x2 gate doubles exactly (each unit triggers it onc
   const gate = level.gates.find((g) => g.id === '1-1-x2');
   assert.ok(gate && gate.op === 'mul' && gate.value === 2 && !gate.move);
   const r = stream(level, gate.x, 10); // aim through the middle of the x2 gate
-  const fired = 10 * level.cannon.fireRate * level.cannon.unitsPerShot;
+  const fired = Math.ceil(10 * level.cannon.fireRate) * level.cannon.unitsPerShot; // the first shot leaves at t = 0
   assert.equal(r.left, 0);
   assert.deepEqual(r.added, { '1-1-x2': fired });
   assert.equal(r.baseDamage, 2 * fired);
@@ -61,7 +61,7 @@ test('chained gates multiply in order: x3 then x2 gives x6 for every mob', () =>
     { id: 'a', op: 'mul', value: 3, x: 0, z: 15, width: 4 },
     { id: 'b', op: 'mul', value: 2, x: 0, z: 30, width: 8 },
   ];
-  const fired = 2 * lv.cannon.fireRate * lv.cannon.unitsPerShot; // 2 s of fire
+  const fired = Math.ceil(2 * lv.cannon.fireRate) * lv.cannon.unitsPerShot; // 2 s of fire, first shot at t = 0
   const r = stream(lv, 0, 2);
   assert.deepEqual(r.added, { a: 2 * fired, b: 3 * fired });
   assert.equal(r.baseDamage, 6 * fired);

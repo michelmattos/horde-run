@@ -12,7 +12,7 @@ In their place go the things single-player games use to stay interesting: **a ha
 
 Unchanged from Mob Control, because it is the game:
 
-1. Drag a thumb left and right to aim a cannon at the bottom of a vertical lane; it fires mobs while your finger is down.
+1. Drag a thumb left and right to aim a cannon at the bottom of a vertical lane; it fires mobs on its own.
 2. Mobs pass through **gates** (x2, x3, +10, moving gates, negative gates) and the crowd snowballs.
 3. Enemy units and defenders come down the lane; units cancel on contact.
 4. A charge meter launches a **Champion** for a big push.
@@ -151,15 +151,15 @@ Levels are **data, not code**, so they can be edited quickly and later built wit
 
 Touch is the primary input. Mouse and keyboard are mapped onto the same actions afterwards, never the other way round.
 
-- **One-thumb play.** Everything in a battle is reachable with the thumb of the hand holding the phone. Hold anywhere in the lower part of the screen to fire; drag left and right to aim.
+- **One-thumb play.** Everything in a battle is reachable with the thumb of the hand holding the phone. The cannon fires on its own; drag left and right anywhere in the lower part of the screen to aim.
 - **Relative drag, not tap-to-aim.** The cannon follows the finger's horizontal movement from where it touched down, so the thumb never covers the cannon and you can aim from anywhere along the bottom. Sensitivity is a setting.
 - **Instant response.** Input is read every frame from raw pointer events, with at most a tiny smoothing on the cannon, so aiming feels glued to the finger.
-- **Champion and ultimate as big buttons** in the bottom corners (at least 56 px, clear of the screen edges and the home indicator), filling up as they charge. A second finger can tap them while the first keeps firing (multi-touch tracked by pointer id).
+- **Champion and ultimate as big buttons** in the bottom corners (at least 56 px, clear of the screen edges and the home indicator), filling up as they charge. A second finger can tap them while the first keeps aiming (multi-touch tracked by pointer id).
 - **No hover, no right-click, no tiny targets.** Every menu control is at least 48 px, and tooltips become tap-to-inspect.
 - **Browser gestures switched off on the game canvas**: `touch-action: none`, no text selection or long-press menu, no double-tap zoom, no pull-to-refresh or swipe-back during battle.
 - **Haptics** through the Vibration API where the phone supports it (a light tick on gate multiply, a bump on champion launch), with a toggle. iPhone browsers ignore it, and Michel plays on an iPhone, so feedback must land through visuals and sound instead.
 - **Pause on interruption**: the game pauses when the tab is hidden, a call comes in, or the phone leaves portrait.
-- **Mouse and keyboard** for desktop play map to the same actions: click-and-drag to fire and aim, Space for the champion, E for the ultimate.
+- **Mouse and keyboard** for desktop play map to the same actions: click-and-drag to aim, Space for the champion, E for the ultimate.
 
 ### Screen, layout and camera
 

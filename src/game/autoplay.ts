@@ -22,8 +22,7 @@
 // slower slew, aims at the middle of a moving gate's (or the
 // strafing boss's) sweep pulled only halfway toward where it will be, sees the far 40% of
 // the lane blurred (gates and defenders there are misplaced by up to ±1 and not led at
-// all), lifts its thumb now and then (short pauses in firing) and launches the
-// champion 1.5-2.5 s after the meter fills. `skill` is ignored by the human profile;
+// all) and launches the champion 1.5-2.5 s after the meter fills. `skill` is ignored by the human profile;
 // `attempt` still shifts its noise in time.
 //
 // Milestone 4: given a loadout (opts.loadout), it leads moving gates with the main mob's speed (firingOrder)
@@ -69,8 +68,6 @@ const HUMAN = {
   lead: 0.5, // share of a moving gate's (or the boss's) travel it leads
   viewFrac: 0.6, // near share of the lane (cannon to enemy base) seen well
   farError: 1, // position error of gates and defenders beyond that
-  liftPeriod: 4.7, // seconds between thumb lifts, roughly
-  liftShare: 0.09, // share of each period with the thumb up (~0.42 s)
   championDelayMin: 1.5, // seconds after the meter fills before it looks for a shot
   championDelayMax: 2.5,
   championPatience: 9,
@@ -316,7 +313,6 @@ export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autopla
     const threat = threatX(sim.view);
     let target = !Number.isNaN(threat) ? threat : !Number.isNaN(champTarget) ? champTarget : bestX(state, time);
     const nt = time + noiseShift;
-    let firing = true;
     if (human) {
       // Act on what was wanted `reaction` seconds ago.
       seenT.push(time);
@@ -334,8 +330,6 @@ export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autopla
         intent = seenX[0];
         target = intent + HUMAN.aimError * wobble(0.3 * nt + 1.1);
       } else target = aim;
-      const lift = nt / HUMAN.liftPeriod + 0.15 * Math.sin(0.29 * nt);
-      firing = lift - Math.floor(lift) >= HUMAN.liftShare;
     } else {
       // Slow periodic sweeps plus jitter, both shrinking as skill rises.
       target += sloppiness * (2.5 * Math.sin((2 * Math.PI * nt) / 7) + 1.5 * wobble(nt));
@@ -365,7 +359,7 @@ export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autopla
     }
 
     return useUltimate
-      ? { aimX: aim, firing, championPressed, ultimatePressed, paused: false }
-      : { aimX: aim, firing, championPressed, paused: false };
+      ? { aimX: aim, firing: true, championPressed, ultimatePressed, paused: false }
+      : { aimX: aim, firing: true, championPressed, paused: false };
   };
 }

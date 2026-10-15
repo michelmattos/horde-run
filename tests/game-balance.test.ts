@@ -55,7 +55,7 @@ test('balance: the human profile is deterministic and clearly weaker than the pr
   );
 });
 
-test('autoplay human profile: late reactions, thumb lifts and a late champion', () => {
+test('autoplay human profile: late reactions, auto-fire and a late champion', () => {
   const level = LEVELS.find((l) => l.id === '1-1')!; // one static x2 gate at x = 0
   const view: SimView = {
     count: 0,
@@ -91,8 +91,10 @@ test('autoplay human profile: late reactions, thumb lifts and a late champion', 
     human.slice(0, Math.round(0.35 * SIM_HZ)).every((i) => i.aimX === 0),
     'holds still before its first reaction',
   );
-  const lifted = human.filter((i) => !i.firing).length / human.length;
-  assert.ok(lifted > 0.04 && lifted < 0.15, `thumb up ${(lifted * 100).toFixed(1)}% of the time`);
+  assert.ok(
+    human.every((i) => i.firing),
+    'the cannon fires on its own, so the human bot never stops firing',
+  );
   const drift = Math.max(...human.map((i) => Math.abs(i.aimX)));
   assert.ok(drift > 0.3 && drift < 1, `aim drifts by up to ${drift.toFixed(2)} around the gate`);
   assert.ok(

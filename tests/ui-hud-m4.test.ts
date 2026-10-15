@@ -1,5 +1,5 @@
-// Milestone 4 HUD and overlay math: the bottom row (ultimate, army block, CHAMP) never
-// overlaps on phone widths, the ultimate tag fits its corner, sliders and the coin tally.
+// Milestone 4 HUD and overlay math: the ultimate and CHAMP corner buttons never meet
+// on phone widths, the ultimate tag fits its corner, sliders and the coin tally.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -8,49 +8,21 @@ import {
   ULT_TAG_MAX,
   coinTallyAt,
   formatCoinDelta,
-  hudBottomHeight,
-  hudBottomSpans,
-  hudReserveFor,
-  hudRowWidth,
   rangeValueAt,
-  tagWidthEstimate,
   ultimateTagText,
 } from '../src/ui/uiLogic.ts';
 
-test('bottom row: ultimate, army block and CHAMP never overlap from 360 to 430 px', () => {
+test('the ultimate mirrors CHAMP in the bottom-left corner without touching it', () => {
+  // Both corner buttons sit side by side in the thumb's lifted band: on the narrowest
+  // phone there is still a clear gap between them.
   for (let vw = 360; vw <= 430; vw++) {
-    // Phones in portrait have no side safe-area insets (the notch is at the top).
-    for (const ins of [0]) {
-      const w = hudRowWidth(vw, ins, ins);
-      for (const hasUlt of [true, false]) {
-        const { ult, army, champ } = hudBottomSpans(w, hasUlt);
-        assert.ok(champ.left >= 0 && champ.right <= w);
-        assert.ok(army.left >= 0);
-        assert.ok(army.right + M.cornerGap <= champ.left, `army hits CHAMP at ${vw}`);
-        assert.ok(army.right - army.left >= M.armyMin, `army too narrow at ${vw}`);
-        if (hasUlt) {
-          assert.ok(ult);
-          assert.ok(ult.left >= 0);
-          assert.ok(ult.right + M.cornerGap <= army.left, `ultimate hits army at ${vw}`);
-          // Its hanging tag stays out of the army block too.
-          const tagHalf = tagWidthEstimate('PARAS'.padEnd(ULT_TAG_MAX, 'W')) / 2;
-          assert.ok(M.ultRing / 2 + tagHalf <= army.left, `tag hits army at ${vw}`);
-        } else {
-          assert.equal(ult, null);
-          assert.equal(army.left, 0);
-        }
-      }
-    }
+    const ultRight = M.edge + (M.champRing + M.ultRing) / 2;
+    const champLeft = vw - M.edge - M.champRing;
+    assert.ok(ultRight + 48 <= champLeft, `corner buttons too close at ${vw}`);
   }
-});
-
-test('corner buttons are big enough and the reserve covers the tallest one', () => {
   assert.ok(M.ultFace >= 56);
   assert.ok(M.champFace >= 56);
   assert.ok(M.ultRing <= M.champRing);
-  assert.ok(hudBottomHeight() >= M.ultRing + M.champTagOver);
-  const r = hudReserveFor({ top: 47, bottom: 34 });
-  assert.ok(r.bottom >= 34 + M.bottomPad + M.ultRing + M.champTagOver);
 });
 
 test('ultimate tag: short labels as given, long ones shortened per ultimate', () => {
@@ -62,7 +34,6 @@ test('ultimate tag: short labels as given, long ones shortened per ultimate', ()
     for (const label of ['', 'X', 'A very long ultimate name']) {
       const t = ultimateTagText(id, label);
       assert.ok(t.length > 0 && t.length <= ULT_TAG_MAX, `${id} ${label}`);
-      assert.ok(tagWidthEstimate(t) <= M.ultRing + M.cornerGap);
     }
   }
 });

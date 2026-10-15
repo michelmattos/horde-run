@@ -17,7 +17,8 @@
 // page error fails the run. Low fps is reported, never failed (software rendering);
 // fps above the 60 cap fails. The battle screenshots (play, crowd, boss) must show the 3D
 // scene: their pixels are decoded and a flat, featureless frame (a grey void with only the
-// HUD) fails the run, as do too few draw calls and any shader compile error.
+// HUD) fails the run, as do too few draw calls, any shader compile error and the
+// blank-canvas fallback tripping.
 // The preview server takes PORT from the environment, else a free port, so parallel runs
 // never collide.
 import { spawn } from 'node:child_process';
@@ -174,6 +175,8 @@ try {
   const page = await context.newPage();
   page.on('console', (m) => {
     if (m.type() === 'error') errors.push(`console: ${m.text()}`);
+    // The blank-canvas fallback must never trip on a GPU that draws (render/look/blankWatch.ts).
+    else if (m.text().includes('canvas stayed blank')) errors.push(`console: ${m.text()}`);
   });
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
 
