@@ -36,6 +36,7 @@ import {
   nextPostFallback,
   parseQuality,
   readSavedRender,
+  withDeviceLimits,
   withPostFallback,
   writeSavedRender,
 } from './quality.ts';
@@ -119,6 +120,14 @@ function filterQuality(f: QualitySettings['shadowFilter']): number {
   return f === 'medium' ? ShadowGenerator.QUALITY_MEDIUM : ShadowGenerator.QUALITY_LOW;
 }
 
+function isPhone(): boolean {
+  try {
+    return matchMedia('(pointer: coarse)').matches;
+  } catch {
+    return false;
+  }
+}
+
 function urlQuality(): QualityLevel | null {
   try {
     return parseQuality(new URLSearchParams(location.search).get('quality'));
@@ -147,6 +156,7 @@ class LookImpl implements Look {
   private readonly auto: boolean;
   private readonly remember: boolean;
   private readonly saveFallback: boolean;
+  private readonly phone = isPhone();
   postFallback: PostFallback | null;
   private readonly cacheStatic: StaticShadowCache;
   // What the shader-affecting parts are currently built for (they lag the tier mid-battle).
@@ -211,7 +221,12 @@ class LookImpl implements Look {
   }
 
   get settings(): QualitySettings {
-    return withPostFallback(QUALITY_SETTINGS[this.governor.level], this.postFallback);
+    return withPostFallback(this.tierSettings, this.postFallback);
+  }
+
+  // The tier's settings within this device's limits, before any post fallback.
+  private get tierSettings(): QualitySettings {
+    return withDeviceLimits(QUALITY_SETTINGS[this.governor.level], this.phone);
   }
 
   get locked(): boolean {
@@ -375,7 +390,7 @@ class LookImpl implements Look {
   }
 
   degradePost(): boolean {
-    const next = nextPostFallback(QUALITY_SETTINGS[this.governor.level], this.postFallback);
+    const next = nextPostFallback(this.tierSettings, this.postFallback);
     if (!next) return false;
     console.warn(`look: canvas stayed blank with the post pipeline, falling back to '${next}'`);
     this.postFallback = next;
