@@ -288,12 +288,13 @@ test('battles are independent (no module-level state)', () => {
 
 const W1_IDS = ['1-1', '1-2', '1-3', '1-4', '1-5', '1-6', '1-7', '1-8', '1-9', '1-10'];
 const W2_IDS = W1_IDS.map((id) => id.replace('1-', '2-'));
+const W3_IDS = W1_IDS.map((id) => id.replace('1-', '3-'));
 
-test('all shipped levels validate and form Worlds 1 and 2', () => {
-  assert.equal(levelCount(), 20);
+test('all shipped levels validate and form Worlds 1, 2 and 3', () => {
+  assert.equal(levelCount(), 30);
   assert.deepEqual(
     LEVELS.map((l) => l.id),
-    [...W1_IDS, ...W2_IDS],
+    [...W1_IDS, ...W2_IDS, ...W3_IDS],
   );
   assert.equal(LEVELS[0].name, 'First Charge');
   for (const l of LEVELS) {
@@ -311,8 +312,12 @@ test('all shipped levels validate and form Worlds 1 and 2', () => {
   assert.ok(gates.some((g) => g.uses));
   for (const g of gates) assert.ok(g.width >= 2.4 && g.width <= 4, `${g.id} width`);
   assert.ok(
-    LEVELS.slice(10).every((l) => l.theme === 'freezer'),
+    LEVELS.slice(10, 20).every((l) => l.theme === 'freezer'),
     'World 2 is the Freezer',
+  );
+  assert.ok(
+    LEVELS.slice(20).every((l) => l.theme === 'workshop'),
+    'World 3 is the Workshop',
   );
   const defenders = LEVELS.flatMap((l) => l.defenders ?? []);
   assert.ok(defenders.some((d) => d.kind === 'tower') && defenders.some((d) => d.kind === 'wall'));
@@ -322,12 +327,12 @@ test('all shipped levels validate and form Worlds 1 and 2', () => {
   assert.ok(giant && giant.name === 'Snow Globe Giant' && giant.phases.length === 3);
   assert.deepEqual(
     LEVELS.filter((l) => l.boss).map((l) => l.id),
-    ['1-10', '2-10'],
+    ['1-10', '2-10', '3-10'],
   );
 });
 
 test('the World 1 file lists every level in order and validates', () => {
-  assert.equal(WORLDS.length, 2);
+  assert.equal(WORLDS.length, 3);
   const w = getWorld('w1');
   assert.ok(w);
   assert.deepEqual(
@@ -336,6 +341,7 @@ test('the World 1 file lists every level in order and validates', () => {
   );
   assert.deepEqual(w.levels, W1_IDS);
   assert.deepEqual(getWorld('w2')?.levels, W2_IDS);
+  assert.deepEqual(getWorld('w3')?.levels, W3_IDS);
   assert.equal(getWorld('w9'), undefined);
   const bad = (mutate: (o: any) => void, pattern: RegExp) => {
     const o = JSON.parse(JSON.stringify(w));
@@ -362,8 +368,9 @@ test('levels by id', () => {
 test('getLevel wraps safely', () => {
   assert.equal(getLevel(0), LEVELS[0]);
   assert.equal(getLevel(10), LEVELS[10]);
-  assert.equal(getLevel(20), LEVELS[0]);
-  assert.equal(getLevel(-1), LEVELS[19]);
+  assert.equal(getLevel(20), LEVELS[20]);
+  assert.equal(getLevel(30), LEVELS[0]);
+  assert.equal(getLevel(-1), LEVELS[29]);
   assert.equal(getLevel(1.7), LEVELS[1]);
   assert.equal(getLevel(Number.NaN), LEVELS[0]);
 });

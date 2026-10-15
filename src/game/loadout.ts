@@ -5,11 +5,18 @@
 // LevelDef (fire rate, units per shot, spread) before the battle is created.
 //
 // Unit variant bytes (render): UNIT_VARIANT in contracts.ts (0 rifleman / enemy mob,
-// 1 knight, 2 sprinter, 3 bomber, 4 giant, 5 snowball, 8 sarge, 9 tank, 10 drummer).
+// 1 knight, 2 sprinter, 3 bomber, 4 giant, 5 snowball, 6 archer, 8 sarge, 9 tank, 10 drummer,
+// 11 Wind-up Robot).
 //
 // Milestone 5 gear: a mob may carry riders (the Giant drops them when it falls), the
 // Blizzard ultimate freezes the enemy crowd for `power` seconds, and a cannon may fire
 // rolling snowballs (BattleLoadout.shot) instead of loose mobs.
+//
+// Milestone 6 gear (World 3): an archer-like mob carries `ranged` (it shoots the nearest
+// enemy ahead of it, sim SpawnOpts.ranged), the Wind-up Robot champion carries `gateWalk`
+// (it walks the line of the first gate it reaches and re-triggers it), and the Gear Gun
+// fires ricochet shots: each shot of the crowd mob gets a sideways speed of `angle` times
+// its forward speed, alternating sides, and bounces off the lane walls `bounces` times.
 
 export interface MobSpec {
   id: string;
@@ -22,6 +29,7 @@ export interface MobSpec {
   speed: number;
   deathBlast?: { radius: number; damage: number };
   riders?: number; // single mobs released when the unit dies (heavy slots: the Giant)
+  ranged?: { range: number; every: number; damage: number }; // shoots an enemy within range every `every` s
 }
 export interface ChampionSpec {
   id: string;
@@ -32,6 +40,7 @@ export interface ChampionSpec {
   speed: number;
   chargeMul: number;
   echo: number;
+  gateWalk?: { seconds: number; radius: number }; // walks a gate's line for `seconds`, re-triggering it
 }
 export interface UltimateSpec {
   id: 'barrage' | 'paratroopers' | 'marble' | 'blizzard';
@@ -40,11 +49,11 @@ export interface UltimateSpec {
 }
 // Snowball Launcher: each shot of the crowd mob is one rolling ball of the shot's weight
 // that grows through gates and over lone mobs and bursts at burstWeight or on contact.
-export interface ShotSpec {
-  kind: 'snowball';
-  burstWeight: number;
-  maxRadius: number;
-}
+// Gear Gun: each shot of the crowd mob flies off at a slant (sideways speed = angle x its
+// forward speed) and ricochets off the lane walls `bounces` times.
+export type ShotSpec =
+  | { kind: 'snowball'; burstWeight: number; maxRadius: number }
+  | { kind: 'ricochet'; angle: number; bounces: number };
 export interface BattleLoadout {
   mobs: [MobSpec, MobSpec];
   mixEvery: number;

@@ -8,10 +8,13 @@
 // World 2 igloos (kind 'igloo', models/igloo.ts) come from a kit built only for levels
 // that have them (and dropped on the next load without any): they show damage stages,
 // pop when they release units (iglooRelease) and sink into the snow when destroyed.
+// World 3 shield walls (kind 'shield', models/shieldWall.ts) work the same way: a kit
+// only while a level has them, dents by damage stage, a hit flash, a clang when a mob is
+// turned back (clang) and gone at once when destroyed (Effects throws the tin shards).
 import type { Scene } from '@babylonjs/core/scene';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import type { DefenderDef, DefenderKind, DefenderView } from '../contracts.ts';
-import { DEFENDER_DEFAULTS } from '../contracts.ts';
+import { DEFENDER_DEFAULTS, SHIELD_DEFAULTS } from '../contracts.ts';
 import type { Look } from './look/index.ts';
 import { createTowerKit } from './models/tower.ts';
 import type { TowerKit, TowerModel } from './models/tower.ts';
@@ -19,6 +22,8 @@ import { createWallKit } from './models/wall.ts';
 import type { WallKit, WallModel } from './models/wall.ts';
 import { createIglooKit } from './models/igloo.ts';
 import type { IglooKit, IglooModel } from './models/igloo.ts';
+import { createShieldWallKit } from './models/shieldWall.ts';
+import type { ShieldWallKit, ShieldWallModel } from './models/shieldWall.ts';
 import type { HpBars } from './hpBars.ts';
 import { popScale, showHpBar } from './fxLogic.ts';
 
@@ -29,6 +34,8 @@ const ENEMY_YAW = Math.PI; // side 'enemy': the lettered fronts face the camera
 const BAR_GAP_TOWER = 1.0; // clears the shooter's helmet
 const BAR_GAP_WALL = 0.4;
 const BAR_GAP_IGLOO = 0.35;
+const BAR_GAP_SHIELD = 0.3;
+const CLANG_TIME = 0.22;
 const IGLOO_WIDTH = DEFENDER_DEFAULTS.wallWidth * 0.75; // the sim's default footprint
 const IGLOO_DEPTH = 1.6;
 const POP_TIME = 0.35; // igloo release pop
@@ -48,6 +55,9 @@ interface Slot {
   tower: TowerModel | null;
   wall: WallModel | null;
   igloo: IglooModel | null;
+  shield: ShieldWallModel | null;
+  clang: number; // seconds left of a shield wall's clang
+  lastClang: number;
   pop: number; // seconds left of the release pop
   collapse: number; // seconds into the collapse; -1 = standing
   lastHit: number;
@@ -66,6 +76,7 @@ export class DefenderVisuals {
   private readonly scene: Scene;
   private readonly look: Look;
   private igloos: IglooKit | null = null;
+  private shields: ShieldWallKit | null = null;
   private readonly door: DartLaunch = { x: 0, y: 0, z: 0 };
   private slots: Slot[] = [];
   private readonly byId = new Map<string, Slot>();
@@ -90,12 +101,26 @@ export class DefenderVisuals {
       this.igloos.dispose();
       this.igloos = null;
     }
+    // Likewise the shield-wall kit (World 3).
+    if (list.some((d) => d.kind === 'shield')) this.shields ??= createShieldWallKit(this.scene, this.look);
+    else if (this.shields) {
+      this.shields.dispose();
+      this.shields = null;
+    }
     for (const d of list) {
       const tower = d.kind === 'tower';
       const igloo = d.kind === 'igloo';
+      const shield = d.kind === 'shield';
       const width =
-        d.width ?? (tower ? DEFENDER_DEFAULTS.towerWidth : igloo ? IGLOO_WIDTH : DEFENDER_DEFAULTS.wallWidth);
-      const depth = tower ? width : igloo ? IGLOO_DEPTH : DEFENDER_DEFAULTS.wallDepth;
+        d.width ??
+        (tower
+          ? DEFENDER_DEFAULTS.towerWidth
+          : igloo
+            ? IGLOO_WIDTH
+            : shield
+              ? SHIELD_DEFAULTS.width
+              : DEFENDER_DEFAULTS.wallWidth);
+      const depth = tower ? width : igloo ? IGLOO_DEPTH : shield ? SHIELD_DEFAULTS.depth : DEFENDER_DEFAULTS.wallDepth;
       const slot: Slot = {
         id: d.id,
         kind: d.kind,
@@ -110,6 +135,9 @@ export class DefenderVisuals {
         tower: null,
         wall: null,
         igloo: null,
+        shield: null,
+        clang: 0,
+        lastClang: -1,
         pop: 0,
         collapse: -1,
         lastHit: -1,
@@ -127,6 +155,12 @@ export class DefenderVisuals {
         m.root.rotation.y = ENEMY_YAW; // door towards the player
         m.setDamage(0);
         slot.igloo = m;
+      } else if (shield && this.shields) {
+        const m = this.shields.create(width);
+        m.root.position.set(d.x, 0, d.z);
+        m.root.rotation.y = ENEMY_YAW; // crest towards the player
+        m.setDamage(0);
+        slot.shield = m;
       } else {
         const w = this.walls.create(width, depth);
         w.root.position.set(d.x, 0, d.z);
@@ -144,6 +178,7 @@ export class DefenderVisuals {
       s.tower?.dispose();
       s.wall?.dispose();
       s.igloo?.dispose();
+      s.shield?.dispose();
     }
     this.slots = [];
     this.byId.clear();
@@ -166,6 +201,15 @@ export class DefenderVisuals {
       return;
     }
     this.hide(s);
+  }
+
+  // A mob was turned back by a shield wall (shieldBlock): it clangs. False when the id is
+  // not a standing shield wall.
+  clang(id: string): boolean {
+    const s = this.byId.get(id);
+    if (!s || !s.shield || s.hp <= 0) return false;
+    s.clang = CLANG_TIME;
+    return true;
   }
 
   // Defender kind by id (undefined when unknown).
@@ -211,6 +255,7 @@ export class DefenderVisuals {
       s.wall.root.setEnabled(false);
     }
     if (s.igloo) s.igloo.root.setEnabled(false);
+    if (s.shield) s.shield.root.setEnabled(false);
   }
 
   // `views` is the sim's live list (read this frame only); without it the defs stand at full HP.
@@ -240,7 +285,12 @@ export class DefenderVisuals {
           if (c >= 1) this.hide(s);
           continue;
         }
-        if ((s.tower && s.tower.root.isEnabled()) || (s.wall && s.wall.root.isEnabled())) this.hide(s);
+        if (
+          (s.tower && s.tower.root.isEnabled()) ||
+          (s.wall && s.wall.root.isEnabled()) ||
+          (s.shield && s.shield.root.isEnabled())
+        )
+          this.hide(s);
         continue;
       }
       if (s.flash > 0) s.flash = Math.max(0, s.flash - dt);
@@ -272,6 +322,20 @@ export class DefenderVisuals {
           m.setPop(popScale(s.pop / POP_TIME, 1) - 1); // jumps out, eases back
         } else m.setPop(0);
         m.setDamage(s.maxHp > 0 ? 1 - s.hp / s.maxHp : 0);
+      } else if (s.shield) {
+        const m = s.shield;
+        m.root.position.set(s.x, 0, s.z);
+        if (k !== s.lastHit) {
+          m.setHit(k);
+          s.lastHit = k;
+        }
+        if (s.clang > 0) s.clang = Math.max(0, s.clang - dt);
+        const c = s.clang / CLANG_TIME;
+        if (c !== s.lastClang) {
+          m.setClang(c);
+          s.lastClang = c;
+        }
+        m.setDamage(s.maxHp > 0 ? 1 - s.hp / s.maxHp : 0);
       } else if (s.wall) {
         const w = s.wall;
         if (w.root.position.x !== s.x || w.root.position.z !== s.z) {
@@ -296,7 +360,9 @@ export class DefenderVisuals {
         ? s.tower.muzzleHeight + BAR_GAP_TOWER
         : s.igloo
           ? s.igloo.topY() + BAR_GAP_IGLOO
-          : (s.wall?.topY() ?? 1.3) + BAR_GAP_WALL;
+          : s.shield
+            ? s.shield.topY() + BAR_GAP_SHIELD
+            : (s.wall?.topY() ?? 1.3) + BAR_GAP_WALL;
       const bw = Math.max(1.4, Math.min(s.width, 2.8));
       bars.bar(s.x, y, s.z - s.depth / 2 - 0.15, bw, s.hp / s.maxHp, 'enemy');
     }
@@ -308,5 +374,7 @@ export class DefenderVisuals {
     this.walls.dispose();
     this.igloos?.dispose();
     this.igloos = null;
+    this.shields?.dispose();
+    this.shields = null;
   }
 }

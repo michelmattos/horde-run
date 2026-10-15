@@ -74,12 +74,19 @@ function parseItem(v: unknown, i: number): ItemDef {
           };
           if (t.shotSpread !== undefined) s.shotSpread = num(t, 'shotSpread', w);
           if (t.shot !== undefined) {
-            if (!isRecord(t.shot) || t.shot.kind !== 'snowball') fail(w, 'shot must be { "kind": "snowball", ... }');
-            s.shot = {
-              kind: 'snowball',
-              burstWeight: num(t.shot, 'burstWeight', w, 2),
-              maxRadius: num(t.shot, 'maxRadius', w, 0.1),
-            };
+            const shot = t.shot;
+            if (!isRecord(shot) || (shot.kind !== 'snowball' && shot.kind !== 'ricochet'))
+              fail(w, 'shot must be { "kind": "snowball" | "ricochet", ... }');
+            s.shot =
+              shot.kind === 'snowball'
+                ? {
+                    kind: 'snowball',
+                    burstWeight: num(shot, 'burstWeight', w, 2),
+                    maxRadius: num(shot, 'maxRadius', w, 0.1),
+                  }
+                : { kind: 'ricochet', angle: num(shot, 'angle', w, 0.05), bounces: num(shot, 'bounces', w, 1) };
+            if (s.shot.kind === 'ricochet' && !Number.isInteger(s.shot.bounces))
+              fail(w, '"bounces" must be a whole number');
           }
           return s;
         }),
@@ -102,6 +109,19 @@ function parseItem(v: unknown, i: number): ItemDef {
           };
           const riders = t.riders === undefined ? {} : { riders: num(t, 'riders', w, 1) };
           if (t.riders !== undefined && !Number.isInteger(riders.riders)) fail(w, '"riders" must be a whole number');
+          if (t.ranged !== undefined) {
+            if (!isRecord(t.ranged)) fail(w, 'ranged must be an object');
+            const r = t.ranged;
+            const ranged = {
+              ranged: {
+                range: num(r, 'range', w, 0.5),
+                every: num(r, 'every', w, 0.05),
+                damage: num(r, 'damage', w, 0.01),
+              },
+            };
+            if (t.deathBlast !== undefined) fail(w, 'a ranged mob cannot also carry a deathBlast');
+            return { ...s, ...riders, ...ranged };
+          }
           if (t.deathBlast === undefined) return { ...s, ...riders };
           if (!isRecord(t.deathBlast)) fail(w, 'deathBlast must be an object');
           const b = t.deathBlast;
@@ -118,14 +138,22 @@ function parseItem(v: unknown, i: number): ItemDef {
         ...base,
         slot: 'champion',
         variant: num(v, 'variant', id),
-        tiers: parseTiers(v.tiers, id, (t, w) => ({
-          hpMul: num(t, 'hpMul', w, 0.01),
-          damageMul: num(t, 'damageMul', w, 0.01),
-          radius: num(t, 'radius', w, 0.05),
-          speed: num(t, 'speed', w, 0.1),
-          chargeMul: num(t, 'chargeMul', w, 0.01),
-          echo: num(t, 'echo', w),
-        })),
+        tiers: parseTiers(v.tiers, id, (t, w) => {
+          const s = {
+            hpMul: num(t, 'hpMul', w, 0.01),
+            damageMul: num(t, 'damageMul', w, 0.01),
+            radius: num(t, 'radius', w, 0.05),
+            speed: num(t, 'speed', w, 0.1),
+            chargeMul: num(t, 'chargeMul', w, 0.01),
+            echo: num(t, 'echo', w),
+          };
+          if (t.gateWalk === undefined) return s;
+          if (!isRecord(t.gateWalk)) fail(w, 'gateWalk must be an object');
+          return {
+            ...s,
+            gateWalk: { seconds: num(t.gateWalk, 'seconds', w, 0.1), radius: num(t.gateWalk, 'radius', w, 0.1) },
+          };
+        }),
       };
     case 'ultimate': {
       const uid = ULTIMATE_IDS.find((u) => u === id);

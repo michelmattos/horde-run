@@ -1,5 +1,5 @@
 // Expedition battle generator (concept §4.2): turns a RunBattleSpec into a LevelDef
-// built from World 1 and World 2 pieces in src/data/expedition/templates.json. The spec's seed
+// built from World 1, 2 and 3 pieces in src/data/expedition/templates.json. The spec's seed
 // picks a lane length, a gate layout, a defender set, a wave pattern and a name, and
 // may mirror the lane in x; the battle index (0..3) scales the enemy base, the waves,
 // the trickle and the defenders. Each gate layout carries its own enemy-base and wave
@@ -14,6 +14,13 @@
 // Giant, a full boss of its own in templates.json (lobbed snowballs, then frozen gates,
 // then gusts; boss.model 'snowGlobeGiant'), never derived from the campaign's 2-10.
 //
+// World 3 pieces: three workshop layouts (theme 'workshop') with timed gates (one turning
+// into a ÷2 when its clock runs out), a conveyor belt, saws and wind-up robots in the
+// trickle. A quarter of battles play one of them, picked by a hash of the seed of their
+// own, so every other battle draws from the seed exactly as before. The third run boss is
+// the Jack-in-the-Box (its own template, like the Snow Globe Giant): it shuffles the gates
+// every few seconds, faster as it cracks, and its phase summons are wind-up robots.
+//
 // Every template keeps two z-bands of the player's half free of gates and defenders
 // (RUN_FREE_BANDS) so the gates that run upgrades add always have room.
 //
@@ -21,6 +28,7 @@
 
 import type {
   BossPhaseDef,
+  ConveyorDef,
   DefenderDef,
   DefenderKind,
   EnemyUnit,
@@ -28,10 +36,13 @@ import type {
   GateDef,
   GateFreezeDef,
   GateOp,
+  GateToggleDef,
   IcePatchDef,
   IceWallDef,
   LevelDef,
   RunBattleSpec,
+  SawDef,
+  TurntableDef,
   WorldTheme,
 } from '../contracts.ts';
 import { createRng } from '../core/rng.ts';
@@ -49,16 +60,20 @@ interface GateTemplate {
   uses?: number;
   freeze?: GateFreezeDef;
   fork?: string; // gates sharing a fork id stand on one z line, side by side
+  toggle?: GateToggleDef;
 }
 
 type IceWallTemplate = Omit<IceWallDef, 'id'>;
 
-// World 2 hazards a gate layout (or the Snow Globe Giant) brings along.
+// World 2 and 3 hazards a gate layout (or a run boss) brings along.
 interface HazardTemplate {
   theme?: WorldTheme;
   ice?: IcePatchDef[];
   iceWalls?: IceWallTemplate[];
   trickleMix?: { unit: EnemyUnit; every: number };
+  conveyors?: Omit<ConveyorDef, 'id'>[];
+  turntables?: Omit<TurntableDef, 'id'>[];
+  saws?: Omit<SawDef, 'id'>[];
 }
 
 interface DefenderTemplate {
@@ -127,6 +142,19 @@ interface Templates {
     targetTime: number;
     intro: string;
   } & HazardTemplate;
+  jackBoss: {
+    name: string;
+    lane: LevelDef['lane'];
+    enemyBase: { hp: number; width: number };
+    playerBaseHp: number;
+    gates: GateTemplate[];
+    waves: WavePattern;
+    robotEvery: number; // every Nth wave is wind-up robots,
+    robotShare: number; // that many of them (robots are tough)
+    phases: BossPhaseDef[];
+    targetTime: number;
+    intro: string;
+  } & HazardTemplate;
   names: string[];
   eliteNames: string[];
   eliteIntros: string[];
@@ -167,6 +195,11 @@ export const RUN_FREE_BANDS: readonly (readonly [number, number])[] = [
 // With the ice skid (soldiers stepping onto ice slide sideways) and the Snow Globe Giant's
 // phase-2 gate ice at hp 60 (was 30, chipped open almost at once), re-measured: battle 3
 // 16/20, elite 1 9/20, Snow Globe Giant with rapid x2 + sharp + pep 5/12.
+// World 3: a quarter of battle seeds play a workshop layout (workshopLayout), measured on
+// their own over 8 seeds (battle 0 / battle 3 / elite 1, wins and median win time):
+// clockwork doubles 8/8 57 s, 5/8 106 s, 2/8 60 s; conveyor run 8/8 ~42 s, 2-5/8 ~65 s,
+// 3-4/8 ~55 s; saw alley 8/8 49 s, 6/8 159 s, 2/8 113 s (saws thin the crowd, so its wins
+// run long). Jack-in-the-Box with rapid x2 + sharp + pep: 8/12 (79 s).
 export const RUN_BATTLE_TARGETS = {
   seeds: 6,
   battle: [
@@ -184,8 +217,18 @@ const WAVE_XS = [0, -1.5, 1.5];
 const WAVE_SPREAD = 3.5;
 const BOSS_ID = '1-10';
 
-// The two run bosses; the battle seed picks one (runBossModel).
-export type RunBossModel = 'tinGeneral' | 'snowGlobeGiant';
+// The three run bosses; the battle seed picks one (runBossModel).
+export type RunBossModel = 'tinGeneral' | 'snowGlobeGiant' | 'jackInTheBox';
+
+// Gate layouts before the first workshop one are drawn from the seed's rng as before;
+// the workshop ones (the rest of the list) by workshopLayout.
+const CLASSIC_LAYOUTS = ((): number => {
+  const i = T.gateLayouts.findIndex((l) => l.theme === 'workshop');
+  if (i >= 0 && T.gateLayouts.slice(i).some((l) => l.theme !== 'workshop'))
+    throw new Error('templates.json: the workshop gate layouts must come last');
+  return i < 0 ? T.gateLayouts.length : i;
+})();
+const WORKSHOP_LAYOUTS = T.gateLayouts.length - CLASSIC_LAYOUTS;
 
 const round1 = (v: number): number => Math.round(v * 10) / 10;
 // x mirrored when flip is -1; `+ 0` keeps a centred x at 0 rather than -0.
@@ -198,17 +241,39 @@ function gates(list: readonly GateTemplate[], id: string, flip: number): GateDef
     if (g.uses !== undefined) gate.uses = g.uses;
     if (g.freeze) gate.freeze = { ...g.freeze };
     if (g.fork !== undefined) gate.fork = `${id}-${g.fork}`;
+    if (g.toggle) gate.toggle = structuredClone(g.toggle);
     return gate;
   });
 }
 
-// Copies a template's World 2 hazards onto the level, mirrored with the gates.
+// Copies a template's World 2 and 3 hazards onto the level, mirrored with the gates (a
+// mirrored belt runs the other way, a mirrored turntable spins the other way).
 function addHazards(level: LevelDef, h: HazardTemplate, id: string, flip: number): void {
   if (h.theme) level.theme = h.theme;
   if (h.ice?.length) level.ice = h.ice.map((p) => ({ ...p, x: mirror(p.x, flip) }));
   if (h.iceWalls?.length)
     level.iceWalls = h.iceWalls.map((w, i) => ({ id: `${id}-iw${i}`, ...w, x: mirror(w.x, flip) }));
   if (h.trickleMix) level.trickleMix = { ...h.trickleMix };
+  if (h.conveyors?.length)
+    level.conveyors = h.conveyors.map((c, i) => ({
+      id: `${id}-cv${i}`,
+      ...c,
+      x: mirror(c.x, flip),
+      vx: mirror(c.vx, flip),
+    }));
+  if (h.turntables?.length)
+    level.turntables = h.turntables.map((t, i) => ({
+      id: `${id}-tt${i}`,
+      ...t,
+      x: mirror(t.x, flip),
+      spin: mirror(t.spin, flip),
+    }));
+  if (h.saws?.length)
+    level.saws = h.saws.map((sw, i) => {
+      const saw: SawDef = { id: `${id}-saw${i}`, ...structuredClone(sw), x: mirror(sw.x, flip) };
+      if (saw.path) saw.path.dx = mirror(saw.path.dx, flip);
+      return saw;
+    });
 }
 
 function waves(p: WavePattern, mul: number, flip: number): EnemyWaveDef[] {
@@ -235,15 +300,25 @@ export interface RunBattlePicks {
   name: number;
 }
 
-function drawPicks(rng: Rng, elite: boolean): RunBattlePicks {
-  return {
+function drawPicks(rng: Rng, elite: boolean, seed: number): RunBattlePicks {
+  const picks = {
     lane: rng.int(T.lanes.length),
-    gates: rng.int(T.gateLayouts.length),
+    gates: rng.int(CLASSIC_LAYOUTS),
     defenders: rng.int(T.defenderSets.length),
     waves: rng.int(T.wavePatterns.length),
     mirror: rng.next() < 0.5,
     name: rng.int(elite ? T.eliteNames.length : T.names.length),
   };
+  const w = workshopLayout(seed);
+  if (w >= 0) picks.gates = CLASSIC_LAYOUTS + w;
+  return picks;
+}
+
+// Index of the workshop layout a battle seed plays (a quarter of seeds), or -1.
+export function workshopLayout(seed: number): number {
+  if (WORKSHOP_LAYOUTS === 0) return -1;
+  const h = Math.imul((seed >>> 0) ^ 0x27d4eb2d, 0x165667b1) >>> 0;
+  return h >>> 30 === 0 ? (h & 0xffff) % WORKSHOP_LAYOUTS : -1;
 }
 
 // Number of templates of each kind, for tuning sweeps over every combination.
@@ -370,10 +445,43 @@ function snowGlobeLevel(id: string, rng: Rng): LevelDef {
   return level;
 }
 
-// Which boss a boss spec fights. A hash of the seed of its own, so the rest of the
-// boss battle (its mirror) draws from the seed exactly as before.
+// The Jack-in-the-Box, built from its own template: every robotEvery-th wave is a smaller
+// wave of wind-up robots; the boss shuffles the gates (all one width, so their sign
+// cards never cover each other wherever they land) and its phase summons are robots.
+function jackLevel(id: string, rng: Rng): LevelDef {
+  const b = T.jackBoss;
+  const flip = rng.next() < 0.5 ? -1 : 1;
+  const enemyWaves = waves(b.waves, 1, flip).map((w, k) =>
+    (k + 1) % b.robotEvery === 0
+      ? { ...w, count: Math.max(1, Math.round(w.count * b.robotShare)), unit: 'robot' as const }
+      : w,
+  );
+  const level: LevelDef = {
+    id,
+    name: b.name,
+    lane: { ...b.lane },
+    cannon: { ...T.base.cannon },
+    playerBase: { hp: b.playerBaseHp },
+    enemyBase: { hp: b.enemyBase.hp, x: 0, width: b.enemyBase.width },
+    gates: gates(b.gates, id, flip),
+    enemyWaves,
+    enemySpawnRate: { perSecond: b.waves.trickle, startAt: b.waves.trickleAt },
+    champion: { ...T.base.champion },
+    boss: { name: b.name, model: 'jackInTheBox', phases: structuredClone(b.phases) },
+    targetTime: b.targetTime,
+    intro: b.intro,
+  };
+  addHazards(level, b, id, flip);
+  return level;
+}
+
+// Which boss a boss spec fights. Hashes of the seed of their own, so the rest of the boss
+// battle (its mirror) draws from the seed exactly as before: a third of seeds fight the
+// Jack-in-the-Box, the rest the boss they fought before it joined the pool.
 export function runBossModel(seed: number): RunBossModel {
-  return Math.imul((seed >>> 0) ^ 0x5bd1e995, 0x2545f491) >>> 31 === 0 ? 'tinGeneral' : 'snowGlobeGiant';
+  const s = seed >>> 0;
+  if ((Math.imul(s ^ 0x3c6ef372, 0x9e3779b1) >>> 0) % 3 === 0) return 'jackInTheBox';
+  return Math.imul(s ^ 0x5bd1e995, 0x2545f491) >>> 31 === 0 ? 'tinGeneral' : 'snowGlobeGiant';
 }
 
 // A boss battle for an explicit boss (generateRunBattle picks it from the seed). Exposed
@@ -382,7 +490,13 @@ export function composeRunBoss(spec: RunBattleSpec, model: RunBossModel): LevelD
   const seed = spec.seed >>> 0;
   const id = `x${spec.index}-boss-${seed % 10000}`;
   const rng = createRng(seed);
-  return validateLevel(model === 'snowGlobeGiant' ? snowGlobeLevel(id, rng) : tinGeneralLevel(id, rng), id);
+  const level =
+    model === 'snowGlobeGiant'
+      ? snowGlobeLevel(id, rng)
+      : model === 'jackInTheBox'
+        ? jackLevel(id, rng)
+        : tinGeneralLevel(id, rng);
+  return validateLevel(level, id);
 }
 
 // The battle for one node of a run. Deterministic per spec; always passes validateLevel.
@@ -390,5 +504,5 @@ export function generateRunBattle(spec: RunBattleSpec): LevelDef {
   if (spec.kind === 'boss') return composeRunBoss(spec, runBossModel(spec.seed));
   const seed = spec.seed >>> 0;
   const id = `x${spec.index}-${spec.kind}-${seed % 10000}`;
-  return validateLevel(battleLevel(spec, id, drawPicks(createRng(seed), spec.kind === 'elite')), id);
+  return validateLevel(battleLevel(spec, id, drawPicks(createRng(seed), spec.kind === 'elite', seed)), id);
 }

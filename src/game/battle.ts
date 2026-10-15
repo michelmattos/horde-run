@@ -33,6 +33,18 @@
 // cannon fires one rolling unit per shot, and mods.championFreeze freezes enemies where
 // the champion meets them. The new sim calls are optional (?.) so a fake sim still works,
 // and none of it runs on a World 1 level, whose rand() sequence stays the same.
+//
+// Milestone 6 (World 3, Clockwork Workshop): wind-up robots (ENEMY_UNIT_STATS.robot) walk
+// in stop-and-go bursts (sim SpawnOpts.windup); an archer-like mob slot passes `ranged`,
+// the Wind-up Robot champion `gateWalk`; the Gear Gun (BattleLoadout.shot 'ricochet') and
+// mods.ricochetEvery fire shots that bounce off the lane walls (SpawnOpts.bounce), the
+// first toward the side of the lane farther from the cannon, then alternating. The
+// Jack-in-the-Box (boss.model 'jackInTheBox') telegraphs for `warn` s (state.shuffle,
+// a shuffleWarn cue) every `every` s of a phase with `shuffle`, then moves every gate to
+// another gate's spot (a seeded derangement of sim.gateSpot) over `glide` s
+// (sim.moveGate, a shuffle cue); its phase summons pop out as wind-up robots. Toggles,
+// belts, turntables, saws and shield walls are the sim's own. A World 1 or 2 level runs
+// none of this, so its rand() sequence stays the same.
 
 import type {
   BattleState,
@@ -62,6 +74,11 @@ export interface BattleSpawnOpts {
   deathBlast?: { radius: number; damage: number };
   riders?: number; // on death, releases this many single player mobs (the Giant)
   roll?: { burstWeight: number; maxRadius: number }; // a rolling, growing snowball (player mob)
+  // Milestone 6 (World 3)
+  windup?: { run: number; pause: number }; // walks `run` s, stands `pause` s (wind-up robots)
+  ranged?: { range: number; every: number; damage: number }; // shoots an enemy ahead (archers)
+  bounce?: { vx: number; bounces: number }; // sideways speed; ricochets off the lane walls
+  gateWalk?: { seconds: number; radius: number }; // walks a gate's line, re-triggering it (Wind-up Robot)
 }
 
 export interface BattleSim {
@@ -80,6 +97,10 @@ export interface BattleSim {
   freezeGate?(index: number, seconds: number, hp: number): void;
   gateIce?(index: number): number; // remaining ice hp of a gate; 0 = not frozen
   freezeUnits?(team: Team, x: number, z: number, radius: number, seconds: number): number;
+  // Milestone 6 (World 3)
+  moveGate?(index: number, x: number, z: number, seconds: number): void; // glide a gate to a new spot
+  gateSpot?(index: number, out: { x: number; z: number }): void; // a gate's current spot (where it is headed)
+  gateLifted?(index: number): boolean; // true while a gate is gliding (gives no effect)
 }
 
 // Things the renderer and audio react to. 'shot' per cannon shot; 'ultimate' when one
@@ -87,7 +108,9 @@ export interface BattleSim {
 // whole lane, duration the freeze); 'blast' per death blast in the sim. World 2: 'lob'
 // when the Snow Globe Giant throws a snowball (it lands `flight` s later, then 'lobHit');
 // 'gustWarn' when a gust's telegraph starts (the push starts `seconds` later) and 'gust'
-// when the push starts; 'iglooRelease' when an igloo lets out `count` units.
+// when the push starts; 'iglooRelease' when an igloo lets out `count` units. World 3:
+// 'shuffleWarn' when the Jack-in-the-Box starts cranking (the gates move `seconds` later)
+// and 'shuffle' when the gates start gliding to their new spots (for `glide` s).
 export type BattleCue =
   | {
       type: 'ultimate';
@@ -103,7 +126,9 @@ export type BattleCue =
   | { type: 'lobHit'; x: number; z: number; radius: number }
   | { type: 'gustWarn'; dir: -1 | 1; seconds: number }
   | { type: 'gust'; dir: -1 | 1; duration: number }
-  | { type: 'iglooRelease'; id: string; x: number; z: number; count: number };
+  | { type: 'iglooRelease'; id: string; x: number; z: number; count: number }
+  | { type: 'shuffleWarn'; seconds: number }
+  | { type: 'shuffle'; glide: number };
 
 // Battle input: the shared InputState plus the ultimate button (edge-triggered like the champion's).
 export type BattleInput = InputState & { ultimatePressed?: boolean };
@@ -163,6 +188,8 @@ export const ENEMY_UNIT_STATS: Readonly<Record<EnemyUnit, Readonly<EnemyUnitStat
   mob: { hp: 1, damage: 1, speed: 5, radius: LAYOUT.mobRadius, variant: UNIT_VARIANT.rifleman },
   snowman: { hp: 4, damage: 3, speed: 3.2, radius: 0.42, variant: UNIT_VARIANT.snowman },
   penguin: { hp: 1, damage: 1, speed: 8.5, radius: 0.24, variant: UNIT_VARIANT.penguin },
+  // World 3: speed is its pace while walking; it stands still WORLD3.robotPause s of every cycle.
+  robot: { hp: 3, damage: 2, speed: 6, radius: 0.36, variant: UNIT_VARIANT.robot },
 };
 
 // World 2 battle rules.
@@ -172,6 +199,15 @@ export const WORLD2 = {
   lobCell: 2, // world units: grid cell for finding the densest part of the crowd
   maxLobs: 8, // snowballs in flight at once
   championFreezeAhead: 3, // championFreeze without an enemy in reach freezes this far ahead
+} as const;
+
+// World 3 battle rules.
+export const WORLD3 = {
+  robotRun: 1.4, // seconds a wind-up robot walks...
+  robotPause: 0.6, // ...then stands winding up again
+  ricochet: { angle: 0.12, bounces: 3 }, // mods.ricochetEvery shots (no Gear Gun): slant and wall bounces
+  mobSpeed: 7, // the sim's default player mob speed, for ricochet slants of loadout-free shots
+  summonUnit: 'robot', // what the Jack-in-the-Box's phase summons send
 } as const;
 
 function clamp(v: number, lo: number, hi: number): number {
@@ -254,6 +290,7 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
     mob: undefined, // the World 1 soldier: spawned with no options, exactly as before
     snowman: unitOpts(ENEMY_UNIT_STATS.snowman),
     penguin: unitOpts(ENEMY_UNIT_STATS.penguin),
+    robot: { ...unitOpts(ENEMY_UNIT_STATS.robot), windup: { run: WORLD3.robotRun, pause: WORLD3.robotPause } },
   };
   const trickleMix = level.trickleMix;
   let trickleNo = 0; // trickle units sent, for the every-Nth mix
@@ -279,6 +316,35 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
   const champFreeze = mods?.championFreeze;
   if (loadout?.ultimate.id === 'blizzard') state.enemyFrozen = 0;
 
+  // World 3, resolved once. Ricochets: every ricoEvery-th cannon shot (mods; 0 = never),
+  // or every crowd shot of a Gear Gun; ricoSide is the side the last one flew to.
+  const ricoEvery = mods?.ricochetEvery !== undefined ? Math.max(2, Math.floor(mods.ricochetEvery)) : 0;
+  const ricoOpts = ricoEvery > 0 ? ricochetOpts(mobOpts, WORLD3.ricochet, WORLD3.mobSpeed) : undefined;
+  let ricoShots = 0; // loadout-free cannon shots, for ricoEvery
+  let ricoSide = 0; // -1 left, 1 right, 0 none yet
+  const summonUnit: EnemyUnit = level.boss?.model === 'jackInTheBox' ? WORLD3.summonUnit : 'mob';
+  // Jack-in-the-Box gate shuffles: when the gates next move, whether that one was cued,
+  // when the current glide ends, and the gate spots (tracked here too, for a sim without gateSpot).
+  const hasShuffle = phases.some((ph) => ph.shuffle);
+  if (hasShuffle) state.shuffle = { warn: 0, active: false };
+  let shuffleAt = Infinity;
+  let shuffleWarned = false;
+  let glideEnd = 0;
+  const gateCount = hasShuffle ? level.gates.length : 0;
+  const spotX = Float64Array.from(level.gates.slice(0, gateCount), (g) => g.x);
+  const spotZ = Float64Array.from(level.gates.slice(0, gateCount), (g) => g.z);
+  const nextX = new Float64Array(gateCount);
+  const nextZ = new Float64Array(gateCount);
+  const perm = new Int32Array(gateCount);
+  const spot = { x: 0, z: 0 };
+
+  // Which ricochet spawn options a shot uses: the first flies toward the side of the lane
+  // farther from the cannon, then the sides alternate.
+  function ricoIndex(): number {
+    ricoSide = ricoSide === 0 ? (cannonX > 0 ? -1 : 1) : -ricoSide;
+    return ricoSide < 0 ? 0 : 1;
+  }
+
   function fire(): void {
     if (lo) {
       fireLoadout(lo);
@@ -290,7 +356,8 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
     const knights = knightEvery
       ? Math.floor((stats.mobsFired + n) / knightEvery) - Math.floor(stats.mobsFired / knightEvery)
       : 0;
-    if (n > knights) sim.spawn(Team.Player, UnitKind.Mob, cannonX, LAYOUT.cannonZ, n - knights, mobOpts);
+    const opts = ricoOpts && ++ricoShots % ricoEvery === 0 ? ricoOpts[ricoIndex()] : mobOpts;
+    if (n > knights) sim.spawn(Team.Player, UnitKind.Mob, cannonX, LAYOUT.cannonZ, n - knights, opts);
     if (knights > 0) sim.spawn(Team.Player, UnitKind.Champion, cannonX, LAYOUT.cannonZ, knights, knightOpts);
     stats.mobsFired += n;
     state.championCharge = Math.min(1, state.championCharge + n * chargePerMob);
@@ -321,8 +388,11 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
         sim.spawn(Team.Player, UnitKind.Mob, cannonX, LAYOUT.cannonZ, 1, l.roll.ball);
         if (n - knights > 1)
           sim.spawn(Team.Player, UnitKind.Mob, cannonX, LAYOUT.cannonZ, n - knights - 1, l.roll.fill);
-      } else if (n > knights)
-        sim.spawn(Team.Player, UnitKind.Mob, cannonX, LAYOUT.cannonZ, n - knights, l.shotOpts[slot]);
+      } else if (n > knights) {
+        const rico = l.rico && slot === 0 && (l.ricoAll || (ricoEvery > 0 && shotNo % ricoEvery === 0));
+        const opts = rico && l.rico ? l.rico[ricoIndex()] : l.shotOpts[slot];
+        sim.spawn(Team.Player, UnitKind.Mob, cannonX, LAYOUT.cannonZ, n - knights, opts);
+      }
       if (knights > 0) sim.spawn(Team.Player, UnitKind.Champion, cannonX, LAYOUT.cannonZ, knights, knightOpts);
     }
     stats.mobsFired += n;
@@ -644,6 +714,68 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
     }
     lobNext = ph.lob ? t + ph.lob.every : Infinity;
     if (ph.gusts) gusts.push(gustSource(ph.gusts, t));
+    // A shuffle already telegraphed (crank heard, chip shown) still happens on time.
+    if (!(ph.shuffle && shuffleWarned)) {
+      shuffleAt = ph.shuffle ? t + ph.shuffle.every : Infinity;
+      shuffleWarned = false;
+    }
+  }
+
+  // Jack-in-the-Box: the telegraph runs `warn` s before each shuffle; then every gate
+  // glides to another gate's spot.
+  function stepShuffle(t: number, playing: boolean): void {
+    const sh = state.shuffle;
+    if (!sh) return;
+    const def = playing && phases.length ? phases[phase].shuffle : undefined;
+    let warn = 0;
+    if (def && t + EPS >= shuffleAt - def.warn) {
+      if (!shuffleWarned) {
+        shuffleWarned = true;
+        cues?.push({ type: 'shuffleWarn', seconds: def.warn });
+      }
+      if (t + EPS >= shuffleAt) {
+        shuffleGates(def.glide);
+        cues?.push({ type: 'shuffle', glide: def.glide });
+        glideEnd = t + def.glide;
+        shuffleAt += def.every;
+        shuffleWarned = false;
+        warn = 1;
+      } else warn = clamp(1 - (shuffleAt - t) / def.warn, 0, 1);
+    }
+    sh.warn = warn;
+    sh.active = t + EPS < glideEnd;
+  }
+
+  // A seeded cyclic permutation of the gate spots (Sattolo's shuffle), so with two or more
+  // gates none stays where it was.
+  function shuffleGates(glide: number): void {
+    const n = gateCount;
+    for (let i = 0; i < n; i++) {
+      if (sim.gateSpot) {
+        sim.gateSpot(i, spot);
+        spotX[i] = spot.x;
+        spotZ[i] = spot.z;
+      }
+      perm[i] = i;
+    }
+    for (let i = n - 1; i > 0; i--) {
+      const j = Math.floor(rand() * i);
+      const p = perm[i];
+      perm[i] = perm[j];
+      perm[j] = p;
+    }
+    for (let i = 0; i < n; i++) {
+      // A wide or swaying gate taking a narrow one's spot is kept inside the lane.
+      const g = level.gates[i];
+      const lim = Math.max(0, level.lane.width / 2 - g.width / 2 - (g.move?.amplitude ?? 0));
+      nextX[i] = clamp(spotX[perm[i]], -lim, lim);
+      nextZ[i] = spotZ[perm[i]];
+    }
+    for (let i = 0; i < n; i++) {
+      spotX[i] = nextX[i];
+      spotZ[i] = nextZ[i];
+      sim.moveGate?.(i, spotX[i], spotZ[i], glide);
+    }
   }
 
   // Where a launched champion meets the enemy: the nearest enemy in its column ahead.
@@ -679,7 +811,7 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
       ampRate = Math.abs(ph.strafe.amplitude - amp) / BOSS_AMP_EASE;
       state.bossPhase = phase;
       events.push({ type: 'bossPhase', phase, x: state.enemyBaseX ?? level.enemyBase.x, z: level.lane.length });
-      if (ph.summon) spawnAcrossBase(ph.summon);
+      if (ph.summon) spawnAcrossBase(ph.summon, summonUnit);
       enterPhase(t);
     }
   }
@@ -740,6 +872,7 @@ export function createBattle(level: LevelDef, sim: BattleSim, rand: () => number
       if (hasLobs) stepLobs(t);
     }
     if (hasGusts) stepGusts(t, playing);
+    if (hasShuffle) stepShuffle(t, playing);
     if (state.enemyFrozen) state.enemyFrozen = Math.max(0, state.enemyFrozen - SIM_DT);
 
     moveBase();
@@ -808,6 +941,8 @@ interface ResolvedLoadout {
   marbleEnd: number;
   ultimate: BattleLoadout['ultimate'];
   roll?: { ball: BattleSpawnOpts; fill: BattleSpawnOpts }; // snowball cannon: the ball and its starting weight
+  rico?: [BattleSpawnOpts, BattleSpawnOpts]; // slot-1 crowd mob ricocheting left / right
+  ricoAll: boolean; // Gear Gun: every slot-1 crowd shot ricochets
 }
 
 function resolveLoadout(level: LevelDef, l: BattleLoadout): ResolvedLoadout {
@@ -826,12 +961,23 @@ function resolveLoadout(level: LevelDef, l: BattleLoadout): ResolvedLoadout {
     };
     if (spec.deathBlast) o.deathBlast = { radius: spec.deathBlast.radius, damage: spec.deathBlast.damage };
     if (spec.riders) o.riders = spec.riders;
+    if (spec.ranged) o.ranged = { ...spec.ranged };
     return o;
   };
   // Fixed counts stay fractional (progression scales them by the cannon); see slotCount.
   const count = (spec: MobSpec) => (spec.perShot === null ? level.cannon.unitsPerShot : Math.max(0, spec.perShot));
   const c = l.champion;
   const [a, b] = firingOrder(l.mobs);
+  const championOpts: BattleSpawnOpts = {
+    hp: level.champion.hp * c.hpMul,
+    damage: level.champion.damage * c.damageMul,
+    radius: c.radius,
+    speed: c.speed,
+    variant: c.variant,
+  };
+  if (c.gateWalk) championOpts.gateWalk = { ...c.gateWalk };
+  const shot = l.shot;
+  const rico = shot?.kind === 'ricochet' ? shot : mods?.ricochetEvery !== undefined ? WORLD3.ricochet : undefined;
   return {
     specs: [a, b],
     // Two fixed-count mobs: the main one fires no more hp per shot than the crowd would
@@ -839,13 +985,7 @@ function resolveLoadout(level: LevelDef, l: BattleLoadout): ResolvedLoadout {
     perShot: [a.perShot === null ? count(a) : Math.min(count(a), level.cannon.unitsPerShot / a.hp), count(b)],
     shotOpts: [opts(a, spread), opts(b, spread)],
     mixEvery: Math.max(0, Math.floor(l.mixEvery)),
-    championOpts: {
-      hp: level.champion.hp * c.hpMul,
-      damage: level.champion.damage * c.damageMul,
-      radius: c.radius,
-      speed: c.speed,
-      variant: c.variant,
-    },
+    championOpts,
     echo: Math.max(0, Math.floor(c.echo)),
     echoOpts: opts(a, ECHO_SPREAD),
     barrageOpts: opts(a, level.cannon.aimLimit),
@@ -853,19 +993,34 @@ function resolveLoadout(level: LevelDef, l: BattleLoadout): ResolvedLoadout {
     paraZ: ULTIMATE.paraZ * level.lane.length,
     marbleEnd: level.lane.length - ULTIMATE.marbleStop,
     ultimate: l.ultimate,
-    ...(l.shot && a.kind === 'mob'
+    ...(shot?.kind === 'snowball' && a.kind === 'mob'
       ? {
           roll: {
             ball: {
               ...opts(a, 0),
               variant: UNIT_VARIANT.snowball,
-              roll: { burstWeight: l.shot.burstWeight, maxRadius: l.shot.maxRadius },
+              roll: { burstWeight: shot.burstWeight, maxRadius: shot.maxRadius },
             },
             fill: opts(a, 0),
           },
         }
       : {}),
+    ...(rico && a.kind === 'mob' ? { rico: ricochetOpts(opts(a, spread), rico, a.speed) } : {}),
+    ricoAll: shot?.kind === 'ricochet',
   };
+}
+
+// Left and right ricochet spawn options on top of a shot's own: sideways at angle x speed.
+function ricochetOpts(
+  base: BattleSpawnOpts,
+  r: { angle: number; bounces: number },
+  speed: number,
+): [BattleSpawnOpts, BattleSpawnOpts] {
+  const vx = r.angle * speed;
+  return [
+    { ...base, bounce: { vx: -vx, bounces: r.bounces } },
+    { ...base, bounce: { vx, bounces: r.bounces } },
+  ];
 }
 
 // Spawn options of an enemy unit type (spawned one at a time, so per-weight = per unit).

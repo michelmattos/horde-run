@@ -53,26 +53,34 @@ const W2: Record<string, UpgradeIconW2> = {
   cocoa: 'relic-cocoa',
   avalanche: 'champ-avalanche',
 };
+const W3: Record<string, string> = {
+  clockwork: 'gate-clock',
+  boots: 'mob-boots',
+  sawguard: 'relic-sawguard',
+  crowbar: 'champ-crowbar',
+  bankshot: 'cannon-bank',
+};
 
-test('pool: 25 unique ids, every icon used, World 2 art on exactly the five new ones, short text', () => {
-  assert.equal(UPGRADES.length, 25);
-  assert.equal(new Set(UPGRADES.map((u) => u.id)).size, 25);
+test('pool: 30 unique ids, every icon used, World 2 and 3 art on exactly their five each, short text', () => {
+  assert.equal(UPGRADES.length, 30);
+  assert.equal(new Set(UPGRADES.map((u) => u.id)).size, 30);
   assert.deepEqual(new Set(UPGRADES.map((u) => u.icon)), new Set(ICONS));
   // World 1 upgrades keep one icon each; a World 2 upgrade borrows its nearest one.
-  const w1 = UPGRADES.filter((u) => u.iconW2 === undefined);
+  const w1 = UPGRADES.filter((u) => u.iconW2 === undefined && u.iconW3 === undefined);
   assert.equal(new Set(w1.map((u) => u.icon)).size, w1.length);
   assert.deepEqual(Object.fromEntries(UPGRADES.filter((u) => u.iconW2).map((u) => [u.id, u.iconW2])), W2);
+  assert.deepEqual(Object.fromEntries(UPGRADES.filter((u) => u.iconW3).map((u) => [u.id, u.iconW3])), W3);
   for (const u of UPGRADES) {
     assert.equal(getUpgrade(u.id), u);
     assert.ok(u.text.length <= 48, `${u.id}: ${u.text}`);
     assert.ok((u.drawback ?? '').length <= 48);
     assert.ok(u.maxStacks >= 1);
     assert.ok(RARITY_PRICE[u.rarity] > 0);
-    assert.equal(u.drawback !== undefined, ['overcharge', 'glass', 'chest', 'cocoa'].includes(u.id));
+    assert.equal(u.drawback !== undefined, ['overcharge', 'glass', 'chest', 'cocoa', 'sawguard'].includes(u.id));
   }
   assert.equal(getUpgrade('nope'), undefined);
   const perCategory = (cat: string) => UPGRADES.filter((u) => u.category === cat).length;
-  assert.deepEqual(['gate', 'mob', 'cannon', 'champion', 'relic'].map(perCategory), [6, 5, 4, 4, 6]);
+  assert.deepEqual(['gate', 'mob', 'cannon', 'champion', 'relic'].map(perCategory), [7, 6, 5, 5, 7]);
 });
 
 test('drawOffer: distinct, respects maxStacks, deterministic, runs short gracefully', () => {

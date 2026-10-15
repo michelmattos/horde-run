@@ -9,6 +9,11 @@
 // (the Blizzard and Avalanche), the Snow Globe Giant's lobbed snowball (whistle, then the
 // hit), the gust (a rising wind on its telegraph, a whoosh when it blows, panned from the
 // side it comes from) and an igloo letting penguins out.
+// World 3 adds the workshop's tin and clockwork: a timed gate's shutter clacking, saw
+// blades biting (one whirr per saw at most every 150 ms), mobs clanging off a shield wall,
+// archers' bow twangs (throttled hard: a volley is one twang), Gear Gun shots pinging off
+// the lane walls, the Wind-up Robot ticking as it walks a gate, and the Jack-in-the-Box's
+// crank ratchet (the shuffle telegraph) and spring 'boing' (the gates start to move).
 import type { SimEvent } from '../contracts.ts';
 
 export type SoundId =
@@ -42,7 +47,15 @@ export type SoundId =
   | 'lobHit'
   | 'gustRise'
   | 'gustWhoosh'
-  | 'igloo';
+  | 'igloo'
+  | 'gateToggle'
+  | 'saw'
+  | 'shieldClang'
+  | 'arrow'
+  | 'ricochet'
+  | 'gateWalk'
+  | 'crank'
+  | 'jackPop';
 
 export const SOUND_IDS: readonly SoundId[] = [
   'shot',
@@ -76,6 +89,14 @@ export const SOUND_IDS: readonly SoundId[] = [
   'gustRise',
   'gustWhoosh',
   'igloo',
+  'gateToggle',
+  'saw',
+  'shieldClang',
+  'arrow',
+  'ricochet',
+  'gateWalk',
+  'crank',
+  'jackPop',
 ];
 
 // The battle cue shape audio reads (a structural subset of the game's BattleCue).
@@ -126,6 +147,14 @@ export const SOUND_RULES: Readonly<Record<SoundId, SoundRule>> = {
   gustRise: { gapMs: 1000, voices: 1, durMs: 1700, volume: 0.5 },
   gustWhoosh: { gapMs: 800, voices: 1, durMs: 1500, volume: 0.5 },
   igloo: { gapMs: 300, voices: 2, durMs: 550, volume: 0.5 },
+  gateToggle: { gapMs: 120, voices: 2, durMs: 260, volume: 0.5 },
+  saw: { gapMs: 150, voices: 2, durMs: 380, volume: 0.42 },
+  shieldClang: { gapMs: 140, voices: 2, durMs: 450, volume: 0.5 },
+  arrow: { gapMs: 160, voices: 2, durMs: 200, volume: 0.4 },
+  ricochet: { gapMs: 90, voices: 2, durMs: 260, volume: 0.38 },
+  gateWalk: { gapMs: 600, voices: 1, durMs: 1100, volume: 0.6 },
+  crank: { gapMs: 1000, voices: 1, durMs: 1500, volume: 0.42 },
+  jackPop: { gapMs: 1000, voices: 1, durMs: 900, volume: 0.62 },
 };
 
 /** Per-sound throttle memory: last start time and the end time of each voice slot. */
@@ -209,18 +238,26 @@ const PRIORITY: readonly SoundId[] = [
   'gateFreeze',
   'gustRise',
   'gustWhoosh',
+  'jackPop',
+  'crank',
+  'gateWalk',
   'blast',
   'snowballBurst',
   'lob',
   'igloo',
   'gateThaw',
+  'shieldClang',
+  'gateToggle',
+  'saw',
   'hitPlayerBase',
   'hitEnemyBase',
   'gateGood',
   'gateTrap',
   'towerShot',
   'iceChip',
+  'ricochet',
   'shot',
+  'arrow',
   'clash',
 ];
 
@@ -259,6 +296,18 @@ function eventSound(e: SimEvent): SoundId | null {
       return 'snowballBurst';
     case 'unitsFrozen':
       return 'freeze';
+    case 'gateToggled':
+      return 'gateToggle';
+    case 'sawHit':
+      return 'saw';
+    case 'shieldBlock':
+      return 'shieldClang';
+    case 'arrow':
+      return 'arrow';
+    case 'ricochet':
+      return 'ricochet';
+    case 'gateWalk':
+      return 'gateWalk';
     default:
       return null;
   }
@@ -273,6 +322,8 @@ const CUE_SOUNDS: ReadonlyMap<string, SoundId> = new Map([
   ['gustWarn', 'gustRise'],
   ['gust', 'gustWhoosh'],
   ['iglooRelease', 'igloo'],
+  ['shuffleWarn', 'crank'],
+  ['shuffle', 'jackPop'],
 ]);
 
 function cueSound(c: AudioCue): SoundId | null {

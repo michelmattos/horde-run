@@ -199,3 +199,65 @@ Full briefs with budgets are in the task plan; each model task owns
 - **effects**: foam darts, confetti gate bursts, plastic shards, carpet dust puffs, hit
   flashes; pooled, thin-instanced, cheap; no camera motion.
 - **ui**: section 7.
+
+## 9. World 3: Clockwork Workshop
+
+A toymaker's workbench at dusk: the last blue light through the window, a big red desk
+lamp pooling tungsten light on the bench, tools hanging on a pegboard wall. The same
+toy-diorama rules as the bedroom: believable materials, one warm key with soft shadows,
+everything grounded, readability first. Implementation: `models/workshopRoom.ts`,
+`workshopProps.ts`, `conveyor.ts`, `turntable.ts`, `saw.ts`, `shieldWall.ts`, the World 3
+parts of `gate.ts`, `look/index.ts` (`THEME_LIGHT.workshop`) and `look/post.ts`
+(`WORKSHOP_GRADE`).
+
+### Palette
+
+| Role | Hex | Notes |
+|---|---|---|
+| Workbench maple (floor) | `#c99a6c` (strips `#bb8b5f` .. `#dab288`) | Honey butcher-block strips, satin varnish, darker oil patches. |
+| Cutting mat (lane) | `#33494a`, dark `#283b3c`, grid `#a8b5b2` | Slate green-grey: darker than both armies and a cool hue, so both read on it like on the rug. Leather `#5a3a26` is the alternative lane if a level needs a warmer mat. |
+| Brass | `#d2a33f` / `#c9a24a` | Gears, turntable rim, drive gears, rivets, clock tokens. |
+| Blued steel | `#3d5170`, navy `#22355e` | Conveyor rails, shield-wall posts. |
+| Tin plate | `#c9ced4` / `#b9bec4` | Bare steel and tin: bolts, comb plates, saw blades, shutters `#9eabb8`. |
+| Lithographed tin | royal blue `#2e5aa8`, red `#b5372f`, cream `#efe3c6`, teal `#2f7f86` | Shield walls, the turntable print. |
+| Warning | yellow `#f2c230`, black `#1d1d1f`, mustard `#e2ad37` | Saw-slot hazard stripes, belt chevrons, comb-plate edges. Only on hazards. |
+| Belt rubber | `#2f3336` | Conveyor belt. |
+| Pegboard wall | `#a9b7bb` | Calm, cool, far back. |
+| Light | key `#ffc78f` (tungsten, up-left), sky fill `#aec6e6` (window), bounce `#d9a66c` (bench) | Warmer key and cooler fill than the bedroom. |
+
+Props (gears, springs, jars of screws, screwdrivers, wind-up keys, half-built tin
+robots) are brass, steel, glass and toy primaries: **never green or tan**, so nothing
+beside the lane reads as a unit.
+
+### Lane hazards
+
+- **Conveyor belts** lie flush with the mat (under the blob shadows, so units keep their
+  contact shadows): charcoal rubber with worn mustard chevrons pointing the way the belt
+  runs; they scroll at the belt's real speed and flip when it reverses. Blued rails with
+  bolts, steel comb plates at the ends and brass drive gears turning with the belt.
+- **Turntables**: a lithographed tin disc (cream, red band, teal ring, navy arrows that
+  show the spin and mirror when it reverses) in a brass toothed rim, a brass hub and a
+  meshing drive gear; a dark gap ring sets it into the mat.
+- **Saw blades**: bright steel with dark-tipped hooked teeth and a red enamel ring,
+  standing out of a steel slot banded with yellow-black stripes the length of its glide,
+  with a soft red danger glow under it. A cycled saw visibly sinks into its slot (the glow
+  fades) and rises a moment before it bites again.
+- **Shield walls**: riveted, corrugated royal-blue tin between navy posts, steel bars,
+  brass rivets and a champion-crest sticker (only champions dent it). Dents deepen in
+  four stages with the paint chipped to bare tin; a turned-back mob makes it clang (a cold
+  white flash, steel sparks); broken, it bursts into tin shards and rivets.
+
+### Gates
+
+Toggling gates carry a brass clock token whose hand sweeps the current phase; its rim
+glows red in the last 1.2 s before a flip. Without an alt value a painted tin shutter
+drops between the posts while the gate is off (a dusty clack) and the card's number is
+washed out; with one, the card flips like a split-flap sign (the frame and film turn red
+or green with it). Gliding gates lift, glide and drop with a dust puff, and their film
+dims while they are in the air. Before a Jack-in-the-Box shuffle the gates tremble a few
+centimetres and their posts glow; **the camera never moves**.
+
+### Grade
+
+Saturation +9, highlights pushed warm (hue 34), shadows cool (hue 214), a deeper brown
+vignette: lamplight against the dusk window.

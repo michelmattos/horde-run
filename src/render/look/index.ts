@@ -67,11 +67,11 @@ export const LIGHT = {
 
 export type CasterKind = 'static' | 'crowd';
 
-// Room themes (contracts WorldTheme): the bedroom's warm window sun, or the freezer's
-// cold white key, icy sky fill and snow bounce with a cooler grade. Only light colours,
-// intensities, the HDRI strength and the colour curves change: no new render targets,
-// no shader recompiles.
-export type LookTheme = 'bedroom' | 'freezer';
+// Room themes (contracts WorldTheme): the bedroom's warm window sun, the freezer's cold
+// white key, icy sky fill and snow bounce with a cooler grade, or the workshop's tungsten
+// desk lamp at evening. Only light colours, intensities, the HDRI strength and the colour
+// curves change: no new render targets, no shader recompiles.
+export type LookTheme = 'bedroom' | 'freezer' | 'workshop';
 interface ThemeLight {
   key: string; // key light tint (sRGB)
   keyIntensity: number;
@@ -101,6 +101,18 @@ export const THEME_LIGHT: Record<LookTheme, ThemeLight> = {
     groundScale: 0.75,
     fillIntensity: 0.62,
     envIntensity: 0.62,
+  },
+  // Evening at the toymaker's bench: a warm tungsten desk lamp up-left of the lane is the
+  // key (same direction as the sun, so shadows fall the same way), cool blue daylight from
+  // the window fills the shadows, and the maple workbench bounces warm light back up.
+  workshop: {
+    key: '#ffc78f',
+    keyIntensity: 2.5,
+    sky: '#aec6e6',
+    ground: '#d9a66c',
+    groundScale: 0.72,
+    fillIntensity: 0.52,
+    envIntensity: 0.6,
   },
 };
 

@@ -38,11 +38,48 @@
 //   touches an enemy, a defender, a frozen gate or an ice wall, reaches burstWeight, or
 //   gets within ROLL_BURST_BEFORE_BASE of the enemy base. It never cancels itself.
 // - Igloos (DefenderKind 'igloo') soak like walls with their own footprint and never shoot.
+//
+// Milestone 6 (World 3, Clockwork Workshop). Same discipline: all of it is off unless the
+// level or a caller turns it on, and none of it draws from rand() except new gate clones.
+// - Timed gates (gate.toggle): the effect is gateEffectAt(gate, t): the gate, its alt, or
+//   nothing (shutter closed: no effect and the unit stays unpassed). gateToggled reports
+//   each flip. Uses and freeze budgets only count crossings that applied an effect.
+// - Gliding gates (moveGate): the base spot glides with gateGlide; meanwhile the gate is
+//   lifted (no effect, no crossing, no ice chip). Moving gates keep their sway on top.
+//   Every gate test uses the live spot (gateXs / gateZs), never def.x / def.z.
+// - Conveyors and turntables (level.conveyors / turntables) carry every unit whose centre
+//   is on them, frozen ones too; champion-kind units at HEAVY_CARRY, player units at
+//   (1 - mods.beltGrip) on top. Passed-gate masks stop a unit carried back over a gate
+//   line from re-triggering it, and player units never count as hits on their own base.
+// - Saws (level.saws): while up, each saw removes up to bite * dt weight per step from the
+//   units of both teams overlapping it, nearest first; player units take (1 - sawGuard).
+// - Shield walls (DefenderKind 'shield'): only champion-kind units damage them; player
+//   mobs are deflected like at an ice wall (or, with mods.shieldBreak, cancel against it
+//   at that damage per weight). Arrows, ultimates and enemy units ignore them.
+// - Unit traits (SpawnOpts): windup (stop-and-go walk, hashed phase), ranged (archers
+//   shoot the nearest enemy or non-shield defender ahead), bounce (ricochet off the lane
+//   edges a set number of times) and gateWalk (a champion that walks the first good gate
+//   it crosses and re-triggers it once for every mob near it past the line).
 
-import type { DefenderKind, DefenderView, LevelDef, SimEvent, SimView } from '../contracts.ts';
-import { DEFENDER_DEFAULTS, LAYOUT, Team, UnitKind, gateX } from '../contracts.ts';
+import type { DefenderKind, DefenderView, GateOp, LevelDef, SimEvent, SimView } from '../contracts.ts';
+import {
+  DEFENDER_DEFAULTS,
+  LAYOUT,
+  SAW_DEFAULTS,
+  SHIELD_DEFAULTS,
+  Team,
+  UnitKind,
+  cycleOn,
+  gateEffectAt,
+  gateGlide,
+  gateX,
+  sawPos,
+  sawUp,
+} from '../contracts.ts';
 import { SpatialGrid } from './grid.ts';
-import { IcePatches, IceWalls } from './hazards.ts';
+import { BOX_CLEAR, BOX_FACE, BOX_SIDE, IcePatches, IceWalls, pushOutOfBox, sideOpen } from './hazards.ts';
+import type { BoxPush } from './hazards.ts';
+import { Belts, Saws, Turntables } from './workshop.ts';
 
 export interface SpawnOpts {
   hp?: number; // per weight for mobs (default 1, so hp == weight); absolute for champions
@@ -54,6 +91,11 @@ export interface SpawnOpts {
   deathBlast?: { radius: number; damage: number }; // on death, hurts the other team nearby (damage per weight)
   riders?: number; // on death (any cause), releases this many single player mobs (Giant)
   roll?: { burstWeight: number; maxRadius: number }; // player mob only: a rolling, growing snowball
+  // Milestone 6
+  windup?: { run: number; pause: number }; // walks `run` s, stands `pause` s, repeating (hashed phase)
+  ranged?: { range: number; every: number; damage: number }; // player only: shoots ahead (damage per weight)
+  bounce?: { vx: number; bounces: number }; // sideways u/s; flips at a lane edge `bounces` times
+  gateWalk?: { seconds: number; radius: number }; // player champion: walks and re-triggers a good gate
 }
 
 // The view with the per-unit render variant (Milestone 4) and the sideways ice slide in
@@ -102,6 +144,14 @@ export interface Sim {
   // team) for `seconds`. Returns the weight frozen (a champion counts 1); one unitsFrozen
   // event is reported next step.
   freezeUnits(team: Team, x: number, z: number, radius: number, seconds: number): number;
+  // Milestone 6. Glides gate `index` (level order) from its current base spot to (x, z)
+  // over `seconds` (gateGlide easing; <= 0 = at once). The gate is lifted (no effect, no
+  // crossing) until it lands; a moving gate keeps its sway. Reported as gateMoved next step.
+  moveGate(index: number, x: number, z: number, seconds: number): void;
+  // Writes gate `index`'s current base centre (without sway; the target once landed) into out.
+  gateSpot(index: number, out: { x: number; z: number }): void;
+  // True while gate `index` is gliding.
+  gateLifted(index: number): boolean;
 }
 
 // Mutable so tuning code can tweak it live; tests read it.
@@ -111,6 +161,16 @@ export const SIM_TUNING = {
   enemySpeed: 5,
   separation: 0.5, // fraction of an overlap resolved per step
 };
+
+// Milestone 6 tuning, read by tests and the game layer.
+export const SIM_W3 = {
+  heavyCarry: 0.5, // share of conveyor / turntable carry champion-kind units feel
+  maxArrowEvents: 8, // arrow events per step
+  maxRicochetEvents: 4, // ricochet events per step
+  maxShieldEvents: 2, // shieldBlock events per step
+  archerRetry: 0.1, // s: a ready archer with no target looks again after this
+  shieldSlide: 5, // u/s a mob pressed head-on against a shield wall slides toward the gap
+} as const;
 
 const MAX_GATES = 32;
 const MAX_DEFENDERS = 16;
@@ -231,6 +291,46 @@ class CrowdSim implements Sim {
   private readonly slip: number; // 1 - iceGrip: share of ice behaviour player units feel
   private readonly thawRate: number;
   private readonly freezeAfter: number;
+  // Milestone 6 per-unit state (moved by compact like the rest)
+  private readonly wRun: Float32Array; // windup: seconds walking; 0 = not a wind-up unit
+  private readonly wPause: Float32Array; // windup: seconds standing
+  private readonly wPhase: Float32Array; // windup: hashed cycle offset (s)
+  private readonly rRange: Float32Array; // ranged: shooting range; 0 = not an archer
+  private readonly rEvery: Float32Array;
+  private readonly rDmg: Float32Array; // ranged: damage per weight per shot
+  private readonly rCd: Float32Array; // ranged: seconds until the next shot
+  private readonly bVx: Float32Array; // bounce: sideways speed; 0 = walks straight
+  private readonly bLeft: Uint16Array; // bounce: lane-edge bounces left
+  private readonly walkSec: Float32Array; // gateWalk: walk duration; 0 = not a walker
+  private readonly walkRad: Float32Array;
+  private readonly walkGate: Int8Array; // gate being walked; -1 = none
+  private readonly walkT: Float32Array; // seconds into the walk
+  private readonly walkFrom: Float32Array; // walk start, as an offset from the gate centre
+  private readonly walkTo: Float32Array; // far post, as an offset from the gate centre
+  private readonly walkUsed: Uint8Array; // already walked a gate this launch
+  private readonly retrig: Uint32Array; // gates that re-triggered this unit (walk), bitmask
+  private hasWindup = false;
+  private hasRanged = false;
+  private hasBounce = false;
+  private hasWalkers = false;
+  private spawnSeq = 0; // counter feeding the per-unit hashes (windup phase, archer stagger)
+  private cloneRetrig = 0; // retrig bits given to clones made while re-triggering
+  private readonly belts: Belts;
+  private readonly tables: Turntables;
+  private readonly saws: Saws;
+  private readonly beltShare: number; // 1 - beltGrip: share of carry player units feel
+  private readonly sawShare: number; // 1 - sawGuard: share of saw damage player units take
+  private readonly shieldBreak: number;
+  private readonly hasShields: boolean;
+  private readonly defLeftOpen: Uint8Array; // shield deflection: open sides per defender
+  private readonly defRightOpen: Uint8Array;
+  private readonly sawCand: Int32Array; // saw victims this step, nearest first
+  private readonly sawD2: Float64Array;
+  private readonly tmpPos = { x: 0, z: 0 };
+  private readonly boxOut: BoxPush = { x: 0, z: 0 };
+  private arrows = 0;
+  private ricochets = 0;
+  private shieldHits = 0;
 
   private readonly grid: SpatialGrid;
   private readonly gateXs: Float64Array;
@@ -244,6 +344,19 @@ class CrowdSim implements Sim {
   private readonly gateIceMax: Float64Array;
   private readonly gateFreezeT: Float64Array; // seconds of freeze left
   private readonly gateChipAt: Float64Array; // sim time of the last gateChipped event
+  // Milestone 6 gate state: live spot, glide and toggle clock.
+  private readonly gateZs: Float64Array; // live line z
+  private readonly baseGX: Float64Array; // base centre (no sway) once landed
+  private readonly baseGZ: Float64Array;
+  private readonly fromGX: Float64Array; // glide start
+  private readonly fromGZ: Float64Array;
+  private readonly glideT: Float64Array; // seconds into the glide
+  private readonly glideSec: Float64Array; // glide length; 0 = not gliding
+  private readonly gateLift: Uint8Array; // 1 while gliding
+  private readonly gateShift: Uint8Array; // 1 once moved off its level spot
+  private readonly gateOn: Uint8Array; // toggle clock state last step
+  private readonly hasToggles: boolean;
+  private anyShift = false;
   private frozenGates = 0;
   private clashes = 0;
   private wallHits = 0;
@@ -310,6 +423,32 @@ class CrowdSim implements Sim {
     this.slip = 1 - (grip < 0 ? 0 : grip > 1 ? 1 : grip);
     this.thawRate = Math.max(0.01, level.mods?.thawRate ?? 1); // > 0: it divides chip damage
     this.freezeAfter = level.mods?.freezeAfter ?? 1;
+    this.wRun = new Float32Array(cap);
+    this.wPause = new Float32Array(cap);
+    this.wPhase = new Float32Array(cap);
+    this.rRange = new Float32Array(cap);
+    this.rEvery = new Float32Array(cap);
+    this.rDmg = new Float32Array(cap);
+    this.rCd = new Float32Array(cap);
+    this.bVx = new Float32Array(cap);
+    this.bLeft = new Uint16Array(cap);
+    this.walkSec = new Float32Array(cap);
+    this.walkRad = new Float32Array(cap);
+    this.walkGate = new Int8Array(cap).fill(-1);
+    this.walkT = new Float32Array(cap);
+    this.walkFrom = new Float32Array(cap);
+    this.walkTo = new Float32Array(cap);
+    this.walkUsed = new Uint8Array(cap);
+    this.retrig = new Uint32Array(cap);
+    this.belts = new Belts(level);
+    this.tables = new Turntables(level);
+    this.saws = new Saws(level, SAW_DEFAULTS.bite);
+    const clamp01 = (v: number | undefined): number => (v === undefined || !(v > 0) ? 0 : v > 1 ? 1 : v);
+    this.beltShare = 1 - clamp01(level.mods?.beltGrip);
+    this.sawShare = 1 - clamp01(level.mods?.sawGuard);
+    this.shieldBreak = Math.max(0, level.mods?.shieldBreak ?? 0);
+    this.sawCand = new Int32Array(this.saws.count > 0 ? cap : 0);
+    this.sawD2 = new Float64Array(this.saws.count > 0 ? cap : 0);
 
     const hw = level.lane.width / 2;
     this.grid = new SpatialGrid(-hw, hw, LAYOUT.playerBaseZ - 2, level.lane.length + 2, 2 * LAYOUT.mobRadius, cap);
@@ -327,6 +466,29 @@ class CrowdSim implements Sim {
     this.gateIceMax = new Float64Array(g);
     this.gateFreezeT = new Float64Array(g);
     this.gateChipAt = new Float64Array(g).fill(-Infinity);
+    this.gateZs = new Float64Array(g);
+    this.baseGX = new Float64Array(g);
+    this.baseGZ = new Float64Array(g);
+    this.fromGX = new Float64Array(g);
+    this.fromGZ = new Float64Array(g);
+    this.glideT = new Float64Array(g);
+    this.glideSec = new Float64Array(g);
+    this.gateLift = new Uint8Array(g);
+    this.gateShift = new Uint8Array(g);
+    this.gateOn = new Uint8Array(g);
+    let toggles = false;
+    for (let k = 0; k < g; k++) {
+      const gd = level.gates[k];
+      this.gateXs[k] = gateX(gd, 0);
+      this.gateZs[k] = gd.z;
+      this.baseGX[k] = gd.x;
+      this.baseGZ[k] = gd.z;
+      if (gd.toggle) {
+        toggles = true;
+        this.gateOn[k] = cycleOn(gd.toggle, 0) ? 1 : 0;
+      }
+    }
+    this.hasToggles = toggles;
 
     const dc = defDefs.length;
     this.defRange = new Float64Array(dc);
@@ -335,17 +497,27 @@ class CrowdSim implements Sim {
     this.defCd = new Float64Array(dc);
     this.defDmgStep = new Float64Array(dc);
     this.defDead = new Uint8Array(dc);
+    this.defLeftOpen = new Uint8Array(dc);
+    this.defRightOpen = new Uint8Array(dc);
+    this.hasShields = defDefs.some((d) => d.kind === 'shield');
     this.defs = defDefs.map((d, k) => {
       const tower = d.kind === 'tower';
       const igloo = d.kind === 'igloo';
+      const shield = d.kind === 'shield';
       const width =
         d.width ??
         (tower
           ? DEFENDER_DEFAULTS.towerWidth
           : igloo
             ? DEFENDER_DEFAULTS.wallWidth * 0.75
-            : DEFENDER_DEFAULTS.wallWidth);
-      const depth = tower ? width : igloo ? IGLOO_DEPTH : DEFENDER_DEFAULTS.wallDepth;
+            : shield
+              ? SHIELD_DEFAULTS.width
+              : DEFENDER_DEFAULTS.wallWidth);
+      const depth = tower ? width : igloo ? IGLOO_DEPTH : shield ? SHIELD_DEFAULTS.depth : DEFENDER_DEFAULTS.wallDepth;
+      if (shield) {
+        this.defLeftOpen[k] = sideOpen(level.lane.width, d.x, width, -1) ? 1 : 0;
+        this.defRightOpen[k] = sideOpen(level.lane.width, d.x, width, 1) ? 1 : 0;
+      }
       this.defRange[k] = tower ? (d.range ?? DEFENDER_DEFAULTS.range) : 0;
       this.defPeriod[k] = tower ? 1 / (d.fireRate ?? DEFENDER_DEFAULTS.fireRate) : 0;
       this.defDamage[k] = tower ? (d.damage ?? DEFENDER_DEFAULTS.damage) : 0;
@@ -411,6 +583,12 @@ class CrowdSim implements Sim {
     const rb = roll ? (roll.burstWeight > 0 ? roll.burstWeight : Infinity) : 0;
     const rr = roll?.maxRadius ?? 0;
     const w2 = rd > 0 || rb > 0;
+    const w3 =
+      opts !== undefined &&
+      (opts.windup !== undefined ||
+        opts.ranged !== undefined ||
+        opts.bounce !== undefined ||
+        opts.gateWalk !== undefined);
 
     if (isChamp) {
       // Champions are rare and never stacked; they only need array space.
@@ -420,6 +598,7 @@ class CrowdSim implements Sim {
           const i = this.addUnit(team, kind, jx, z, 1, hpPer, dmgPer, rad, 0);
           this.traits(i, spd, variant, br, bd);
           if (w2) this.traitsW2(i, rd, rb, rr);
+          if (w3) this.traitsW3(i, opts);
         } else this.mergeIntoNearest(team, jx, z, Infinity, 1, -1);
       }
       return;
@@ -432,6 +611,7 @@ class CrowdSim implements Sim {
         const i = this.addUnit(team, kind, jx, z, 1, hpPer, dmgPer, rad, 0);
         this.traits(i, spd, variant, br, bd);
         if (w2) this.traitsW2(i, rd, rb, rr);
+        if (w3) this.traitsW3(i, opts);
       }
     } else if (free >= 1) {
       // Fill the budget with singles, the rest rides on one stacked unit.
@@ -440,15 +620,18 @@ class CrowdSim implements Sim {
         const i = this.addUnit(team, kind, jx, z, 1, hpPer, dmgPer, rad, 0);
         this.traits(i, spd, variant, br, bd);
         if (w2) this.traitsW2(i, rd, rb, rr);
+        if (w3) this.traitsW3(i, opts);
       }
       const i = this.addUnit(team, kind, x, z, count - (free - 1), hpPer, dmgPer, rad, 0);
       this.traits(i, spd, variant, br, bd);
       if (w2) this.traitsW2(i, rd, rb, rr);
+      if (w3) this.traitsW3(i, opts);
     } else if (!this.mergeIntoNearest(team, x, z, MERGE_RADIUS, count, variant)) {
       if (this.n < this.capacity) {
         const i = this.addUnit(team, kind, x, z, count, hpPer, dmgPer, rad, 0);
         this.traits(i, spd, variant, br, bd);
         if (w2) this.traitsW2(i, rd, rb, rr);
+        if (w3) this.traitsW3(i, opts);
       } else this.mergeIntoNearest(team, x, z, Infinity, count, -1);
     }
   }
@@ -473,6 +656,41 @@ class CrowdSim implements Sim {
       this.rollMaxR[i] = maxRadius > 0 ? maxRadius : this.baseRad[i];
       this.hasRollers = true;
       this.setWeight(i, this.w[i]); // radius by the snowball rule
+    }
+  }
+
+  // Milestone 6 traits. Per-unit offsets come from a hash of the spawn counter, not rand().
+  private traitsW3(i: number, opts: SpawnOpts | undefined): void {
+    if (opts === undefined) return;
+    const seq = this.spawnSeq++;
+    const wu = opts.windup;
+    if (wu !== undefined && wu.run > 0 && wu.pause > 0) {
+      this.wRun[i] = wu.run;
+      this.wPause[i] = wu.pause;
+      this.wPhase[i] = skidHash(seq, 0x51ed) * (wu.run + wu.pause);
+      this.hasWindup = true;
+    }
+    const rg = opts.ranged;
+    if (rg !== undefined && this.team[i] === Team.Player && rg.range > 0 && rg.every > 0) {
+      this.rRange[i] = rg.range;
+      this.rEvery[i] = rg.every;
+      this.rDmg[i] = rg.damage;
+      this.rCd[i] = skidHash(seq, 0xa7c3) * rg.every;
+      this.hasRanged = true;
+    }
+    const b = opts.bounce;
+    if (b !== undefined && b.vx !== 0 && b.bounces >= 1) {
+      this.bVx[i] = b.vx;
+      this.bLeft[i] = Math.min(65535, Math.floor(b.bounces));
+      this.hasBounce = true;
+    }
+    const gw = opts.gateWalk;
+    if (gw !== undefined && this.team[i] === Team.Player && this.kind[i] === UnitKind.Champion) {
+      if (gw.seconds > 0 && gw.radius > 0) {
+        this.walkSec[i] = gw.seconds;
+        this.walkRad[i] = gw.radius;
+        this.hasWalkers = true;
+      }
     }
   }
 
@@ -506,6 +724,14 @@ class CrowdSim implements Sim {
     this.rollBurst[i] = 0;
     this.rollMaxR[i] = 0;
     this.rollPop[i] = 0;
+    this.wRun[i] = 0;
+    this.rRange[i] = 0;
+    this.bVx[i] = 0;
+    this.bLeft[i] = 0;
+    this.walkSec[i] = 0;
+    this.walkGate[i] = -1;
+    this.walkUsed[i] = 0;
+    this.retrig[i] = 0;
     if (kind === UnitKind.Champion) {
       this.w[i] = 1;
       this.weight[i] = 1;
@@ -591,15 +817,20 @@ class CrowdSim implements Sim {
       for (const e of this.pending) events.push(e);
       this.pending.length = 0;
     }
+    this.updateGates(dt, events);
     this.thawGates(dt, events);
     this.move(dt);
+    this.carry(dt, events);
     this.defenderContacts(dt);
     this.interact(events);
     this.applyPushes();
     this.iceWallContacts(dt, events);
+    this.shieldContacts(dt, events);
     this.applyGates(events);
     this.rollers(events);
+    this.sawBites(dt, events);
     this.towersFire(dt, events);
+    this.archersFire(dt, events);
     this.defenderEvents(events);
     this.baseHits(events);
     this.detonate();
@@ -620,11 +851,20 @@ class CrowdSim implements Sim {
     const hazards = ice || this.wind !== 0 || this.freezeUntil > 0;
     const decayOn = ice ? Math.exp(-ICE_DECAY * dt) : 1;
     const decayOff = ice ? Math.exp(-OFF_ICE_DECAY * dt) : 1;
+    // World 3 units that stop advancing: wind-up robots in their pause, gate walkers.
+    const stops = this.hasWindup || this.hasWalkers;
     for (let i = 0; i < this.n; i++) {
       const z = posZ[i];
       prevZ[i] = z;
       if (hazards && frozenT[i] > 0) continue;
       const on = ice && this.ice.contains(posX[i], z);
+      if (stops) {
+        if (this.walkGate[i] >= 0 && this.walkStep(i, dt)) continue;
+        if (this.wRun[i] > 0 && this.pausing(i)) {
+          if (hazards) this.drift(i, on, dt, decayOn, decayOff);
+          continue;
+        }
+      }
       if (team[i] === Team.Player) {
         const own = unitSpeed[i];
         const speed = own > 0 ? own : kind[i] === UnitKind.Champion ? SIM_TUNING.championSpeed : SIM_TUNING.mobSpeed;
@@ -647,6 +887,107 @@ class CrowdSim implements Sim {
         posZ[i] = z - speed * dt;
       }
       if (hazards) this.drift(i, on, dt, decayOn, decayOff);
+    }
+  }
+
+  // A wind-up unit stands still for the `pause` part of its run + pause cycle.
+  private pausing(i: number): boolean {
+    const run = this.wRun[i];
+    const p = run + this.wPause[i];
+    const u = (this._time + this.wPhase[i]) % p;
+    return u >= run;
+  }
+
+  // One step of a gate walk: out from the crossing point to the far post and back along
+  // the live gate line. Returns false (and ends the walk) once it is over or the gate is
+  // gone (broken or lifted), so the unit moves on normally this step.
+  private walkStep(i: number, dt: number): boolean {
+    const g = this.walkGate[i];
+    const t = this.walkT[i] + dt;
+    const sec = this.walkSec[i];
+    if (t >= sec || this.gateBroken[g] || this.gateLift[g]) {
+      this.walkGate[i] = -1;
+      return false;
+    }
+    this.walkT[i] = t;
+    const k = t / sec;
+    const tri = k < 0.5 ? 2 * k : 2 - 2 * k;
+    const from = this.walkFrom[i];
+    this.posX[i] = this.clampX(this.gateXs[g] + from + (this.walkTo[i] - from) * tri, this.radius[i]);
+    this.posZ[i] = this.gateZs[g];
+    return true;
+  }
+
+  // Conveyors, turntables and ricochet bounces (World 3): extra motion on top of move().
+  // Frozen units still ride belts and platforms; a frozen shot does not bounce.
+  private carry(dt: number, events: SimEvent[]): void {
+    const B = this.belts;
+    const T = this.tables;
+    const belts = B.count > 0;
+    const tables = T.count > 0;
+    const bounce = this.hasBounce;
+    if (!belts && !tables && !bounce) return;
+    const t = this._time;
+    const heavy = SIM_W3.heavyCarry;
+    const ps = this.beltShare;
+    if (belts) B.update(t);
+    if (tables) T.update(t, dt, 1, heavy, ps, heavy * ps);
+    this.ricochets = 0;
+    const { posX, posZ, team, kind, hp, radius, frozenT } = this;
+    const frozen = this.freezeUntil > 0;
+    const walkers = this.hasWalkers;
+    const halfLane = this.level.lane.width / 2;
+    for (let i = 0; i < this.n; i++) {
+      if (hp[i] <= DEAD_EPS || (walkers && this.walkGate[i] >= 0)) continue;
+      const player = team[i] === Team.Player;
+      const champ = kind[i] === UnitKind.Champion;
+      let x = posX[i];
+      let z = posZ[i];
+      let moved = false;
+      if (belts) {
+        const k = B.at(x, z);
+        if (k >= 0) {
+          const f = (champ ? heavy : 1) * (player ? ps : 1) * dt;
+          x += B.vx[k] * f;
+          z += B.vz[k] * f;
+          moved = true;
+        }
+      }
+      if (tables) {
+        const k = T.at(x, z);
+        if (k >= 0) {
+          const o = k * 8 + (player ? 4 : 0) + (champ ? 2 : 0);
+          const c = T.cs[o];
+          const sn = T.cs[o + 1];
+          const dx = x - T.cx[k];
+          const dz = z - T.cz[k];
+          x = T.cx[k] + dx * c - dz * sn;
+          z = T.cz[k] + dx * sn + dz * c;
+          moved = true;
+        }
+      }
+      if (bounce && this.bVx[i] !== 0 && !(frozen && frozenT[i] > 0)) {
+        const vx = this.bVx[i];
+        x += vx * dt;
+        let lim = halfLane - radius[i];
+        if (lim < 0) lim = 0;
+        if ((vx < 0 && x <= -lim) || (vx > 0 && x >= lim)) {
+          x = vx < 0 ? -lim : lim;
+          const left = this.bLeft[i] - 1;
+          this.bLeft[i] = left;
+          this.bVx[i] = left > 0 ? -vx : 0;
+          if (this.ricochets < SIM_W3.maxRicochetEvents) {
+            this.ricochets++;
+            events.push({ type: 'ricochet', x, z });
+          }
+        }
+        moved = true;
+      }
+      if (!moved) continue;
+      // Carried back past the cannon, a player unit stops at its own base line.
+      if (player && z < LAYOUT.playerBaseZ) z = LAYOUT.playerBaseZ;
+      posX[i] = this.clampX(x, radius[i]);
+      posZ[i] = z;
     }
   }
 
@@ -764,6 +1105,17 @@ class CrowdSim implements Sim {
             this.applyDefenderDamage(k, this.dmgPer[i]);
           }
           break;
+        }
+        if (d.kind === 'shield') {
+          // Mobs only dent a shield with shieldBreak; otherwise shieldContacts deflects them.
+          const sb = this.shieldBreak;
+          if (sb <= 0) continue;
+          const per = this.hpPer[i];
+          const before = d.hp;
+          this.applyDefenderDamage(k, (hp[i] / per) * sb);
+          hp[i] -= ((before - d.hp) / sb) * per;
+          if (hp[i] <= DEAD_EPS) break;
+          continue;
         }
         const before = this.defs[k].hp;
         this.applyDefenderDamage(k, hp[i]);
@@ -997,6 +1349,7 @@ class CrowdSim implements Sim {
     const zLo = W.minZ - LAYOUT.championRadius * 2.2;
     const zHi = W.maxZ + LAYOUT.championRadius * 2.2;
     const slide = ICE_WALL_SLIDE * dt;
+    const out = this.boxOut;
     this.wallHits = 0;
     for (let i = 0; i < this.n; i++) {
       if (hp[i] <= DEAD_EPS) continue;
@@ -1004,43 +1357,123 @@ class CrowdSim implements Sim {
       if (posZ[i] + r < zLo || posZ[i] - r > zHi) continue;
       for (let k = 0; k < W.count; k++) {
         const x = posX[i];
-        const dx = x - W.cx[k];
-        const dz = posZ[i] - W.cz[k];
-        const hw = W.hw[k];
-        const hd = W.hd[k];
-        const ex = hw + r;
-        const ez = hd + r;
-        const adx = dx < 0 ? -dx : dx;
-        const adz = dz < 0 ? -dz : dz;
-        if (adx >= ex || adz >= ez) continue;
-        if (adx > hw && adz > hd) {
-          const ox = adx - hw;
-          const oz = adz - hd;
-          if (ox * ox + oz * oz >= r * r) continue; // clear of the rounded corner
-        }
+        const res = pushOutOfBox(
+          x,
+          posZ[i],
+          r,
+          W.cx[k],
+          W.cz[k],
+          W.hw[k],
+          W.hd[k],
+          W.leftOpen[k] === 1,
+          W.rightOpen[k] === 1,
+          slide,
+          out,
+        );
+        if (res === BOX_CLEAR) continue;
         if (this.hasRollers && this.rollBurst[i] > 0) this.rollPop[i] = 1;
-        const near = dx < 0 ? -1 : 1;
-        let side = near;
-        if (!(side < 0 ? W.leftOpen[k] : W.rightOpen[k])) side = -side;
-        const open = side < 0 ? W.leftOpen[k] : W.rightOpen[k];
-        const outX = side === near ? ex - adx : ex + adx;
-        if (open && outX <= ez - adz) {
-          posX[i] = this.clampX(W.cx[k] + side * ex, r);
+        if (res === BOX_SIDE) {
+          posX[i] = this.clampX(out.x, r);
           this.velX[i] = 0;
           continue;
         }
-        const face = W.cz[k] + (dz < 0 ? -ez : ez);
-        posZ[i] = face;
-        if (open) posX[i] = this.clampX(x + side * slide, r);
+        posZ[i] = out.z;
+        if (res !== BOX_FACE) posX[i] = this.clampX(out.x, r);
         if (this.wallHits < MAX_ICE_WALL_EVENTS) {
           this.wallHits++;
-          events.push({ type: 'iceWallHit', id: W.ids[k], x, z: face });
+          events.push({ type: 'iceWallHit', id: W.ids[k], x, z: out.z });
+        }
+      }
+    }
+  }
+
+  // ---------- Shield walls (Milestone 6) ----------
+
+  // Player mobs that reach a live shield wall bounce off it like off an ice wall (unless
+  // mods.shieldBreak lets them dent it, see defenderContacts). Champions and enemies pass
+  // here untouched: champions are held and strike in defenderContacts, enemies own it.
+  private shieldContacts(dt: number, events: SimEvent[]): void {
+    if (!this.hasShields || this.shieldBreak > 0) return;
+    const { posX, posZ, radius, hp, team, kind } = this;
+    const zLo = this.defMinZ - LAYOUT.championRadius * 2.2;
+    const zHi = this.defMaxZ + LAYOUT.championRadius * 2.2;
+    const slide = SIM_W3.shieldSlide * dt;
+    const out = this.boxOut;
+    this.shieldHits = 0;
+    for (let i = 0; i < this.n; i++) {
+      if (team[i] !== Team.Player || kind[i] !== UnitKind.Mob || hp[i] <= DEAD_EPS) continue;
+      if (this.hasRollers && this.rollBurst[i] > 0) continue; // a snowball bursts at it instead
+      const r = radius[i];
+      if (posZ[i] + r < zLo || posZ[i] - r > zHi) continue;
+      for (let k = 0; k < this.defs.length; k++) {
+        const d = this.defs[k];
+        if (d.kind !== 'shield' || d.hp <= 0) continue;
+        const x = posX[i];
+        const res = pushOutOfBox(
+          x,
+          posZ[i],
+          r,
+          d.x,
+          d.z,
+          d.width / 2,
+          d.depth / 2,
+          this.defLeftOpen[k] === 1,
+          this.defRightOpen[k] === 1,
+          slide,
+          out,
+        );
+        if (res === BOX_CLEAR) continue;
+        if (res === BOX_SIDE) {
+          posX[i] = this.clampX(out.x, r);
+          this.velX[i] = 0;
+        } else {
+          posZ[i] = out.z;
+          if (res !== BOX_FACE) posX[i] = this.clampX(out.x, r);
+        }
+        if (this.shieldHits < SIM_W3.maxShieldEvents) {
+          this.shieldHits++;
+          events.push({ type: 'shieldBlock', id: d.id, x, z: out.z });
         }
       }
     }
   }
 
   // ---------- Gates ----------
+
+  // Live gate spots for this step (glides advance first) and toggle flips. On a level
+  // without moved gates gateXs is exactly gateX(gate, t), as it always was.
+  private updateGates(dt: number, events: SimEvent[]): void {
+    const gates = this.level.gates;
+    const t = this._time;
+    for (let g = 0; g < gates.length; g++) {
+      const gate = gates[g];
+      if (this.anyShift && this.gateShift[g]) {
+        let bx = this.baseGX[g];
+        let bz = this.baseGZ[g];
+        if (this.glideSec[g] > 0) {
+          const e = this.glideT[g] + dt;
+          if (e >= this.glideSec[g]) {
+            this.glideSec[g] = 0;
+            this.gateLift[g] = 0;
+          } else {
+            this.glideT[g] = e;
+            const k = gateGlide(e, this.glideSec[g]);
+            bx = this.fromGX[g] + (bx - this.fromGX[g]) * k;
+            bz = this.fromGZ[g] + (bz - this.fromGZ[g]) * k;
+          }
+        }
+        this.gateXs[g] = bx + (gateX(gate, t) - gate.x);
+        this.gateZs[g] = bz;
+      } else this.gateXs[g] = gateX(gate, t);
+      if (this.hasToggles && gate.toggle) {
+        const on = cycleOn(gate.toggle, t) ? 1 : 0;
+        if (on !== this.gateOn[g]) {
+          this.gateOn[g] = on;
+          events.push({ type: 'gateToggled', gateId: gate.id, x: this.gateXs[g], z: this.gateZs[g], on: on === 1 });
+        }
+      }
+    }
+  }
 
   // Player mobs crossing a gate line inside its width get the gate's op once. A frozen
   // gate gives nothing and player units (champions too) reaching it chip its ice instead.
@@ -1050,48 +1483,60 @@ class CrowdSim implements Sim {
     if (gc === 0) return;
     const t = this._time;
     for (let g = 0; g < gc; g++) {
-      this.gateXs[g] = gateX(gates[g], t);
       this.gateAdded[g] = 0;
       this.gateHits[g] = 0;
       this.gateSumX[g] = 0;
     }
     const n = this.n; // clones appended below are not re-tested this step
     const { posX, posZ, prevZ, team, kind, hp, passed } = this;
+    const lifts = this.anyShift;
+    const toggles = this.hasToggles;
+    const walkers = this.hasWalkers;
     for (let i = 0; i < n; i++) {
       if (team[i] !== Team.Player) continue;
       const mob = kind[i] === UnitKind.Mob;
-      if (!mob && this.frozenGates === 0) continue;
+      // A gate walker that has not walked yet is tested like a mob.
+      const walker = walkers && !mob && this.walkSec[i] > 0 && !this.walkUsed[i];
+      if (!mob && this.frozenGates === 0 && !walker) continue;
       const z = posZ[i];
       const pz = prevZ[i];
       for (let g = 0; g < gc; g++) {
         if (hp[i] <= DEAD_EPS) break;
         if (this.gateBroken[g] || (passed[i] >>> g) & 1) continue;
         const gate = gates[g];
-        if (!(pz < gate.z && gate.z <= z)) continue;
+        const gz = this.gateZs[g];
+        if (!(pz < gz && gz <= z)) continue;
         if (Math.abs(posX[i] - this.gateXs[g]) > gate.width / 2) continue;
+        if (lifts && this.gateLift[g]) continue; // gliding: nothing to cross
         if (this.frozenGates > 0 && this.gateIceHp[g] > 0 && !this.hitIce(i, g, events)) {
           if (this.rollPop[i]) break; // a snowball stopped at the ice
           continue;
         }
-        if (mob) this.crossGate(i, g, events);
+        const eff = toggles ? gateEffectAt(gate, t) : gate;
+        if (eff === null) continue; // shutter down: no effect, the gate stays unpassed
+        if (mob) this.crossGate(i, g, eff.op, eff.value, events);
+        else if (walker) this.startWalk(i, g, eff.op, events);
       }
     }
+    if (walkers) this.gateWalks(events);
     for (let g = 0; g < gc; g++) {
       const hits = this.gateHits[g];
       if (hits === 0) continue;
       const gate = gates[g];
       const x = this.gateSumX[g] / hits;
+      const gz = this.gateZs[g];
       if (gate.uses === undefined) {
-        events.push({ type: 'gate', gateId: gate.id, x, z: gate.z, added: this.gateAdded[g] });
+        events.push({ type: 'gate', gateId: gate.id, x, z: gz, added: this.gateAdded[g] });
         continue;
       }
       const usesLeft = Math.max(0, Math.floor(this.gateUses[g]));
-      events.push({ type: 'gate', gateId: gate.id, x, z: gate.z, added: this.gateAdded[g], usesLeft });
-      if (this.gateBroken[g]) events.push({ type: 'gateBroken', gateId: gate.id, x: this.gateXs[g], z: gate.z });
+      events.push({ type: 'gate', gateId: gate.id, x, z: gz, added: this.gateAdded[g], usesLeft });
+      if (this.gateBroken[g]) events.push({ type: 'gateBroken', gateId: gate.id, x: this.gateXs[g], z: gz });
     }
   }
 
-  private crossGate(i: number, g: number, events: SimEvent[]): void {
+  // Unit i applies (op, value), the gate's effect right now, once.
+  private crossGate(i: number, g: number, op: GateOp, v: number, events: SimEvent[]): void {
     const gate = this.level.gates[g];
     this.passed[i] = (this.passed[i] | (1 << g)) >>> 0;
     this.gateHits[g]++;
@@ -1113,8 +1558,7 @@ class CrowdSim implements Sim {
       this.gateCross[g] += w;
       if (this.gateCross[g] >= fz.after * this.freezeAfter) this.freezeNow(g, fz.duration, fz.hp, events);
     }
-    const v = gate.value;
-    switch (gate.op) {
+    switch (op) {
       case 'mul':
         this.burst(i, g, Math.round((v - 1) * w));
         break;
@@ -1152,16 +1596,113 @@ class CrowdSim implements Sim {
     const half = Math.min(0.45 * gate.width, BURST_MAX_HALF);
     const cx = this.posX[i];
     const mask = this.passed[i];
+    const gz = this.gateZs[g];
+    const w3 = this.hasRanged || this.hasBounce || this.hasWindup || this.hasWalkers;
     for (let k = 0; k < singles; k++) {
       const x = cx + (this.rand() * 2 - 1) * half;
-      const z = gate.z + this.rand() * BURST_DEPTH;
+      const z = gz + this.rand() * BURST_DEPTH;
       const j = this.addUnit(Team.Player, UnitKind.Mob, x, z, 1, this.hpPer[i], this.dmgPer[i], this.baseRad[i], mask);
       this.traits(j, this.speed[i], this.variant[i], this.blastR[i], this.blastD[i]);
+      if (w3) this.inheritW3(i, j);
     }
     const rest = added - singles;
     if (rest > 0) {
       this.hp[i] += rest * this.hpPer[i];
       this.setWeight(i, this.w[i] + rest);
+    }
+  }
+
+  // A gate clone j takes its parent i's World 3 traits: the archer's bow (fresh hashed
+  // cooldown), the ricochet's current sideways speed and bounces left, the wind-up walk,
+  // and the parent's re-trigger mask (plus the gate being re-triggered, if any).
+  private inheritW3(i: number, j: number): void {
+    const seq = this.spawnSeq++;
+    if (this.rRange[i] > 0) {
+      this.rRange[j] = this.rRange[i];
+      this.rEvery[j] = this.rEvery[i];
+      this.rDmg[j] = this.rDmg[i];
+      this.rCd[j] = skidHash(seq, 0xa7c3) * this.rEvery[i];
+    }
+    this.bVx[j] = this.bVx[i];
+    this.bLeft[j] = this.bLeft[i];
+    if (this.wRun[i] > 0) {
+      this.wRun[j] = this.wRun[i];
+      this.wPause[j] = this.wPause[i];
+      this.wPhase[j] = this.wPhase[i];
+    }
+    this.retrig[j] = (this.retrig[i] | this.cloneRetrig) >>> 0;
+  }
+
+  // ---------- Gate walk (Milestone 6, Wind-up Robot) ----------
+
+  // Champion i crossed gate g giving `op`: on a good gate (mul or add) it starts its one walk.
+  private startWalk(i: number, g: number, op: GateOp, events: SimEvent[]): void {
+    if (op !== 'mul' && op !== 'add') return;
+    const gate = this.level.gates[g];
+    const gx = this.gateXs[g];
+    const gz = this.gateZs[g];
+    const off = this.posX[i] - gx;
+    this.walkUsed[i] = 1;
+    this.walkGate[i] = g;
+    this.walkT[i] = 0;
+    this.walkFrom[i] = off;
+    this.walkTo[i] = off >= 0 ? -gate.width / 2 : gate.width / 2;
+    this.posZ[i] = gz;
+    events.push({ type: 'gateWalk', gateId: gate.id, x: this.posX[i], z: gz, seconds: this.walkSec[i] });
+  }
+
+  // Every walking champion re-triggers its gate's current effect once for each player mob
+  // within its radius that is past the line, passed the gate and was not re-triggered by
+  // it before. Counts toward uses and freeze like a crossing; clones count as re-triggered.
+  private gateWalks(events: SimEvent[]): void {
+    const { grid, posX, posZ, team, kind, hp, passed, retrig } = this;
+    const head = grid.head;
+    const next = grid.next;
+    const cols = grid.cols;
+    const rows = grid.rows;
+    const t = this._time;
+    const n = this.n;
+    for (let i = 0; i < n; i++) {
+      const g = this.walkGate[i];
+      if (g < 0 || hp[i] <= DEAD_EPS) continue;
+      if (this.gateBroken[g] || this.gateLift[g] || this.gateIceHp[g] > 0) continue;
+      const gate = this.level.gates[g];
+      const eff = gateEffectAt(gate, t);
+      if (eff === null) continue;
+      const bit = (1 << g) >>> 0;
+      const gz = this.gateZs[g];
+      const R = this.walkRad[i];
+      const R2 = R * R;
+      const x = posX[i];
+      const z = posZ[i];
+      const kc = Math.ceil((R + 2 * MAX_PUSH) / grid.cellSize);
+      const cx = grid.cellX(x);
+      const cz = grid.cellZ(z);
+      const x0 = cx - kc < 0 ? 0 : cx - kc;
+      const x1 = cx + kc >= cols ? cols - 1 : cx + kc;
+      const z0 = cz - kc < 0 ? 0 : cz - kc;
+      const z1 = cz + kc >= rows ? rows - 1 : cz + kc;
+      let done = false;
+      for (let gzc = z0; gzc <= z1 && !done; gzc++) {
+        const rowBase = gzc * cols;
+        for (let gxc = x0; gxc <= x1 && !done; gxc++) {
+          for (let j = head[rowBase + gxc]; j >= 0; j = next[j]) {
+            if (team[j] !== Team.Player || kind[j] !== UnitKind.Mob || hp[j] <= DEAD_EPS) continue;
+            if (!((passed[j] >>> g) & 1) || (retrig[j] >>> g) & 1 || posZ[j] < gz) continue;
+            const dx = posX[j] - x;
+            const dz = posZ[j] - z;
+            if (dx * dx + dz * dz > R2) continue;
+            retrig[j] = (retrig[j] | bit) >>> 0;
+            this.cloneRetrig = bit;
+            this.crossGate(j, g, eff.op, eff.value, events);
+            this.cloneRetrig = 0;
+            if (this.gateBroken[g] || this.gateIceHp[g] > 0) {
+              done = true;
+              break;
+            }
+          }
+        }
+      }
     }
   }
 
@@ -1196,7 +1737,7 @@ class CrowdSim implements Sim {
         type: 'gateChipped',
         gateId: gate.id,
         x: this.gateXs[g],
-        z: gate.z,
+        z: this.gateZs[g],
         hp: this.gateIceHp[g],
         maxHp: this.gateIceMax[g],
       });
@@ -1211,7 +1752,7 @@ class CrowdSim implements Sim {
     this.gateIceMax[g] = hp;
     this.gateFreezeT[g] = seconds;
     this.gateCross[g] = 0;
-    events.push({ type: 'gateFrozen', gateId: gate.id, x: gateX(gate, this._time), z: gate.z, duration: seconds });
+    events.push({ type: 'gateFrozen', gateId: gate.id, x: this.gateXs[g], z: this.gateZs[g], duration: seconds });
   }
 
   private thaw(g: number, chipped: boolean, events: SimEvent[]): void {
@@ -1220,7 +1761,7 @@ class CrowdSim implements Sim {
     this.gateFreezeT[g] = 0;
     this.gateCross[g] = 0;
     this.frozenGates--;
-    events.push({ type: 'gateThawed', gateId: gate.id, x: gateX(gate, this._time), z: gate.z, chipped });
+    events.push({ type: 'gateThawed', gateId: gate.id, x: this.gateXs[g], z: this.gateZs[g], chipped });
   }
 
   // Frozen gates melt on their own at thawRate.
@@ -1363,6 +1904,167 @@ class CrowdSim implements Sim {
     this.rollBurst[to] = this.rollBurst[from];
     this.rollMaxR[to] = this.rollMaxR[from];
     this.rollPop[to] = this.rollPop[from];
+    this.wRun[to] = this.wRun[from];
+    this.wPause[to] = this.wPause[from];
+    this.wPhase[to] = this.wPhase[from];
+    this.rRange[to] = this.rRange[from];
+    this.rEvery[to] = this.rEvery[from];
+    this.rDmg[to] = this.rDmg[from];
+    this.rCd[to] = this.rCd[from];
+    this.bVx[to] = this.bVx[from];
+    this.bLeft[to] = this.bLeft[from];
+    this.walkSec[to] = this.walkSec[from];
+    this.walkRad[to] = this.walkRad[from];
+    this.walkGate[to] = this.walkGate[from];
+    this.walkT[to] = this.walkT[from];
+    this.walkFrom[to] = this.walkFrom[from];
+    this.walkTo[to] = this.walkTo[from];
+    this.walkUsed[to] = this.walkUsed[from];
+    this.retrig[to] = this.retrig[from];
+  }
+
+  // ---------- Saws and archers (Milestone 6) ----------
+
+  // Each raised saw spends up to bite * dt weight on the units of both teams overlapping
+  // it, nearest first (a champion's weight is its hp). A player unit takes sawShare of
+  // what it soaks. Lowers hp only; compact() and the usual death bookkeeping do the rest.
+  private sawBites(dt: number, events: SimEvent[]): void {
+    const S = this.saws;
+    if (S.count === 0) return;
+    const { posX, posZ, hp, team, kind, radius, sawCand, sawD2 } = this;
+    const t = this._time;
+    const pos = this.tmpPos;
+    for (let k = 0; k < S.count; k++) {
+      const s = S.defs[k];
+      if (!sawUp(s, t)) continue;
+      sawPos(s, t, pos);
+      let c = 0;
+      for (let i = 0; i < this.n; i++) {
+        if (hp[i] <= DEAD_EPS) continue;
+        const dx = posX[i] - pos.x;
+        const dz = posZ[i] - pos.z;
+        const rs = s.radius + radius[i];
+        const d2 = dx * dx + dz * dz;
+        if (d2 >= rs * rs) continue;
+        // Insertion keeps the victims nearest first (ties in index order).
+        let m = c++;
+        while (m > 0 && sawD2[m - 1] > d2) {
+          sawCand[m] = sawCand[m - 1];
+          sawD2[m] = sawD2[m - 1];
+          m--;
+        }
+        sawCand[m] = i;
+        sawD2[m] = d2;
+      }
+      let left = S.bite[k] * dt;
+      let removed = 0;
+      for (let m = 0; m < c && left > DEAD_EPS; m++) {
+        const j = sawCand[m];
+        const share = team[j] === Team.Player ? this.sawShare : 1;
+        if (share <= 0) continue;
+        const per = kind[j] === UnitKind.Champion ? 1 : this.hpPer[j];
+        const soak = hp[j] / per / share; // bite this unit can absorb before it dies
+        const take = soak < left ? soak : left;
+        hp[j] -= take * share * per;
+        left -= take;
+        removed += take * share;
+      }
+      if (removed > 0) events.push({ type: 'sawHit', id: s.id, x: pos.x, z: pos.z, weight: removed });
+    }
+  }
+
+  // Every ready archer shoots the nearest enemy unit or non-shield defender within range
+  // and not behind it (dz > -1), removing damage x its weight. Grid query, no allocation.
+  private archersFire(dt: number, events: SimEvent[]): void {
+    if (!this.hasRanged) return;
+    const { grid, posX, posZ, team, kind, hp, rCd } = this;
+    const head = grid.head;
+    const next = grid.next;
+    const cols = grid.cols;
+    const frozen = this.freezeUntil > 0;
+    const dc = this.defs.length;
+    this.arrows = 0;
+    for (let i = 0; i < this.n; i++) {
+      const range = this.rRange[i];
+      if (range <= 0 || hp[i] <= DEAD_EPS || (frozen && this.frozenT[i] > 0)) continue;
+      const cd = rCd[i] - dt;
+      if (cd > 0) {
+        rCd[i] = cd;
+        continue;
+      }
+      const x = posX[i];
+      const z = posZ[i];
+      const kc = Math.ceil(range / grid.cellSize);
+      const cx = grid.cellX(x);
+      const x0 = cx - kc < 0 ? 0 : cx - kc;
+      const x1 = cx + kc >= cols ? cols - 1 : cx + kc;
+      const z0 = grid.cellZ(z - 1);
+      const z1 = grid.cellZ(z + range);
+      let best = -1;
+      let bestD2 = range * range;
+      for (let gz = z0; gz <= z1; gz++) {
+        const rowBase = gz * cols;
+        for (let gx = x0; gx <= x1; gx++) {
+          for (let j = head[rowBase + gx]; j >= 0; j = next[j]) {
+            if (team[j] !== Team.Enemy || hp[j] <= DEAD_EPS) continue;
+            const dz = posZ[j] - z;
+            if (dz <= -1) continue;
+            const dx = posX[j] - x;
+            const d2 = dx * dx + dz * dz;
+            if (d2 <= bestD2) {
+              bestD2 = d2;
+              best = j;
+            }
+          }
+        }
+      }
+      let bestDef = -1;
+      for (let k = 0; k < dc; k++) {
+        const d = this.defs[k];
+        if (d.kind === 'shield' || d.hp <= 0 || d.z - z <= -1) continue;
+        // Gap from the archer to the footprint: a disc for towers, a box otherwise.
+        const dx = d.x - x;
+        const dz = d.z - z;
+        let g2: number;
+        if (d.kind === 'tower') {
+          const gap = Math.sqrt(dx * dx + dz * dz) - d.width / 2;
+          g2 = gap > 0 ? gap * gap : 0;
+        } else {
+          const ax = dx < 0 ? -dx : dx;
+          const az = dz < 0 ? -dz : dz;
+          const ox = ax > d.width / 2 ? ax - d.width / 2 : 0;
+          const oz = az > d.depth / 2 ? az - d.depth / 2 : 0;
+          g2 = ox * ox + oz * oz;
+        }
+        if (g2 < bestD2) {
+          bestD2 = g2;
+          bestDef = k;
+        }
+      }
+      if (best < 0 && bestDef < 0) {
+        rCd[i] = SIM_W3.archerRetry;
+        continue;
+      }
+      const dmg = this.rDmg[i] * this.w[i];
+      let tx: number;
+      let tz: number;
+      if (bestDef >= 0) {
+        const d = this.defs[bestDef];
+        this.applyDefenderDamage(bestDef, dmg);
+        tx = d.x;
+        tz = d.z;
+      } else {
+        hp[best] -= kind[best] === UnitKind.Champion ? dmg : dmg * this.hpPer[best];
+        tx = posX[best];
+        tz = posZ[best];
+      }
+      const nc = cd + this.rEvery[i];
+      rCd[i] = nc > 0 ? nc : 0;
+      if (this.arrows < SIM_W3.maxArrowEvents) {
+        this.arrows++;
+        events.push({ type: 'arrow', x, z, tx, tz });
+      }
+    }
   }
 
   // ---------- Blasts and area damage (Milestone 4) ----------
@@ -1435,7 +2137,7 @@ class CrowdSim implements Sim {
 
   damageDefender(index: number, amount: number): void {
     const d = this.defs[index];
-    if (d && d.hp > 0 && amount > 0) this.applyDefenderDamage(index, amount);
+    if (d && d.kind !== 'shield' && d.hp > 0 && amount > 0) this.applyDefenderDamage(index, amount);
   }
 
   // ---------- Milestone 5 controls ----------
@@ -1452,6 +2154,46 @@ class CrowdSim implements Sim {
 
   gateIce(index: number): number {
     return this.gateIceHp[index] ?? 0;
+  }
+
+  // ---------- Milestone 6 controls ----------
+
+  moveGate(index: number, x: number, z: number, seconds: number): void {
+    if (index < 0 || index >= this.gateXs.length) return;
+    if (!Number.isFinite(x) || !Number.isFinite(z)) return;
+    const from = this.tmpPos;
+    this.gateSpot(index, from);
+    const fromX = from.x;
+    const fromZ = from.z;
+    this.fromGX[index] = fromX;
+    this.fromGZ[index] = fromZ;
+    this.baseGX[index] = x;
+    this.baseGZ[index] = z;
+    this.gateShift[index] = 1;
+    this.anyShift = true;
+    const glide = seconds > 0 ? seconds : 0;
+    this.glideT[index] = 0;
+    this.glideSec[index] = glide;
+    this.gateLift[index] = glide > 0 ? 1 : 0;
+    const gate = this.level.gates[index];
+    this.pending.push({ type: 'gateMoved', gateId: gate.id, fromX, fromZ, x, z, seconds: glide });
+  }
+
+  gateSpot(index: number, out: { x: number; z: number }): void {
+    if (index < 0 || index >= this.gateXs.length) return;
+    let x = this.baseGX[index];
+    let z = this.baseGZ[index];
+    if (this.glideSec[index] > 0) {
+      const k = gateGlide(this.glideT[index], this.glideSec[index]);
+      x = this.fromGX[index] + (x - this.fromGX[index]) * k;
+      z = this.fromGZ[index] + (z - this.fromGZ[index]) * k;
+    }
+    out.x = x;
+    out.z = z;
+  }
+
+  gateLifted(index: number): boolean {
+    return this.gateLift[index] === 1;
   }
 
   freezeUnits(team: Team, x: number, z: number, radius: number, seconds: number): number {

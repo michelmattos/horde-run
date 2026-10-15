@@ -80,7 +80,8 @@ export type SimEvent =
   | { type: 'defenderDestroyed'; id: string; kind: DefenderKind; x: number; z: number }
   | { type: 'baseMiss'; x: number; z: number; count: number }
   | { type: 'bossPhase'; phase: number; x: number; z: number }
-  | SimEventW2; // Milestone 5 (World 2) events, declared below
+  | SimEventW2 // Milestone 5 (World 2) events, declared below
+  | SimEventW3; // Milestone 6 (World 3) events, declared below
 
 export interface BattleState {
   time: number;
@@ -138,7 +139,7 @@ export interface GateDef {
 }
 
 // Enemy structures on the lane. Towers shoot the nearest player unit in range; walls only soak.
-export type DefenderKind = 'tower' | 'wall' | 'igloo'; // igloo: Milestone 5, see IglooSpawnDef
+export type DefenderKind = 'tower' | 'wall' | 'igloo' | 'shield'; // igloo: Milestone 5, see IglooSpawnDef; shield: Milestone 6
 export interface DefenderDef {
   id: string;
   kind: DefenderKind;
@@ -350,7 +351,7 @@ export interface RunState {
 
 // Which room a level is played in. Absent = 'bedroom' (World 1). The renderer loads only
 // the current theme's assets and disposes them when the theme changes.
-export type WorldTheme = 'bedroom' | 'freezer';
+export type WorldTheme = 'bedroom' | 'freezer' | 'workshop'; // workshop: Milestone 6
 
 // Render variant bytes the sim carries per unit (SimViewM4.variant). 0-3 and 8-10 are the
 // Milestone 4 values; the rest are new in World 2. Enemy mobs default to 0.
@@ -361,15 +362,18 @@ export const UNIT_VARIANT = {
   bomber: 3,
   giant: 4, // player heavy unit: slow, very tough, carries riders
   snowball: 5, // Snowball Launcher shot: a rolling, growing player unit
+  archer: 6, // Milestone 6: player ranged mob (shoots enemies ahead of it)
   sarge: 8,
   tank: 9,
   drummer: 10,
+  windup: 11, // Milestone 6: Wind-up Robot champion (walks a gate's line and re-triggers it)
   snowman: 16, // enemy: tanky and slow
   penguin: 17, // enemy: wind-up penguin, fast and weak
+  robot: 18, // Milestone 6 enemy: wind-up robot, walks in stop-and-go bursts
 } as const;
 
 // Enemy unit types a wave, the trickle or an igloo can send. 'mob' is the World 1 soldier.
-export type EnemyUnit = 'mob' | 'snowman' | 'penguin';
+export type EnemyUnit = 'mob' | 'snowman' | 'penguin' | 'robot'; // robot: Milestone 6
 
 // Freezing gate: after `after` crossing weight it ices over for `duration` seconds. While
 // frozen it gives no effect and blocks player units like a wall of `hp` ice: units that
@@ -451,7 +455,7 @@ export interface BossPhaseDef {
   gusts?: GustDef; // `at` counts from the phase start
 }
 export interface BossDef {
-  model?: 'tinGeneral' | 'snowGlobeGiant'; // absent = 'tinGeneral'
+  model?: 'tinGeneral' | 'snowGlobeGiant' | 'jackInTheBox'; // absent = 'tinGeneral'; jackInTheBox: Milestone 6
 }
 
 // A world may be locked behind the stars earned in an earlier world.
@@ -491,4 +495,175 @@ export type SimEventW2 =
 export type UpgradeIconW2 = 'gate-frost' | 'gate-rink' | 'mob-skates' | 'relic-cocoa' | 'champ-avalanche';
 export interface UpgradeDef {
   iconW2?: UpgradeIconW2;
+}
+
+// ---------- Milestone 6 additions: World 3, Clockwork Workshop (append-only) ----------
+// Concept §9.1 (M6 row). Everything is optional: a World 1 or World 2 level, a save and an
+// Expedition run without these fields behave exactly as before (no extra rand() calls).
+// Timing helpers live here so the sim, the battle layer and the renderer agree exactly.
+
+// A repeating clock: `on` seconds on, then `off` seconds off; `offset` shifts the cycle
+// (t = 0 is `offset` seconds into it, so offset = on starts the clock off).
+export interface CycleDef {
+  on: number;
+  off: number;
+  offset?: number;
+}
+export function cycleOn(c: CycleDef, t: number): boolean {
+  const p = c.on + c.off;
+  if (p <= 0) return true;
+  const u = (((t + (c.offset ?? 0)) % p) + p) % p;
+  return u < c.on;
+}
+// Seconds until cycleOn(c, t) next changes.
+export function cycleFlipIn(c: CycleDef, t: number): number {
+  const p = c.on + c.off;
+  if (p <= 0) return Infinity;
+  const u = (((t + (c.offset ?? 0)) % p) + p) % p;
+  return u < c.on ? c.on - u : p - u;
+}
+
+// Timed toggling gate: while its clock is on the gate applies its own op/value; while it
+// is off it applies `alt` when given (e.g. x3 flips to -10), otherwise nothing at all
+// (the shutter is down: units walk through unchanged and keep the gate unpassed).
+export interface GateToggleDef extends CycleDef {
+  alt?: { op: GateOp; value: number };
+}
+export interface GateDef {
+  toggle?: GateToggleDef;
+}
+// The effect a gate gives at time t: the gate itself, its toggle's alt, or null (closed).
+// Never allocates.
+export function gateEffectAt(g: GateDef, t: number): { op: GateOp; value: number } | null {
+  if (!g.toggle || cycleOn(g.toggle, t)) return g;
+  return g.toggle.alt ?? null;
+}
+// The sign text at time t ('' while a toggling gate without alt is closed).
+export function gateLabelAt(g: GateDef, t: number): string {
+  const e = gateEffectAt(g, t);
+  return e ? gateLabel({ ...g, op: e.op, value: e.value }) : '';
+}
+
+// Conveyor belt: a rectangle of the lane (x centre, width; from z to z + length) that
+// carries every unit whose centre is on it at (vx, vz) world units/s on top of its own
+// movement (champions and heavies at half). `flip`: the belt reverses every `flip` s.
+export interface ConveyorDef {
+  id: string;
+  x: number;
+  z: number;
+  width: number;
+  length: number;
+  vx: number;
+  vz: number;
+  flip?: number;
+}
+// +1 or -1: the belt's direction multiplier at time t.
+export function conveyorDir(c: ConveyorDef, t: number): 1 | -1 {
+  if (!c.flip || c.flip <= 0) return 1;
+  return Math.floor(t / c.flip) % 2 === 0 ? 1 : -1;
+}
+
+// Rotating platform (a turntable): units whose centre is within `radius` of (x, z) are
+// carried around the centre by spin * dt radians per step (champions and heavies at half):
+// dx' = dx cos a - dz sin a, dz' = dx sin a + dz cos a (dx, dz from the centre), so a
+// positive spin turns +x toward +z. `flip`: the spin reverses every `flip` s.
+export interface TurntableDef {
+  id: string;
+  x: number;
+  z: number;
+  radius: number;
+  spin: number; // rad/s
+  flip?: number;
+}
+export function turntableSpin(p: TurntableDef, t: number): number {
+  if (!p.flip || p.flip <= 0) return p.spin;
+  return Math.floor(t / p.flip) % 2 === 0 ? p.spin : -p.spin;
+}
+
+// Saw blade: hurts units of BOTH teams whose disc overlaps it, removing up to `bite`
+// weight per second (champions lose that much hp). It glides between (x, z) and
+// (x + path.dx, z + path.dz) when `path` is set, and while `cycle` is off it is sunk in
+// its slot and harmless (absent = always up).
+export interface SawDef {
+  id: string;
+  x: number;
+  z: number;
+  radius: number;
+  bite?: number; // default SAW_DEFAULTS.bite
+  path?: { dx: number; dz: number; period: number };
+  cycle?: CycleDef;
+}
+export const SAW_DEFAULTS = { bite: 40 } as const;
+// Writes the saw centre at time t into `out` (starts at (x, z), cosine ease along the path).
+export function sawPos(s: SawDef, t: number, out: { x: number; z: number }): void {
+  if (!s.path || s.path.period <= 0) {
+    out.x = s.x;
+    out.z = s.z;
+    return;
+  }
+  const k = 0.5 - 0.5 * Math.cos((2 * Math.PI * t) / s.path.period);
+  out.x = s.x + s.path.dx * k;
+  out.z = s.z + s.path.dz * k;
+}
+export function sawUp(s: SawDef, t: number): boolean {
+  return !s.cycle || cycleOn(s.cycle, t);
+}
+
+// Shield wall (DefenderKind 'shield'): a riveted tin wall only champion-kind units
+// (champions, knights, tanks, giants, the Wind-up Robot) can damage. Player mobs that
+// reach it do no damage and are pushed out sideways like at an ice wall (archer arrows
+// and ultimates do not hurt it either), unless mods.shieldBreak is set. Enemy units walk
+// through it (it is their wall). Width defaults below; depth is fixed.
+export const SHIELD_DEFAULTS = { width: 4, depth: 0.8 } as const;
+
+export interface LevelDef {
+  conveyors?: ConveyorDef[];
+  turntables?: TurntableDef[];
+  saws?: SawDef[];
+}
+
+// Jack-in-the-Box (BossDef.model 'jackInTheBox'): every `every` s of a phase with
+// `shuffle` it cranks for `warn` s (telegraph) and then rearranges the gates: the battle
+// layer picks a new spot for each gate (a seeded permutation of the gate spots) and they
+// glide there over `glide` s (sim.moveGate; reported as gateMoved).
+export interface BossPhaseDef {
+  shuffle?: { every: number; warn: number; glide: number };
+}
+// Glide progress 0..1 of a moved gate `elapsed` s into a `seconds` long glide (smoothstep).
+// A moved gate's centre is from + (to - from) * gateGlide(...), plus its own move offset
+// (gateX(g, t) - g.x) on top of the x.
+export function gateGlide(elapsed: number, seconds: number): number {
+  if (seconds <= 0 || elapsed >= seconds) return 1;
+  if (elapsed <= 0) return 0;
+  const k = elapsed / seconds;
+  return k * k * (3 - 2 * k);
+}
+
+export interface BattleState {
+  // Jack-in-the-Box only: warn 0..1 telegraph progress of the coming shuffle (1 = gates
+  // move now); active while gates are gliding.
+  shuffle?: { warn: number; active: boolean };
+}
+
+// Expedition rule changes for the World 3 upgrades (applied by the sim and battle layers).
+export interface BattleMods {
+  beltGrip?: number; // 0..1: share of conveyor and turntable push your units shrug off (default 0)
+  sawGuard?: number; // 0..1: share of saw damage your units ignore (default 0)
+  shieldBreak?: number; // damage per weight your mobs deal to shield walls (default 0: champions only)
+  ricochetEvery?: number; // every Nth cannon shot ricochets off the lane walls (>= 2; absent = never)
+}
+
+export type SimEventW3 =
+  | { type: 'gateToggled'; gateId: string; x: number; z: number; on: boolean }
+  | { type: 'gateMoved'; gateId: string; fromX: number; fromZ: number; x: number; z: number; seconds: number }
+  | { type: 'gateWalk'; gateId: string; x: number; z: number; seconds: number } // Wind-up Robot starts walking a gate
+  | { type: 'sawHit'; id: string; x: number; z: number; weight: number } // at most one per saw per step
+  | { type: 'shieldBlock'; id: string; x: number; z: number } // mobs bounced off a shield wall (capped per step)
+  | { type: 'arrow'; x: number; z: number; tx: number; tz: number } // an archer shot (capped per step)
+  | { type: 'ricochet'; x: number; z: number }; // a Gear Gun shot bounced off a lane wall (capped per step)
+
+// Icons of the five World 3 Expedition upgrades (same scheme as UpgradeIconW2).
+export type UpgradeIconW3 = 'gate-clock' | 'mob-boots' | 'relic-sawguard' | 'champ-crowbar' | 'cannon-bank';
+export interface UpgradeDef {
+  iconW3?: UpgradeIconW3;
 }

@@ -70,7 +70,8 @@ test('the freezer layouts bring freezing gates, a fork with an ice-wall divider 
   );
   for (const l of BATTLES) {
     if (l.theme !== 'freezer') {
-      assert.equal(l.ice ?? l.iceWalls ?? l.trickleMix, undefined, `${l.id}: World 1 layouts stay as they were`);
+      if (l.theme === undefined)
+        assert.equal(l.ice ?? l.iceWalls ?? l.trickleMix, undefined, `${l.id}: World 1 layouts stay as they were`);
       continue;
     }
     // Forks: gates sharing an id stand on one z line, apart, with a divider between them.
@@ -151,8 +152,8 @@ test('with each World 2 upgrade owned, every generated battle and both bosses st
   }
 });
 
-test('the run boss is the Tin General or the Snow Globe Giant, picked by the seed', () => {
-  const tally = { tinGeneral: 0, snowGlobeGiant: 0 };
+test('the run boss is the Tin General, the Snow Globe Giant or the Jack-in-the-Box, picked by the seed', () => {
+  const tally = { tinGeneral: 0, snowGlobeGiant: 0, jackInTheBox: 0 };
   for (let k = 0; k < 400; k++) {
     const seed = (k * 2654435761) >>> 0;
     const model = runBossModel(seed);
@@ -161,7 +162,10 @@ test('the run boss is the Tin General or the Snow Globe Giant, picked by the see
     const boss = generateRunBattle({ seed, kind: 'boss', index: 4 });
     assert.equal(boss.boss?.model ?? 'tinGeneral', model);
   }
-  assert.ok(tally.tinGeneral > 140 && tally.snowGlobeGiant > 140, JSON.stringify(tally));
+  assert.ok(
+    Object.values(tally).every((n) => n > 100),
+    JSON.stringify(tally),
+  );
 });
 
 test('the Snow Globe Giant: freezer boss with its own phases (lob, frozen gates, gusts)', () => {

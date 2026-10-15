@@ -1,0 +1,250 @@
+{
+  "id": "3-7",
+  "name": "Clockwork Trap",
+  "theme": "workshop",
+  "lane": {
+    "width": 10,
+    "length": 60
+  },
+  "cannon": {
+    "fireRate": 5.6,
+    "unitsPerShot": 3,
+    "aimLimit": 4
+  },
+  "playerBase": {
+    "hp": 320
+  },
+  "enemyBase": {
+    "hp": 2600,
+    "x": 0,
+    "width": 6
+  },
+  "gates": [
+    {
+      "id": "3-7-x3",
+      "op": "mul",
+      "value": 3,
+      "x": 0,
+      "z": 18,
+      "width": 3.4,
+      "toggle": {
+        "on": 3.5,
+        "off": 2,
+        "alt": {
+          "op": "div",
+          "value": 2
+        }
+      }
+    },
+    {
+      "id": "3-7-x2",
+      "op": "mul",
+      "value": 2,
+      "x": -2.4,
+      "z": 36,
+      "width": 3
+    },
+    {
+      "id": "3-7-x3b",
+      "op": "mul",
+      "value": 3,
+      "x": 2.4,
+      "z": 36,
+      "width": 3,
+      "toggle": {
+        "on": 3,
+        "off": 3,
+        "alt": {
+          "op": "sub",
+          "value": 4
+        }
+      }
+    }
+  ],
+  "enemyWaves": [
+    {
+      "at": 10,
+      "count": 125,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 20,
+      "count": 139,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 30,
+      "count": 153,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 40,
+      "count": 167,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 50,
+      "count": 181,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 60,
+      "count": 187,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 70,
+      "count": 193,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 80,
+      "count": 199,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 90,
+      "count": 205,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 100,
+      "count": 211,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 110,
+      "count": 217,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 120,
+      "count": 223,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 130,
+      "count": 229,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 15,
+      "count": 8,
+      "x": -1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 25,
+      "count": 9,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 35,
+      "count": 10,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 45,
+      "count": 11,
+      "x": -1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 55,
+      "count": 12,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 65,
+      "count": 13,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 75,
+      "count": 14,
+      "x": -1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 85,
+      "count": 15,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 95,
+      "count": 16,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 105,
+      "count": 17,
+      "x": -1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 115,
+      "count": 18,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 125,
+      "count": 19,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "robot"
+    }
+  ],
+  "enemySpawnRate": {
+    "perSecond": 11,
+    "startAt": 8
+  },
+  "champion": {
+    "chargeNeeded": 280,
+    "hp": 115,
+    "damage": 90
+  },
+  "targetTime": 105,
+  "intro": "Trick gates: when the clock runs out, an x3 turns into a trap. Watch the timer, not just the sign.",
+  "conveyors": [
+    {
+      "id": "3-7-belt",
+      "x": 0,
+      "z": 25,
+      "width": 10,
+      "length": 5,
+      "vx": -2,
+      "vz": 0
+    }
+  ]
+}

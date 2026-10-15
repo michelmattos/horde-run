@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { collectionView, homeView, itemCards, loadoutView } from '../src/meta/views.ts';
-import { emptyProfile } from '../src/progression/index.ts';
+import { ITEMS, emptyProfile, unlockHint } from '../src/progression/index.ts';
 import type { Profile, ProgressFacts } from '../src/progression/index.ts';
 import type { SaveData } from '../src/contracts.ts';
 
@@ -15,12 +15,18 @@ const facts = (profile: Profile = emptyProfile(), levels: SaveData['levels'] = {
 
 test('item cards: every catalog item, starters unlocked, the rest locked with a hint', () => {
   const cards = itemCards(facts());
-  assert.equal(cards.length, 16);
+  assert.equal(cards.length, ITEMS.length);
   const by = Object.fromEntries(cards.map((c) => [c.id, c]));
   // The World 2 items unlock on Freezer levels.
   assert.equal(by['snowball-launcher'].hint, 'Clear level 2-3');
   assert.equal(by.giant.hint, 'Clear level 2-5');
   assert.equal(by.blizzard.hint, 'Clear level 2-7');
+  // The World 3 items are locked at first and say what the catalog asks for.
+  for (const id of ['gear-gun', 'archer', 'windup']) {
+    assert.equal(by[id].locked, true, id);
+    assert.equal(by[id].hint, unlockHint(id), id);
+    assert.match(by[id].hint, /^Clear level 3-\d+$/, id);
+  }
   for (const id of ['popgun', 'rifleman', 'knight', 'sarge', 'barrage']) assert.equal(by[id].locked, false, id);
   assert.equal(by.sprinter.locked, true);
   assert.equal(by.sprinter.hint, 'Clear level 1-3');

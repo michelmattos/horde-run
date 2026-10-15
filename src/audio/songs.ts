@@ -7,12 +7,16 @@
 //  - boss: the same band in A minor, faster, with timpani and a driving bass (132 bpm);
 //  - battle2: World 2's freezer, a glockenspiel and music-box tune in E minor over sleigh
 //    bells and marimba (116 bpm);
-//  - boss2: the Snow Globe Giant, D minor with sleigh bells driving the timpani (132 bpm).
+//  - boss2: the Snow Globe Giant, D minor with sleigh bells driving the timpani (132 bpm);
+//  - battle3: World 3's clockwork workshop, a celesta tune in G major over a tick-tock
+//    woodblock, winding ratchets, off-beat marimba and a bouncy pizzicato bass (126 bpm);
+//  - boss3: the Jack-in-the-Box, C minor and faster: a hook that winds up note by note,
+//    stops dead, then pops an octave up with a spring 'boing' and a cymbal (138 bpm).
 // Every bar of a melody must add up to a full bar; that is checked when the module loads,
 // so a typo fails loudly.
 import type { InstrumentId } from './instruments.ts';
 
-export type MusicId = 'menu' | 'battle' | 'boss' | 'battle2' | 'boss2';
+export type MusicId = 'menu' | 'battle' | 'boss' | 'battle2' | 'boss2' | 'battle3' | 'boss3';
 
 export interface Note {
   at: number; // beats from the start of the loop
@@ -424,12 +428,181 @@ function snowGiantSong(): Song {
   };
 }
 
+// ---------- World 3 battle: 'The Clockwork Workshop' (G major, 126 bpm) ----------
+
+// One note per listed bar at beat `at` (a ratchet winding over the end of a phrase).
+function perListedBar(bars: readonly number[], at: number, dur: number, vel: number, midi = 0): Note[] {
+  return bars.map((b) => ({ at: b * 4 + at, dur, midi, vel }));
+}
+
+function workshopSong(): Song {
+  const bpb = 4;
+  const bars = 16;
+  const chords = progression('G | D | Em | C | G | D | C D | G | C | G | Am | D | Em | C | Am D | G', bpb);
+  const a =
+    'D5:1 G5:1 B5:1 G5:1 D6:2 B5:2 | A5:1 F#5:1 D5:1 F#5:1 A5:2 D6:2 | G5:1 E5:1 B4:1 E5:1 G5:2 B5:2 |' +
+    ' C6:1 B5:1 A5:1 G5:1 E5:2 C5:2 | D5:1 G5:1 B5:1 D6:1 G6:2 D6:2 | F#6:1 E6:1 D6:1 A5:1 F#5:2 A5:2 |' +
+    ' E5:1 G5:1 C6:2 D5:1 F#5:1 A5:2 | G5:4 r:2 D5:1 D5:1';
+  const b =
+    'E5:2 G5:1 E5:1 C6:2 E5:2 | D5:2 G5:1 D5:1 B5:2 G5:2 | C6:1 B5:1 A5:1 G5:1 A5:1 E5:1 C5:2 |' +
+    ' D5:1 E5:1 F#5:1 G5:1 A5:2 r:2 | B5:1 A5:1 G5:1 A5:1 B5:2 E6:2 | E6:1 D6:1 C6:1 B5:1 A5:2 G5:2 |' +
+    ' A5:1 C6:1 E6:1 C6:1 D6:1 C6:1 B5:1 A5:1 | G5:2 D5:2 G5:2 r:2';
+  const tune = melody(`${a} | ${b}`, bpb);
+  // The music box answers the second half an octave down.
+  const under = shift(melody(b, bpb, 0.5, -12), 8 * bpb);
+  // Off-beat marimba chords: the toy factory's little hammers.
+  const tink: Step[] = [0.5, 1.5, 2.5, 3.5].map((at, i) => ({
+    at,
+    dur: 0.25,
+    vel: i % 2 === 0 ? 0.6 : 0.45,
+    pick: (c: Chord) => voicing(c, 59),
+  }));
+  // A bouncy bass: root, octave and fifth hopping on the eighths.
+  const bounce: Step[] = [
+    { at: 0, dur: 0.4, vel: 1, pick: (c) => [lift(c.root, 38)] },
+    { at: 1, dur: 0.35, vel: 0.7, pick: (c) => [lift(c.root, 38) + 12] },
+    { at: 1.5, dur: 0.35, vel: 0.6, pick: (c) => [lift(c.root, 38) + 7] },
+    { at: 2, dur: 0.4, vel: 0.9, pick: (c) => [lift(c.root, 38)] },
+    { at: 3, dur: 0.35, vel: 0.7, pick: (c) => [lift(c.root, 38) + 12] },
+    { at: 3.5, dur: 0.35, vel: 0.6, pick: (c) => [lift(c.root, 38) + 7] },
+  ];
+  return {
+    id: 'battle3',
+    bpm: 126,
+    beatsPerBar: bpb,
+    bars,
+    parts: [
+      { inst: 'celesta', gain: 0.85, pan: 0.1, send: 0.3, notes: tune },
+      { inst: 'musicBox', gain: 0.42, pan: -0.15, send: 0.35, notes: under },
+      { inst: 'marimba', gain: 0.4, pan: -0.25, send: 0.15, notes: perBar(chords, bars, bpb, tink) },
+      { inst: 'pizz', gain: 0.55, send: 0.06, notes: perBar(chords, bars, bpb, bounce) },
+      // Tick (D6) on the beat, tock (G5) on the off-beat: the workshop clock.
+      {
+        inst: 'woodblock',
+        gain: 0.36,
+        pan: 0.3,
+        send: 0.1,
+        notes: drums(bars, () => 'X.......x.......', noteMidi('D6')),
+      },
+      {
+        inst: 'woodblock',
+        gain: 0.3,
+        pan: -0.3,
+        send: 0.1,
+        notes: drums(bars, (bar) => (bar % 4 === 3 ? '....x.......xxxx' : '....x.......x...'), noteMidi('G5')),
+      },
+      { inst: 'ratchet', gain: 0.36, pan: 0.2, send: 0.12, notes: perListedBar([3, 7, 11, 15], 3, 1, 0.8) },
+      { inst: 'kick', gain: 0.25, notes: drums(bars, () => 'X.......X.......') },
+      { inst: 'snare', gain: 0.16, pan: -0.1, send: 0.12, notes: drums(bars, () => '....x.......x...') },
+      { inst: 'cymbal', gain: 0.32, pan: 0.2, send: 0.25, notes: drums(bars, (bar) => (bar % 8 === 0 ? 'X' : '')) },
+    ],
+  };
+}
+
+// ---------- World 3 boss: 'Pop Goes the Jack' (C minor, 138 bpm) ----------
+// The hook winds up a scale like a turning crank, holds its breath on a rest, then pops an
+// octave up (the jester springing out), with a 'boing', a glockenspiel and a cymbal on
+// every pop. Written for this game; only the idea of a wind-up and a pop is borrowed.
+
+function jackSong(): Song {
+  const bpb = 4;
+  const bars = 16;
+  const chords = progression('Cm | Cm | Ab | G | Cm | Fm | G | G | Ab | Bb | Eb | Cm | Fm | Cm | G | G', bpb);
+  const a =
+    'C5:1 D5:1 Eb5:1 F5:1 G5:1 F5:1 Eb5:1 D5:1 | C5:1 D5:1 Eb5:1 F5:1 G5:3 r:1 | C6:2 r:2 Ab5:1 G5:1 F5:1 Eb5:1 |' +
+    ' D5:2 F5:2 G5:2 B4:2 | C5:1 D5:1 Eb5:1 F5:1 G5:1 F5:1 Eb5:1 D5:1 | C5:1 D5:1 Eb5:1 F5:1 Ab5:3 r:1 |' +
+    ' D6:2 r:2 B5:1 G5:1 F5:1 D5:1 | G5:4 r:2 G4:1 B4:1';
+  const b =
+    'C6:2 Ab5:2 Eb5:2 C5:2 | D6:2 Bb5:2 F5:2 D5:2 | Eb6:3 D6:1 Bb5:2 G5:2 | C6:2 G5:1 Eb5:1 C5:4 |' +
+    ' F5:1 G5:1 Ab5:1 C6:1 F6:2 C6:2 | Eb6:1 D6:1 C6:1 G5:1 Eb5:2 C5:2 |' +
+    ' B4:1 C5:1 D5:1 Eb5:1 F5:1 G5:1 Ab5:1 B5:1 | D6:3 r:1 G5:2 r:2';
+  const tune = melody(`${a} | ${b}`, bpb);
+  // The trumpet doubles the second half an octave down: the brass gets in on the chase.
+  const brass = shift(melody(b, bpb, 0.5, -12), 8 * bpb);
+  // The pops: bar 3 (C6), bar 7 (D6) and bar 16 (D6), each on the downbeat.
+  const pops = [
+    { bar: 2, midi: noteMidi('C5') },
+    { bar: 6, midi: noteMidi('D5') },
+    { bar: 15, midi: noteMidi('D5') },
+  ];
+  const boing: Note[] = pops.map((p) => ({ at: p.bar * bpb, dur: 1, midi: p.midi, vel: 1 }));
+  const sparkle: Note[] = pops.flatMap((p) => [
+    { at: p.bar * bpb, dur: 1, midi: p.midi + 24, vel: 1 },
+    { at: p.bar * bpb + 0.25, dur: 1, midi: p.midi + 29, vel: 0.7 },
+  ]);
+  // The crank turns through the rest before each pop (and through the climb into the last).
+  const crank: Note[] = [
+    { at: 1 * bpb + 2, dur: 2, midi: 0, vel: 0.9 },
+    { at: 5 * bpb + 2, dur: 2, midi: 0, vel: 0.9 },
+    { at: 14 * bpb, dur: 4, midi: 0, vel: 0.8 },
+  ];
+  const drive: Step[] = [0, 0, 12, 0, 0, 0, 12, 7].map((up, i) => ({
+    at: i * 0.5,
+    dur: 0.42,
+    vel: i % 2 === 0 ? 1 : 0.7,
+    pick: (c: Chord) => [lift(c.root, 36) + up],
+  }));
+  const stabs: Step[] = [1.5, 3.5].map((at) => ({ at, dur: 0.3, vel: 0.8, pick: (c: Chord) => voicing(c, 60) }));
+  const boom: Step[] = [
+    { at: 0, dur: 1, vel: 1, pick: (c) => [lift(c.root, 36)] },
+    { at: 2, dur: 1, vel: 0.7, pick: (c) => [lift(c.root, 36) + 7] },
+  ];
+  const popBars = new Set(pops.map((p) => p.bar));
+  return {
+    id: 'boss3',
+    bpm: 138,
+    beatsPerBar: bpb,
+    bars,
+    parts: [
+      { inst: 'celesta', gain: 1, pan: 0.1, send: 0.28, notes: tune },
+      { inst: 'trumpet', gain: 0.7, pan: -0.05, send: 0.25, notes: brass },
+      { inst: 'glock', gain: 0.5, pan: 0.25, send: 0.35, notes: sparkle },
+      { inst: 'boing', gain: 0.8, send: 0.2, notes: boing },
+      { inst: 'pizz', gain: 0.62, send: 0.05, notes: perBar(chords, bars, bpb, drive) },
+      { inst: 'reed', gain: 0.5, pan: -0.25, send: 0.15, notes: perBar(chords, bars, bpb, stabs) },
+      { inst: 'timpani', gain: 0.66, send: 0.15, notes: perBar(chords, bars, bpb, boom) },
+      // A faster clock: tick (C6) and tock (G5) on every eighth.
+      {
+        inst: 'woodblock',
+        gain: 0.37,
+        pan: 0.3,
+        send: 0.08,
+        notes: drums(bars, () => 'X...x...X...x...', noteMidi('C6')),
+      },
+      {
+        inst: 'woodblock',
+        gain: 0.32,
+        pan: -0.3,
+        send: 0.08,
+        notes: drums(bars, () => '..x...x...x...x.', noteMidi('G5')),
+      },
+      { inst: 'ratchet', gain: 0.55, pan: 0.2, send: 0.12, notes: crank },
+      {
+        inst: 'snare',
+        gain: 0.38,
+        pan: -0.1,
+        send: 0.12,
+        notes: drums(bars, (bar) => (bar % 8 === 7 ? '....X...xxxxXxxx' : '....X.......X..x')),
+      },
+      {
+        inst: 'cymbal',
+        gain: 0.55,
+        pan: 0.2,
+        send: 0.2,
+        notes: drums(bars, (bar) => (bar % 8 === 0 || popBars.has(bar) ? 'X' : '')),
+      },
+    ],
+  };
+}
+
 export const SONGS: Readonly<Record<MusicId, Song>> = {
   menu: menuSong(),
   battle: battleSong(),
   boss: bossSong(),
   battle2: freezerSong(),
   boss2: snowGiantSong(),
+  battle3: workshopSong(),
+  boss3: jackSong(),
 };
 
 /** Loop length in seconds. */

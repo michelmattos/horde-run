@@ -23,6 +23,10 @@
 // toward the push while the gust is coming and pulses while it blows, and a frost tint
 // with a snowflake countdown chip on the enemy column while the Blizzard holds the enemy
 // crowd frozen (state.enemyFrozen). Neither takes touches nor changes hudReserve().
+// World 3 adds the Jack-in-the-Box shuffle telegraph (state.shuffle): a wooden chip under
+// the gust's spot, still off the lane, whose brass fill grows and whose crank winds while
+// the boss cranks, then pulses while the gates glide. No touches, no hudReserve() change.
+// The CHAMP button also shows the Wind-up Robot ('windup').
 import type { Scene } from '@babylonjs/core/scene';
 import type { BattleState } from '../contracts.ts';
 import type { Input } from '../core/input.ts';
@@ -35,6 +39,7 @@ import {
   frozenSecondsLabel,
   gustChipLook,
   hpFraction,
+  shuffleChipLook,
   hudReserveFor,
   hudTopHeight,
   pipLit,
@@ -50,6 +55,7 @@ import { UI, WOOD_BG, injectUiTheme, outlineShadow } from './theme.ts';
 import {
   championIconFor,
   coinIcon,
+  crankIcon,
   fortIcon,
   gustArrowIcon,
   heartIcon,
@@ -271,6 +277,20 @@ const CSS = `
 .tb-gust.tb-on .tb-gust-fill{background:linear-gradient(180deg,#ffffff 0%,#bfe6f8 50%,#7cc4e8 100%)}
 @keyframes tb-gust{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
 
+/* ----- World 3: Jack-in-the-Box shuffle telegraph. Docked at the right edge under the gust
+   chip's spot (both can never cover the lane or the HP columns). No touches. ----- */
+.tb-shuffle{position:absolute;top:calc(30% + 56px);right:calc(${SAR} + ${M.edge}px);width:116px;height:44px;
+  box-sizing:border-box;border-radius:22px;border:3px solid ${UI.ink};background:${WOOD_BG};overflow:hidden;
+  box-shadow:inset 0 2px 0 rgba(255,225,180,.28),0 4px 0 ${UI.ink},0 8px 10px rgba(20,10,2,.3);transform-origin:50% 50%}
+.tb-shuffle[hidden]{display:none}
+.tb-shuffle-fill{position:absolute;inset:0;transform:scaleX(0);transform-origin:0 50%;will-change:transform;
+  background:radial-gradient(circle,rgba(239,227,198,.8) 0 2px,transparent 2.6px) 3px 3px/14px 14px,linear-gradient(180deg,#6f97dc 0%,#2e5aa8 55%,#1f3f7a 100%)}
+.tb-shuffle-ico{position:absolute;left:50%;top:50%;width:48px;height:48px;margin:-24px 0 0 -24px}
+.tb-shuffle-ico svg{width:48px;height:48px;display:block;overflow:visible}
+.tb-crank-arm{transition:transform 90ms linear}
+.tb-shuffle.tb-on{animation:tb-gust 420ms ease-in-out infinite}
+.tb-shuffle.tb-on .tb-shuffle-fill{background:radial-gradient(circle,rgba(255,236,200,.75) 0 2px,transparent 2.6px) 3px 3px/14px 14px,linear-gradient(180deg,#ff9a90 0%,${UI.red} 55%,#a8261d 100%)}
+
 /* ----- World 2: the enemy crowd frozen by the Blizzard (frost tint + countdown chip) ----- */
 .tb-enemy.tb-frozen .tb-frame{box-shadow:inset 2px 0 0 rgba(255,255,255,.5),0 0 0 3px #bfe6f8,0 3px 0 ${UI.ink},0 0 12px rgba(160,220,250,.9)}
 .tb-enemy.tb-frozen .tb-fill-tan{filter:saturate(.35) brightness(1.15) hue-rotate(160deg)}
@@ -280,7 +300,7 @@ const CSS = `
 .tb-efrost[hidden]{display:none}
 .tb-efrost svg{width:22px;height:22px}
 
-@media (prefers-reduced-motion: reduce){.tb-cbtn.tb-ready .tb-champ-body,.tb-cbtn.tb-ready .tb-glow,.tb-gust.tb-on{animation:none}}
+@media (prefers-reduced-motion: reduce){.tb-cbtn.tb-ready .tb-champ-body,.tb-cbtn.tb-ready .tb-glow,.tb-gust.tb-on,.tb-shuffle.tb-on{animation:none}.tb-crank-arm{transition:none}}
 `;
 
 let stylesInjected = false;
@@ -380,6 +400,16 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
   const gustFill = div('tb-gust-fill');
   gust.append(gustFill, div('tb-gust-ico', gustArrowIcon(48)));
 
+  // ----- Shuffle telegraph (Jack-in-the-Box): hidden until the boss starts cranking -----
+  const shuffle = div('tb-shuffle');
+  shuffle.hidden = true;
+  shuffle.setAttribute('role', 'img');
+  shuffle.setAttribute('aria-label', 'The gates are about to move');
+  const shuffleFill = div('tb-shuffle-fill');
+  const shuffleIco = div('tb-shuffle-ico', crankIcon(48));
+  shuffle.append(shuffleFill, shuffleIco);
+  const crankArm = shuffleIco.querySelector('.tb-crank-arm') as SVGGElement;
+
   // ----- Right column: player base HP (green fortress badge) above the CHAMP button -----
   const playerCol = div('tb-player');
   const player = vBar('player', fortIcon(30, UI.cream, UI.yellow));
@@ -430,7 +460,7 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
   const runIcons = div('tb-run-r');
   run.append(runLeft, runIcons);
 
-  hud.append(pause, title, run, gust, enemyCol, playerCol, ult);
+  hud.append(pause, title, run, gust, shuffle, enemyCol, playerCol, ult);
   host.appendChild(hud);
 
   // ----- Hits -----
@@ -552,6 +582,10 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
   let lastGustFill = -1;
   let lastGustActive = false;
   let lastFrozen = '';
+  let lastShuffleShow = false;
+  let lastShuffleFill = -1;
+  let lastShuffleTurn = -1;
+  let lastShuffleActive = false;
 
   return {
     update(state, levelName, info) {
@@ -631,6 +665,27 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
         if (g.active !== lastGustActive) {
           lastGustActive = g.active;
           gust.classList.toggle('tb-on', g.active);
+        }
+      }
+      // ----- World 3: the Jack-in-the-Box cranking up a gate shuffle -----
+      const sh = shuffleChipLook(state.shuffle);
+      if (sh.show !== lastShuffleShow) {
+        lastShuffleShow = sh.show;
+        shuffle.hidden = !sh.show;
+      }
+      if (sh.show) {
+        if (sh.fill !== lastShuffleFill) {
+          lastShuffleFill = sh.fill;
+          shuffleFill.style.transform = `scaleX(${sh.fill})`;
+        }
+        if (sh.turn !== lastShuffleTurn) {
+          lastShuffleTurn = sh.turn;
+          crankArm.style.transform = `rotate(${sh.turn}deg)`;
+        }
+        if (sh.active !== lastShuffleActive) {
+          lastShuffleActive = sh.active;
+          shuffle.classList.toggle('tb-on', sh.active);
+          shuffle.setAttribute('aria-label', sh.active ? 'The gates are moving' : 'The gates are about to move');
         }
       }
       const frozen = frozenSecondsLabel(state.enemyFrozen);

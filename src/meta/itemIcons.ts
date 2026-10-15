@@ -1,5 +1,6 @@
-// Inline SVG stickers for the 16 loadout items (cannons, mobs, champions, ultimates; the
-// Snowball Launcher, the Giant and Blizzard came with World 2),
+// Inline SVG stickers for the 19 loadout items (cannons, mobs, champions, ultimates; the
+// Snowball Launcher, the Giant and Blizzard came with World 2, the Gear Gun, the Archer
+// and the Wind-up Robot with World 3),
 // in the same two-pass sticker style as src/ui/icons.ts and src/ui/expedition/icons.ts:
 // a wide ink pass for the die-cut outline, then the fill colour, on a plastic disc tinted
 // by the item's slot (cannon tin grey, mob army green, champion orange, ultimate purple).
@@ -19,6 +20,8 @@ const RED = HEX.toyRed;
 const RUBBER = '#4a4d55';
 const SNOW = '#f4f9fc';
 const SNOW_SHADE = '#b9dcef';
+const STEEL = '#c9ced4';
+const AMBER = '#ffb347';
 
 export const SLOT_COLORS: Record<ItemSlot, { c1: string; c2: string; c3: string }> = {
   cannon: { c1: '#c3cbd2', c2: '#7b858e', c3: '#4a535b' },
@@ -106,6 +109,24 @@ function flake(cx: number, cy: number, r: number, color: string): string {
   return sticker([{ d, w: Math.max(1.6, r * 0.38), open: true }], color, 1.6);
 }
 
+// A flat brass gear: `teeth` square teeth around a ring, a dark hub.
+function gear(cx: number, cy: number, ro: number, ri: number, teeth: number, color: string = BRASS): string {
+  const pts: string[] = [];
+  const step = (Math.PI * 2) / teeth;
+  for (let i = 0; i < teeth; i++) {
+    for (const [da, r] of [
+      [-0.3, ri],
+      [-0.17, ro],
+      [0.17, ro],
+      [0.3, ri],
+    ] as const) {
+      const t = i * step + da * step * 1.6;
+      pts.push(`${(cx + Math.cos(t) * r).toFixed(2)} ${(cy + Math.sin(t) * r).toFixed(2)}`);
+    }
+  }
+  return sticker([{ d: `M${pts.join(' L')} Z`, w: 1 }], color, 2) + detail(circle(cx, cy, ri * 0.38), INK, 0, 0.7);
+}
+
 // A spoked toy wheel (wood rim, brass hub).
 function wheel(cx: number, cy: number, r: number): string {
   return (
@@ -174,7 +195,54 @@ const ART: Record<string, { slot: ItemSlot; body: () => string }> = {
       detail('M44 44 C47 46 51 46 54 44', SNOW, 2.2, 0.85) +
       wheel(24, 46, 8),
   },
+  // The Gear Gun: a green clockwork gun with a big brass gear on its breech, toothed brass
+  // collars on the barrel, and a shot ricocheting off a wall in a zigzag.
+  'gear-gun': {
+    slot: 'cannon',
+    body: () =>
+      sticker([{ d: 'M14 47 L28 41', w: 6, open: true }], HEX.greenDark) +
+      sticker([{ d: 'M20 40 L44 27', w: 10, open: true }], HEX.green) +
+      sticker(
+        [
+          { d: 'M30.5 34.5 L33 39', w: 3.6, open: true },
+          { d: 'M37 31 L39.5 35.5', w: 3.6, open: true },
+          { d: 'M43.5 27.5 L46 32', w: 4.6, open: true },
+        ],
+        BRASS,
+        1.8,
+      ) +
+      detail('M24 35.5 L41 26.5', '#fff', 2.2, 0.35) +
+      sticker([{ d: 'M50 22 L56 10 L60 19', w: 2.6, open: true }], CREAM, 1.6) +
+      detail(circle(50.5, 22, 2.4), YELLOW) +
+      gear(17.5, 33.5, 8.5, 6, 8) +
+      wheel(29, 47, 7.5),
+  },
   // ----- Mobs -----
+  // Archer: a cream army man drawing a big wooden longbow, an arrow nocked, a quiver on his back.
+  archer: {
+    slot: 'mob',
+    body: () =>
+      sticker([{ d: 'M20 20 L15 34', w: 5, open: true }], WOOD, 2) +
+      detail('M19 18 L21.5 14 M16.5 18 L17 13.5', CREAM, 2) +
+      sticker(
+        [
+          { d: 'M22.5 18 C22 8 39 8 38.5 18 Z', w: 2 },
+          { d: 'M19.5 18 L41.5 18', w: 3.2, open: true },
+          { d: 'M30.5 22.5 L30.5 23.5', w: 8.5, open: true },
+          { d: 'M30.5 28 L30.5 40', w: 11.5, open: true },
+          { d: 'M28.5 41 L24.5 55 L19.5 55.5', w: 6.5, open: true },
+          { d: 'M32.5 41 L37 55 L42 55', w: 6.5, open: true },
+          { d: 'M32 29 L47 29.5', w: 4.6, open: true },
+          { d: 'M28 30 L36 33.5 L38.5 30', w: 4.6, open: true },
+        ],
+        CREAM,
+      ) +
+      sticker([{ d: 'M45 8 C55 16 55 42 45 51', w: 3.4, open: true }], WOOD, 2) +
+      detail('M45 8 L38 30 L45 51', INK, 1.2) +
+      sticker([{ d: 'M38 30 L58 30', w: 2, open: true }], STEEL, 1.4) +
+      detail('M58.5 30 L54 26.5 L54 33.5 Z', STEEL) +
+      detail('M38 30 L35 27 M38 30 L35 33', RED, 2),
+  },
   rifleman: {
     slot: 'mob',
     body: () => nested(soldierIcon(50, CREAM), 7, 6),
@@ -268,6 +336,49 @@ const ART: Record<string, { slot: ItemSlot; body: () => string }> = {
       detail('M14 49 C14 55 50 55 50 49', BRASS, 3) +
       sticker([{ d: 'M14 32 C14 26 50 26 50 32 C50 38 14 38 14 32 Z', w: 2 }], CREAM, 2.2) +
       detail('M20 31 C24 29 30 28.5 34 28.8', '#fff', 2, 0.8),
+  },
+  // The Wind-up Robot: a big army-green tin robot, a brass gear in its barrel chest, a dark
+  // visor with amber lamp eyes, an antenna, mitt hands and a brass key over its shoulder.
+  windup: {
+    slot: 'champion',
+    body: () =>
+      sticker(
+        [
+          { d: 'M42 24 L49 17', w: 2.8, open: true },
+          { d: 'M47 13 C51 9 56 12 53 16 C57 18 54 23 49 20', w: 2.8, open: true },
+        ],
+        BRASS,
+        1.8,
+      ) +
+      sticker(
+        [
+          { d: 'M18 31 L11 42', w: 5.5, open: true },
+          { d: 'M46 31 L53 42', w: 5.5, open: true },
+          { d: 'M26 48 L26 54', w: 5.5, open: true },
+          { d: 'M38 48 L38 54', w: 5.5, open: true },
+          { d: 'M32 12 L32 6', w: 2.4, open: true },
+        ],
+        STEEL,
+        2,
+      ) +
+      sticker([{ d: circle(10, 44.5, 3.8), w: 1 }], HEX.green, 1.8) +
+      sticker([{ d: circle(54, 44.5, 3.8), w: 1 }], HEX.green, 1.8) +
+      sticker(
+        [
+          { d: 'M20 56.5 L30 56.5', w: 4, open: true },
+          { d: 'M34 56.5 L44 56.5', w: 4, open: true },
+        ],
+        RUBBER,
+        1.8,
+      ) +
+      sticker([{ d: 'M18 28 L46 28 L46 44 C46 50 18 50 18 44 Z', w: 2.5 }], HEX.green) +
+      gear(32, 38.5, 7.5, 5.5, 9) +
+      `<circle cx="21.5" cy="31" r="1.1" fill="${BRASS}"/><circle cx="42.5" cy="31" r="1.1" fill="${BRASS}"/>` +
+      sticker([{ d: 'M21 11 L43 11 L43 25 L21 25 Z', w: 3 }], HEX.green) +
+      detail('M23.5 15 L40.5 15 L40.5 20.5 L23.5 20.5 Z', '#25292f') +
+      detail(`${circle(27.5, 17.8, 2)} ${circle(36.5, 17.8, 2)}`, AMBER) +
+      sticker([{ d: circle(32, 5, 2.5), w: 1 }], RED, 1.6) +
+      detail('M21 31 C21 36 21.5 40 23 43', '#fff', 2, 0.35),
   },
   // ----- Ultimates -----
   barrage: {

@@ -1,0 +1,231 @@
+{
+  "id": "3-3",
+  "name": "Wind-up Parade",
+  "theme": "workshop",
+  "lane": {
+    "width": 10,
+    "length": 58
+  },
+  "cannon": {
+    "fireRate": 5.6,
+    "unitsPerShot": 3,
+    "aimLimit": 4
+  },
+  "playerBase": {
+    "hp": 300
+  },
+  "enemyBase": {
+    "hp": 2100,
+    "x": 0,
+    "width": 6
+  },
+  "gates": [
+    {
+      "id": "3-3-x2",
+      "op": "mul",
+      "value": 2,
+      "x": 0,
+      "z": 18,
+      "width": 3.6
+    },
+    {
+      "id": "3-3-x3",
+      "op": "mul",
+      "value": 3,
+      "x": -2.2,
+      "z": 33,
+      "width": 3.2,
+      "toggle": {
+        "on": 3,
+        "off": 2
+      }
+    },
+    {
+      "id": "3-3-plus2",
+      "op": "add",
+      "value": 2,
+      "x": 2.6,
+      "z": 33,
+      "width": 2.8
+    }
+  ],
+  "enemyWaves": [
+    {
+      "at": 10,
+      "count": 100,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 20,
+      "count": 113,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 30,
+      "count": 126,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 40,
+      "count": 139,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 50,
+      "count": 152,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 60,
+      "count": 158,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 70,
+      "count": 164,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 80,
+      "count": 170,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 90,
+      "count": 176,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 100,
+      "count": 182,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 110,
+      "count": 188,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 120,
+      "count": 194,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 130,
+      "count": 200,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 15,
+      "count": 9,
+      "x": -1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 25,
+      "count": 10,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 35,
+      "count": 11,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 45,
+      "count": 12,
+      "x": -1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 55,
+      "count": 13,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 65,
+      "count": 14,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 75,
+      "count": 15,
+      "x": -1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 85,
+      "count": 16,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 95,
+      "count": 17,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 105,
+      "count": 18,
+      "x": -1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 115,
+      "count": 19,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 125,
+      "count": 20,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "robot"
+    }
+  ],
+  "enemySpawnRate": {
+    "perSecond": 9.0,
+    "startAt": 8
+  },
+  "champion": {
+    "chargeNeeded": 280,
+    "hp": 110,
+    "damage": 85
+  },
+  "targetTime": 100,
+  "intro": "Wind-up robots! Tough tin soldiers that march in stop-and-go bursts. Catch them while they wind up.",
+  "trickleMix": {
+    "unit": "robot",
+    "every": 8
+  }
+}

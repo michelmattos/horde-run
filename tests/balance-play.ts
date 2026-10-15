@@ -201,3 +201,9 @@ export const ITEM_CASES: ItemCase[] = [
 // with starter gear.
 export const W2_EASY = ['2-1', '2-2', '2-3'];
 export const W2_HARD = ['2-8', '2-9', '2-10'];
+
+// ---------- Milestone 6: World 3 ----------
+// The World 3 curve (concept §9.1): 3-1 is won nearly always, 3-8 to the Jack-in-the-Box
+// take a retry or two with starter gear.
+export const W3_EASY = ['3-1', '3-2', '3-3'];
+export const W3_HARD = ['3-8', '3-9', '3-10'];

@@ -1,5 +1,6 @@
 // World unlocks and the multi-world map's rules: World 2 opens at 15 World 1 stars (only
-// World 1's stars count), a locked world's levels never start whatever the save holds,
+// World 1's stars count) and World 3 at 15 World 2 stars (with World 2 open: an imported
+// save's stars never skip a world), a locked world's levels never start whatever the save holds,
 // the padlock line counts down, the map reopens on the last world viewed and each
 // world's title card shows once it is open and unseen. Uses the real world list.
 import { test } from 'node:test';
@@ -18,7 +19,7 @@ import {
 } from '../src/meta/worldLogic.ts';
 import type { LevelProgress, SaveData, WorldDef } from '../src/contracts.ts';
 
-const [W1, W2] = WORLDS;
+const [W1, W2, W3] = WORLDS;
 const NEED = W2.unlock!.stars;
 
 // A save with `n` stars spread over World 1 levels in order (3 per level, the rest on the next).
@@ -134,4 +135,75 @@ test('world prefs remember the last world and seen title cards, and survive bad 
   assert.deepEqual(loadWorldPrefs(throwing), { seen: [] });
   assert.doesNotThrow(() => saveWorldPrefs({ seen: ['w1'] }, throwing));
   assert.deepEqual(loadWorldPrefs(null), { seen: [] });
+});
+
+// A save with every World 1 star and `n` World 2 stars, 3 per level in order.
+function withW2Stars(n: number, w1 = 30): SaveData {
+  const save = withStars(w1);
+  for (let i = 0; n > 0; i++) {
+    const k = Math.min(3, n);
+    save.levels[W2.levels[i]] = { stars: [k >= 1, k >= 2, k >= 3] };
+    n -= k;
+  }
+  return save;
+}
+
+test('three worlds: the Workshop is World 3, themed, ten levels ending on the Jack-in-the-Box', () => {
+  assert.equal(WORLDS.length, 3);
+  assert.equal(W3.id, 'w3');
+  assert.equal(W3.theme, 'workshop');
+  assert.deepEqual(W3.levels, ['3-1', '3-2', '3-3', '3-4', '3-5', '3-6', '3-7', '3-8', '3-9', '3-10']);
+  assert.deepEqual(W3.unlock, { world: W2.id, stars: 15 });
+  assert.equal(worldLabel(W3), 'World 3');
+});
+
+test('World 3 opens at 15 World 2 stars, counting only World 2', () => {
+  const need = W3.unlock!.stars;
+  assert.equal(isWorldUnlocked(withW2Stars(need - 1), W3, WORLDS), false);
+  assert.equal(starsNeeded(withW2Stars(need - 1), W3, WORLDS), 1);
+  assert.equal(lockedWorldText(withW2Stars(need - 1), W3, WORLDS), `Earn 1 more star in ${W2.name}`);
+  assert.equal(isWorldUnlocked(withW2Stars(need), W3, WORLDS), true);
+  assert.equal(lockedWorldText(withW2Stars(need), W3, WORLDS), '');
+  assert.deepEqual(levelTap(withW2Stars(need), W3, WORLDS, '3-1'), { play: true });
+  assert.equal(levelTap(withW2Stars(need), W3, WORLDS, '3-2').play, false);
+  // World 1 stars (all 30 of them) never count toward World 3.
+  assert.equal(starsNeeded(withStars(30), W3, WORLDS), need);
+  const tabs = worldTabs(withW2Stars(need), WORLDS, [W1.id, W2.id]);
+  assert.deepEqual(
+    tabs.map((t) => [t.label, t.locked, t.fresh]),
+    [
+      ['World 1', false, false],
+      ['World 2', false, false],
+      ['World 3', false, true],
+    ],
+  );
+});
+
+test("an imported save's World 2 stars do not open World 3 while World 2 is locked", () => {
+  const save = withW2Stars(30, NEED - 1); // all of World 2, but World 2 itself is shut
+  assert.equal(isWorldUnlocked(save, W2, WORLDS), false);
+  assert.equal(starsNeeded(save, W3, WORLDS), 0, 'the stars are there');
+  assert.equal(isWorldUnlocked(save, W3, WORLDS), false, 'but the chain is not');
+  assert.equal(lockedWorldText(save, W3, WORLDS), `Open ${W2.name} first`);
+  const tap = levelTap(save, W3, WORLDS, '3-1');
+  assert.equal(tap.play, false);
+  if (!tap.play) assert.equal(tap.nudge, `Open ${W2.name} first`);
+  assert.equal(worldTabs(save, WORLDS, [])[2].locked, true);
+  // A world whose chain loops back on itself never opens; one naming an unknown world
+  // asks only for the stars it names (none here).
+  const a: WorldDef = { ...W2, id: 'wa', unlock: { world: 'wb', stars: 0 } };
+  const b: WorldDef = { ...W2, id: 'wb', unlock: { world: 'wa', stars: 0 } };
+  assert.equal(isWorldUnlocked(emptySave(), a, [a, b]), false);
+  const free: WorldDef = { ...W2, id: 'wf', unlock: { world: 'nowhere', stars: 0 } };
+  assert.equal(isWorldUnlocked(emptySave(), free, [free]), true);
+});
+
+test("World 3's title card shows once it is open and has not been seen, never while locked", () => {
+  const need = W3.unlock!.stars;
+  const lockedTab = worldTabs(withW2Stars(need - 1), WORLDS, [])[2];
+  assert.equal(showsTitleCard(lockedTab, true, []), false);
+  const openTab = worldTabs(withW2Stars(need), WORLDS, [W1.id, W2.id])[2];
+  assert.equal(showsTitleCard(openTab, false, [W1.id, W2.id]), true, 'first visit after the unlock');
+  assert.equal(showsTitleCard(openTab, false, [W1.id, W2.id, W3.id]), false, 'seen once already');
+  assert.equal(initialWorldIndex(WORLDS, W3.id), 2);
 });

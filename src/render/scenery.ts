@@ -9,7 +9,8 @@ import { LAYOUT } from '../contracts.ts';
 import type { PropKit } from './models/props.ts';
 import { addSceneryProp } from './models/props.ts';
 import type { FreezerPropKit } from './models/freezerProps.ts';
-import { scatterFreezerScenery, scatterScenery } from './fxLogic.ts';
+import type { WorkshopPropKit } from './models/workshopProps.ts';
+import { scatterFreezerScenery, scatterScenery, scatterWorkshopScenery } from './fxLogic.ts';
 import type { Rect } from './fxLogic.ts';
 
 const PROPS_PER_UNIT_LENGTH = 0.7; // density along the lane (both sides together)
@@ -56,6 +57,33 @@ export function layoutFreezerScenery(kit: FreezerPropKit, level: LevelDef): void
     zMin,
     zMax,
     Math.min(FREEZER_MAX, count),
+    REACH,
+    keepOut,
+  ))
+    kit.add(p.kind, p.variant, p.x, p.z, p.yaw, p.scale, p.color);
+  kit.commit();
+}
+
+// World 3 (the Clockwork Workshop): brass gears, springs, jars of screws, screwdrivers,
+// wind-up keys and half-built tin robots (models/workshopProps.ts) on the maple bench, by
+// the same rules; conveyors reaching past the lane edge are kept clear.
+const WORKSHOP_MAX = 60;
+
+export function layoutWorkshopScenery(kit: WorkshopPropKit, level: LevelDef): void {
+  const { zMin, zMax, count } = zRange(level);
+  const keepOut: Rect[] = (level.conveyors ?? []).map((c) => ({
+    x: c.x,
+    z: c.z + c.length / 2,
+    width: c.width + 1,
+    depth: c.length,
+  }));
+  kit.begin();
+  for (const p of scatterWorkshopScenery(
+    levelSeed(level) ^ 0x2545f491,
+    level.lane.width,
+    zMin,
+    zMax,
+    Math.min(WORKSHOP_MAX, count),
     REACH,
     keepOut,
   ))

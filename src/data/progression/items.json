@@ -137,6 +137,54 @@
       ]
     },
     {
+      "id": "gear-gun",
+      "slot": "cannon",
+      "name": "Gear Gun",
+      "text": "Fires shots at a slant that ricochet off the lane walls, sweeping the whole lane.",
+      "unlock": {
+        "type": "level",
+        "level": "3-3"
+      },
+      "tiers": [
+        {
+          "fireRate": 0.9,
+          "unitsPerShot": 1.34,
+          "shot": {
+            "kind": "ricochet",
+            "angle": 0.1,
+            "bounces": 3
+          }
+        },
+        {
+          "fireRate": 0.918,
+          "unitsPerShot": 1.34,
+          "shot": {
+            "kind": "ricochet",
+            "angle": 0.1,
+            "bounces": 3
+          }
+        },
+        {
+          "fireRate": 0.936,
+          "unitsPerShot": 1.34,
+          "shot": {
+            "kind": "ricochet",
+            "angle": 0.1,
+            "bounces": 3
+          }
+        },
+        {
+          "fireRate": 0.954,
+          "unitsPerShot": 1.34,
+          "shot": {
+            "kind": "ricochet",
+            "angle": 0.1,
+            "bounces": 3
+          }
+        }
+      ]
+    },
+    {
       "id": "rifleman",
       "slot": "mob",
       "name": "Rifleman",
@@ -365,6 +413,68 @@
       ]
     },
     {
+      "id": "archer",
+      "slot": "mob",
+      "name": "Archer",
+      "text": "Shoots tin arrows at enemies ahead before they reach your crowd.",
+      "unlock": {
+        "type": "level",
+        "level": "3-5"
+      },
+      "variant": 6,
+      "kind": "mob",
+      "tiers": [
+        {
+          "perShot": null,
+          "hp": 1,
+          "damage": 0.6,
+          "radius": 0.26,
+          "speed": 6,
+          "ranged": {
+            "range": 3.5,
+            "every": 4,
+            "damage": 0.05
+          }
+        },
+        {
+          "perShot": null,
+          "hp": 1,
+          "damage": 0.624,
+          "radius": 0.26,
+          "speed": 6,
+          "ranged": {
+            "range": 3.5,
+            "every": 4,
+            "damage": 0.052
+          }
+        },
+        {
+          "perShot": null,
+          "hp": 1,
+          "damage": 0.648,
+          "radius": 0.26,
+          "speed": 6,
+          "ranged": {
+            "range": 3.5,
+            "every": 4,
+            "damage": 0.054
+          }
+        },
+        {
+          "perShot": null,
+          "hp": 1,
+          "damage": 0.672,
+          "radius": 0.26,
+          "speed": 6,
+          "ranged": {
+            "range": 3.5,
+            "every": 4,
+            "damage": 0.056
+          }
+        }
+      ]
+    },
+    {
       "id": "sarge",
       "slot": "champion",
       "name": "Sarge",
@@ -496,6 +606,67 @@
           "speed": 5,
           "chargeMul": 0.85,
           "echo": 27
+        }
+      ]
+    },
+    {
+      "id": "windup",
+      "slot": "champion",
+      "name": "Wind-up Robot",
+      "text": "Walks along the first gate it reaches and keeps re-triggering it for the troops around it.",
+      "unlock": {
+        "type": "level",
+        "level": "3-7"
+      },
+      "variant": 11,
+      "tiers": [
+        {
+          "hpMul": 0.8,
+          "damageMul": 0.7,
+          "radius": 1,
+          "speed": 4.2,
+          "chargeMul": 1.15,
+          "echo": 0,
+          "gateWalk": {
+            "seconds": 2,
+            "radius": 1
+          }
+        },
+        {
+          "hpMul": 0.832,
+          "damageMul": 0.728,
+          "radius": 1,
+          "speed": 4.2,
+          "chargeMul": 1.15,
+          "echo": 0,
+          "gateWalk": {
+            "seconds": 2,
+            "radius": 1
+          }
+        },
+        {
+          "hpMul": 0.864,
+          "damageMul": 0.756,
+          "radius": 1,
+          "speed": 4.2,
+          "chargeMul": 1.15,
+          "echo": 0,
+          "gateWalk": {
+            "seconds": 2,
+            "radius": 1
+          }
+        },
+        {
+          "hpMul": 0.896,
+          "damageMul": 0.784,
+          "radius": 1,
+          "speed": 4.2,
+          "chargeMul": 1.15,
+          "echo": 0,
+          "gateWalk": {
+            "seconds": 2,
+            "radius": 1
+          }
         }
       ]
     },

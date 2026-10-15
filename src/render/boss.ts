@@ -3,7 +3,7 @@
 // base footprint, strafes with BattleState.enemyBaseX (treads roll, the brass key turns),
 // the General bobs and looks around in the turret hatch, hits flicker the whole toy and
 // a phase change flashes it bright and pops the General. Nothing here moves the camera.
-// World 2's Snow Globe Giant (SnowGlobeGiant, below) has the same interface.
+// World 2's Snow Globe Giant and World 3's Jack-in-the-Box (below) have the same interface.
 import type { Scene } from '@babylonjs/core/scene';
 import type { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import type { Look } from './look/index.ts';
@@ -11,6 +11,8 @@ import { createTinGeneral } from './models/tinGeneral.ts';
 import type { TinGeneralModel } from './models/tinGeneral.ts';
 import { ARM_REST, createSnowGlobeGiant } from './models/snowGlobeGiant.ts';
 import type { SnowGlobeGiantModel } from './models/snowGlobeGiant.ts';
+import { ARM_REST as JACK_ARM_REST, LID_OPEN, createJackInTheBox, springRest } from './models/jackInTheBox.ts';
+import type { JackInTheBoxModel } from './models/jackInTheBox.ts';
 import { popScale } from './fxLogic.ts';
 
 const BOB_SPEED = 3;
@@ -260,4 +262,145 @@ export class SnowGlobeGiant {
 function ease(t: number): number {
   const c = t <= 0 ? 0 : t >= 1 ? 1 : t;
   return c * c * (3 - 2 * c);
+}
+
+// ---------- The Jack-in-the-Box (World 3 boss) ----------
+// Drives models/jackInTheBox.ts: the lithographed tin music box IS the enemy base and
+// follows the strafing base; the crank turns, the jester bobs on his spring, sways and
+// fidgets. Same public interface as the other bosses plus the shuffle cues:
+//   shuffleWarn(seconds) - the crank whirls, the jester ducks into the box (squashed, his
+//                          eyes peeking over the rim) and the lid flops half shut, the
+//                          lid and crank rattling harder as the shuffle nears;
+//   shuffle(glide)       - he springs out with a boing, the lid flies open and he waves
+//                          both arms to conduct the gates into place for `glide` s.
+// The phases change his look (lid bent, spring longer, paint cracked; setStage). Hits
+// flicker the toy; a phase change flashes it and pops the jester with a boing. Only the
+// toy moves, never the camera.
+const JACK_BOX_HEIGHT = 0.95; // box height as a share of the hull height it is given
+const JACK_DUCK = -1.0; // spring length while ducked (the hips sink below the rim)
+const JACK_SQUASH = 0.75; // jester height while ducked
+const SPRING_K = 70; // jester spring stiffness (1/s^2)
+const SPRING_DAMP = 5; // damping (1/s)
+const POP_SPEED = 7; // upward speed of the jester when he springs out (u/s)
+const CRANK_IDLE = 1.4; // rad/s
+const CRANK_WARN = 10;
+const LID_WARN = -1.15; // the lid's angle while he hides (half shut)
+const LID_EASE = 7; // per second
+const WAVE_ARM = 1.9; // radians an arm lifts while conducting the gates
+
+export class JackInTheBox {
+  private readonly model: JackInTheBoxModel;
+  private flash = 0;
+  private flashMax = 1;
+  private pop = 0;
+  private lastFlash = -1;
+  private stage = 0;
+  private crank = 0;
+  private h: number; // spring length (sim)
+  private v = 0; // its speed
+  private squash = 1;
+  private lid = LID_OPEN;
+  private warnLeft = 0;
+  private warnTotal = 1;
+  private waveLeft = 0;
+
+  constructor(scene: Scene, look: Look, width: number, depth: number, hullHeight: number) {
+    this.model = createJackInTheBox(scene, look, { width, depth, boxHeight: hullHeight * JACK_BOX_HEIGHT });
+    this.model.root.rotation.y = Math.PI; // side 'enemy': the jester faces the camera
+    this.h = springRest(0);
+  }
+
+  get hpBarAnchor(): Vector3 {
+    return this.model.hpBarAnchor;
+  }
+
+  get root() {
+    return this.model.root;
+  }
+
+  // Strong flash, a pop and a boing on entering a phase; the new phase's look.
+  phase(index?: number): void {
+    this.stage = Math.min(2, index ?? this.stage + 1);
+    this.model.setStage(this.stage);
+    this.flash = PHASE_FLASH_TIME;
+    this.flashMax = 1;
+    this.pop = PHASE_FLASH_TIME;
+    this.v += POP_SPEED * 0.6;
+  }
+
+  hit(): void {
+    if (this.flash > HIT_FLASH_TIME) return;
+    this.flash = HIT_FLASH_TIME;
+    this.flashMax = HIT_FLASH;
+  }
+
+  // The battle's 'shuffleWarn' cue: crank and hide for `seconds`.
+  shuffleWarn(seconds: number): void {
+    this.warnTotal = Math.max(0.01, seconds);
+    this.warnLeft = this.warnTotal;
+    this.waveLeft = 0;
+  }
+
+  // The battle's 'shuffle' cue: spring out and conduct the gates for `glide` seconds.
+  shuffle(glide: number): void {
+    this.warnLeft = 0;
+    this.waveLeft = Math.max(0.3, glide);
+    this.v = POP_SPEED;
+  }
+
+  update(x: number, zCenter: number, time: number, dt: number, alive: boolean): void {
+    const m = this.model;
+    m.root.setEnabled(alive);
+    if (!alive) return;
+    const step = Math.min(dt, 0.05);
+    this.flash = Math.max(0, this.flash - dt);
+    this.pop = Math.max(0, this.pop - dt);
+    this.warnLeft = Math.max(0, this.warnLeft - dt);
+    this.waveLeft = Math.max(0, this.waveLeft - dt);
+    m.root.position.set(x, 0, zCenter);
+
+    const f =
+      this.flash > 0 ? (this.flash / (this.flashMax === 1 ? PHASE_FLASH_TIME : HIT_FLASH_TIME)) * this.flashMax : 0;
+    if (f !== this.lastFlash) {
+      m.setFlash(f);
+      this.lastFlash = f;
+    }
+
+    // Crank: idles round, whirls during the warning.
+    const warning = this.warnLeft > 0;
+    const warnK = warning ? 1 - this.warnLeft / this.warnTotal : 0; // 0 -> 1 as the shuffle nears
+    this.crank += (warning ? CRANK_WARN : CRANK_IDLE) * dt;
+    m.crank.rotation.x = this.crank;
+
+    // The jester on his spring: a damped spring toward the rest length (or the duck).
+    const target = warning ? JACK_DUCK : springRest(this.stage) + Math.sin(time * 2.6) * 0.04;
+    this.v += (SPRING_K * (target - this.h) - SPRING_DAMP * this.v) * step;
+    this.h += this.v * step;
+    m.setSpring(this.h);
+    this.squash += ((warning ? JACK_SQUASH : 1) - this.squash) * Math.min(1, dt * 8);
+    const ps = popScale(this.pop / PHASE_FLASH_TIME, POP);
+    m.jester.scaling.set(ps * (2 - this.squash) ** 0.5, ps * this.squash, ps * (2 - this.squash) ** 0.5);
+    m.jester.rotation.z = Math.sin(time * 1.7) * 0.06 + Math.max(-0.15, Math.min(0.15, this.v * 0.02));
+    m.jester.rotation.y = Math.sin(time * 0.9) * 0.18;
+
+    // The lid flops half shut over him while he hides and flies open as he pops out; it
+    // and the crank rattle as the shuffle nears (the toy shakes, never the camera).
+    const lidTarget = warning ? LID_WARN + Math.sin(time * 38) * 0.06 * warnK : LID_OPEN;
+    this.lid += (lidTarget - this.lid) * Math.min(1, dt * LID_EASE);
+    m.lid.rotation.x = this.lid;
+
+    // Arms: conducting the gates while they glide, fidgeting otherwise.
+    if (this.waveLeft > 0) {
+      const w = Math.min(1, this.waveLeft / 0.25);
+      m.armR.rotation.z = JACK_ARM_REST + w * (WAVE_ARM + Math.sin(time * 9) * 0.45);
+      m.armL.rotation.z = -JACK_ARM_REST - w * (WAVE_ARM + Math.sin(time * 9 + 1.5) * 0.45);
+    } else {
+      m.armR.rotation.z = JACK_ARM_REST + 0.15 * Math.sin(time * 2.3);
+      m.armL.rotation.z = -JACK_ARM_REST - 0.15 * Math.sin(time * 2.1 + 1);
+    }
+  }
+
+  dispose(): void {
+    this.model.dispose();
+  }
 }

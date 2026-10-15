@@ -17,9 +17,17 @@
 // holds the enemy crowd (BattleState.enemyFrozen > 0, update()'s third argument) the enemy
 // figures stop hopping and take an ice-blue tint, easing back to their colour at the end.
 //
+// Milestone 6 (World 3) adds the archer (models/archer.ts) and the Wind-up Robot champion
+// (models/championWindup.ts: body, trim and a turning brass key) for the player, and the
+// enemy wind-up tin robot (models/windupRobot.ts: tin body and a turning key). Both
+// wind-up figures are drawn off their motion (crowdLogic.GaitTracker): the robot rocks
+// stiffly while it walks and stands still in its pauses, the key on its back unwinding
+// fast while it walks; the champion clanks along in heavy rocking strides.
+//
 // Batches: rifleman, knight, sprinter, bomber, the bomber's firecrackers, champion body,
 // champion trim, Giant, snowball, snowman kit + snow, penguin kit + tin and (on 'low')
-// blob shadows: at most 14 draw calls when every kind is on screen at once (a World 2
+// blob shadows, plus the archer, the robot's tin + key and the Wind-up Robot's body, trim
+// and key (World 3): at most 20 draw calls when every kind is on screen at once (a
 // level shows 6-9), plus the same in the shadow pass on high / medium, and a batch with
 // no units is hidden (costs nothing). A view without a variant array draws today's look
 // (riflemen and the champion: 3 calls).
@@ -46,8 +54,12 @@ import { createGiantMesh } from './models/giant.ts';
 import { createSnowballMesh } from './models/snowball.ts';
 import { createSnowmanMeshes } from './models/snowman.ts';
 import { createPenguinMeshes } from './models/penguin.ts';
+import { createArcherMesh } from './models/archer.ts';
+import { ROBOT_KEY, createWindupRobotMeshes } from './models/windupRobot.ts';
+import { WINDUP_KEY, createChampionWindup } from './models/championWindup.ts';
 import { writeTRS } from './fxLogic.ts';
 import {
+  GaitTracker,
   RollTracker,
   SLOT,
   SLOT_COUNT,
@@ -55,7 +67,9 @@ import {
   crowdSlot,
   frostAmount,
   frostColor,
+  rotateLocal,
   slotStyle,
+  tinRock,
 } from './crowdLogic.ts';
 import type { ChampionId, CrowdSlot, HopStyle } from './crowdLogic.ts';
 
@@ -101,6 +115,8 @@ const BLOB: Partial<Record<CrowdSlot, { x: number; z: number }>> = {
   [SLOT.giant]: { x: 2.3, z: 2.7 },
   [SLOT.snowman]: { x: 1.7, z: 1.8 },
   [SLOT.penguin]: { x: 1.3, z: 1.4 },
+  [SLOT.robot]: { x: 1.35, z: 1.35 },
+  [SLOT.windup]: CHAMP_BLOB,
 };
 
 class InstanceBatch {
@@ -200,6 +216,13 @@ export class CrowdRenderer {
   private readonly snowmanSnow: InstanceBatch; // the snowman's body (snowman matrices, white x frost)
   private readonly penguinTin: InstanceBatch; // the penguin's tin body (penguin matrices, white x frost)
   private readonly roll = new RollTracker();
+  private readonly gait = new GaitTracker(); // wind-up robots and the Wind-up Robot champion
+  private readonly robotKey: InstanceBatch; // the robot's key (own matrices, white x frost)
+  private readonly windupTrim: InstanceBatch; // Wind-up Robot trim (windup slot matrices)
+  private readonly windupKey: InstanceBatch; // its key (own matrices), also for a 'windup' loadout champion
+  private champKey = false; // the champion slot holds the Wind-up Robot (draw its key too)
+  private readonly keyAt = { x: 0, y: 0, z: 0 };
+  private lastTime = Number.NaN;
   private readonly tint = new Float32Array(3);
   private trim: InstanceBatch | null = null;
   private readonly blobs: InstanceBatch;
@@ -231,6 +254,14 @@ export class CrowdRenderer {
     const penguin = createPenguinMeshes(scene, look);
     this.batches[SLOT.penguin] = new InstanceBatch(penguin.kit);
     this.penguinTin = new InstanceBatch(penguin.tin);
+    this.batches[SLOT.archer] = new InstanceBatch(createArcherMesh(scene, look));
+    const robot = createWindupRobotMeshes(scene, look);
+    this.batches[SLOT.robot] = new InstanceBatch(robot.tin);
+    this.robotKey = new InstanceBatch(robot.key);
+    const windup = createChampionWindup(scene, look);
+    this.batches[SLOT.windup] = new InstanceBatch(windup.body);
+    this.windupTrim = new InstanceBatch(windup.trim!, false);
+    this.windupKey = new InstanceBatch(windup.key, false);
     const low = createChampionFallback(scene, look);
     this.batches[SLOT.champion] = new InstanceBatch(low.body);
     this.useTrim(low);
@@ -274,10 +305,12 @@ export class CrowdRenderer {
   }
 
   // The loadout's champion model (call between battles). Sarge loads its full mesh
-  // asynchronously behind the low-detail one; the tank and drummer are synchronous.
+  // asynchronously behind the low-detail one; the tank, drummer and Wind-up Robot are
+  // synchronous (the robot's key is drawn from the shared key batch).
   setChampion(id: ChampionId): void {
     if (id === this.champion) return;
     this.champion = id;
+    this.champKey = id === 'windup';
     this.refreshStyles();
     if (id === 'sarge') {
       const low = createChampionFallback(this.scene, this.look);
@@ -287,7 +320,12 @@ export class CrowdRenderer {
       return;
     }
     this.championToken++;
-    const c = id === 'tank' ? createChampionTank(this.scene, this.look) : createChampionDrummer(this.scene, this.look);
+    let c: ChampionMeshes;
+    if (id === 'windup') {
+      const w = createChampionWindup(this.scene, this.look);
+      w.key.dispose(); // the windup slot's key batch draws it
+      c = w;
+    } else c = id === 'tank' ? createChampionTank(this.scene, this.look) : createChampionDrummer(this.scene, this.look);
     this.batches[SLOT.champion].setMesh(c.body);
     this.useTrim(c);
   }
@@ -303,6 +341,9 @@ export class CrowdRenderer {
     if (this.accent.count > 0) n++;
     if (this.snowmanSnow.count > 0) n++;
     if (this.penguinTin.count > 0) n++;
+    if (this.robotKey.count > 0) n++;
+    if (this.windupTrim.count > 0) n++;
+    if (this.windupKey.count > 0) n++;
     if (this.trim && this.trim.count > 0) n++;
     if (this.blobs.count > 0) n++;
     return n;
@@ -324,6 +365,17 @@ export class CrowdRenderer {
     this.snowmanSnow.count = 0;
     this.penguinTin.ensureCapacity(n);
     this.penguinTin.count = 0;
+    this.robotKey.ensureCapacity(n);
+    this.robotKey.count = 0;
+    this.windupTrim.ensureCapacity(n);
+    this.windupTrim.count = 0;
+    this.windupKey.ensureCapacity(n);
+    this.windupKey.count = 0;
+    const dt = Number.isNaN(this.lastTime) ? 0 : Math.max(0, Math.min(0.1, time - this.lastTime));
+    this.lastTime = time;
+    const gait = this.gait;
+    gait.ensureCapacity(n);
+    const key = this.keyAt;
     trim?.ensureCapacity(n);
     if (trim) trim.count = 0;
     blobs?.ensureCapacity(n);
@@ -366,29 +418,48 @@ export class CrowdRenderer {
       }
       roll.clear(i);
       const st = this.styles[slot];
+      const wound = slot === SLOT.robot || slot === SLOT.windup || (slot === SLOT.champion && this.champKey);
       // Phase from time and position: stable per unit (the sim reorders its arrays) and
       // varied across the crowd, so the army hops along out of step. Frozen enemies stand.
       const live = player ? 1 : thaw;
       const sv = slide ? slide[i] : 0;
       const skid = sv === 0 ? 0 : sv > SKID_FULL ? 1 : sv < -SKID_FULL ? -1 : sv / SKID_FULL;
       const step = live * (1 - (skid < 0 ? -skid : skid));
-      const sn = Math.sin(time * HOP_SPEED * st.speed + z * 1.9 + x * 3.7);
-      const hop = Math.abs(sn) * step;
+      let sn = Math.sin(time * HOP_SPEED * st.speed + z * 1.9 + x * 3.7);
+      let walk = step;
+      if (wound) {
+        // Wind-up toys: a clipped, cam-like rock while walking, still in their pauses.
+        gait.step(i, x, z, dt, live);
+        walk *= gait.move;
+        sn = tinRock(time * HOP_SPEED * st.speed + z * 1.9 + x * 3.7);
+      } else gait.clear(i);
+      const hop = Math.abs(sn) * walk;
       const y = hop * HOP_HEIGHT * st.height * s;
       const lean = hop * HOP_LEAN * st.lean;
-      const rl = sn * WADDLE * st.waddle * step - skid * SKID_TILT;
-      if (slot === SLOT.champion) {
+      const rl = sn * WADDLE * st.waddle * walk - skid * SKID_TILT;
+      if (slot === SLOT.champion || slot === SLOT.windup) {
         if (player) batch.write(x, y, z, s, lean, rl, yaw, pc.r * cb, pc.g * cb, pc.b * cb);
         else batch.write(x, y, z, s, lean, rl, yaw, er * cb, eg * cb, eb * cb);
-        trim?.write(x, y, z, s, lean, rl, yaw, 1, 1, 1);
+        if (slot === SLOT.windup) this.windupTrim.write(x, y, z, s, lean, rl, yaw, 1, 1, 1);
+        else trim?.write(x, y, z, s, lean, rl, yaw, 1, 1, 1);
+        if (wound) {
+          rotateLocal(WINDUP_KEY.x * s, WINDUP_KEY.y * s, WINDUP_KEY.z * s, yaw, lean, rl, key);
+          this.windupKey.write(x + key.x, y + key.y, z + key.z, s, lean, rl + gait.key, yaw, 1, 1, 1);
+        }
         blobs?.writeFlat(x, z, CHAMP_BLOB.x * s, CHAMP_BLOB.z * s, yaw);
         continue;
       }
-      if (player) batch.write(x, y, z, s, lean, rl, yaw, pc.r * v, pc.g * v, pc.b * v);
+      // The tin robot is fully printed in its vertex colours: white (x frost), not tan.
+      if (slot === SLOT.robot) batch.write(x, y, z, s, lean, rl, yaw, wr * v, wg * v, wb * v);
+      else if (player) batch.write(x, y, z, s, lean, rl, yaw, pc.r * v, pc.g * v, pc.b * v);
       else batch.write(x, y, z, s, lean, rl, yaw, er * v, eg * v, eb * v);
       if (slot === SLOT.bomber) this.accent.write(x, y, z, s, lean, rl, yaw, 1, 1, 1);
       else if (slot === SLOT.snowman) this.snowmanSnow.write(x, y, z, s, lean, rl, yaw, wr * v, wg * v, wb * v);
       else if (slot === SLOT.penguin) this.penguinTin.write(x, y, z, s, lean, rl, yaw, wr, wg, wb);
+      else if (slot === SLOT.robot) {
+        rotateLocal(ROBOT_KEY.x * s, ROBOT_KEY.y * s, ROBOT_KEY.z * s, yaw, lean, rl, key);
+        this.robotKey.write(x + key.x, y + key.y, z + key.z, s, lean, rl + gait.key, yaw, wr, wg, wb);
+      }
       const fb = BLOB[slot] ?? MOB_BLOB;
       blobs?.writeFlat(x, z, fb.x * s, fb.z * s, yaw);
     }
@@ -396,6 +467,9 @@ export class CrowdRenderer {
     this.accent.commit();
     this.snowmanSnow.commit();
     this.penguinTin.commit();
+    this.robotKey.commit();
+    this.windupTrim.commit();
+    this.windupKey.commit();
     trim?.commit();
     this.blobs.commit();
   }
@@ -406,6 +480,9 @@ export class CrowdRenderer {
     this.accent.dispose();
     this.snowmanSnow.dispose();
     this.penguinTin.dispose();
+    this.robotKey.dispose();
+    this.windupTrim.dispose();
+    this.windupKey.dispose();
     this.trim?.dispose();
     this.blobs.dispose();
   }

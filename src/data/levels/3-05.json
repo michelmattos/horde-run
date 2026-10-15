@@ -1,0 +1,218 @@
+{
+  "id": "3-5",
+  "name": "Record Player",
+  "theme": "workshop",
+  "lane": {
+    "width": 10,
+    "length": 60
+  },
+  "cannon": {
+    "fireRate": 5.6,
+    "unitsPerShot": 3,
+    "aimLimit": 4
+  },
+  "playerBase": {
+    "hp": 320
+  },
+  "enemyBase": {
+    "hp": 2800,
+    "x": 0,
+    "width": 6
+  },
+  "gates": [
+    {
+      "id": "3-5-x2",
+      "op": "mul",
+      "value": 2,
+      "x": 0,
+      "z": 13,
+      "width": 3.6
+    },
+    {
+      "id": "3-5-x3",
+      "op": "mul",
+      "value": 3,
+      "x": 2.4,
+      "z": 35,
+      "width": 3
+    },
+    {
+      "id": "3-5-minus5",
+      "op": "sub",
+      "value": 5,
+      "x": -2.6,
+      "z": 35,
+      "width": 2.6
+    }
+  ],
+  "enemyWaves": [
+    {
+      "at": 10,
+      "count": 120,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 20,
+      "count": 135,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 30,
+      "count": 150,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 40,
+      "count": 165,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 50,
+      "count": 180,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 60,
+      "count": 186,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 70,
+      "count": 192,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 80,
+      "count": 198,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 90,
+      "count": 204,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 100,
+      "count": 210,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 110,
+      "count": 216,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 120,
+      "count": 222,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 130,
+      "count": 228,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 16,
+      "count": 8,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 28,
+      "count": 9,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 40,
+      "count": 10,
+      "x": -1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 52,
+      "count": 11,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 64,
+      "count": 12,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 76,
+      "count": 13,
+      "x": -1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 88,
+      "count": 14,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 100,
+      "count": 15,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 112,
+      "count": 16,
+      "x": -1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 124,
+      "count": 17,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    }
+  ],
+  "enemySpawnRate": {
+    "perSecond": 9.0,
+    "startAt": 8
+  },
+  "champion": {
+    "chargeNeeded": 280,
+    "hp": 115,
+    "damage": 90
+  },
+  "targetTime": 115,
+  "intro": "A turntable spins everything on it. Your soldiers come off it somewhere else: watch where they land.",
+  "turntables": [
+    {
+      "id": "3-5-disc",
+      "x": 0,
+      "z": 24,
+      "radius": 3.4,
+      "spin": 0.9
+    }
+  ]
+}

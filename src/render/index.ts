@@ -16,10 +16,15 @@
 // and releases the old room's cached materials and their textures (RoomSlot), then the
 // look switches its lights and grade (look.setTheme). Gusts, boss snowball lobs, frozen
 // gates, ice walls and igloos come in through handleEvents / cue like every other effect.
+//
+// World 3 (theme 'workshop'): the Clockwork Workshop room and props, conveyors,
+// turntables and saws (level.ts), toggling and gliding gates, shield walls, and the
+// Jack-in-the-Box's shuffle cues. Unit-level World 3 effects (arrows, ricochets, the
+// Wind-up Robot's gate walk) belong to UnitFx (unitFx.ts), fed the same events.
 import type { Engine } from '@babylonjs/core/Engines/engine';
 import { Scene } from '@babylonjs/core/scene';
 import type { BattleState, DefenderView, LevelDef, SimEvent, SimView } from '../contracts.ts';
-import { DEFENDER_DEFAULTS, LAYOUT, Team } from '../contracts.ts';
+import { DEFENDER_DEFAULTS, LAYOUT, SHIELD_DEFAULTS, Team } from '../contracts.ts';
 import { BlankWatch, createLook, isBlankSample, readSavedRender, writeSavedRender } from './look/index.ts';
 import type { Look } from './look/index.ts';
 import { LevelVisuals } from './level.ts';
@@ -31,6 +36,8 @@ import { Cannon } from './cannon.ts';
 import { HpBars } from './hpBars.ts';
 import { createPropKit } from './models/props.ts';
 import { createFreezerPropKit } from './models/freezerProps.ts';
+import { createWorkshopPropKit } from './models/workshopProps.ts';
+import { UnitFx } from './unitFx.ts';
 import { CameraRig } from './cameraRig.ts';
 import { ResolutionScaler } from './resolution.ts';
 import { screenRows } from './framing.ts';
@@ -62,7 +69,10 @@ export type FxCue =
   | { type: 'lobHit'; x: number; z: number; radius: number }
   | { type: 'gustWarn'; dir: -1 | 1; seconds: number }
   | { type: 'gust'; dir: -1 | 1; duration: number }
-  | { type: 'iglooRelease'; id: string; x: number; z: number; count: number };
+  | { type: 'iglooRelease'; id: string; x: number; z: number; count: number }
+  // Milestone 6 (World 3): the Jack-in-the-Box winds up, then the gates glide.
+  | { type: 'shuffleWarn'; seconds: number }
+  | { type: 'shuffle'; glide: number };
 
 // The battle visuals a loadout picks (default: popgun and sarge).
 export interface RenderLoadout {
@@ -100,6 +110,8 @@ export interface RenderStats {
   totalVertices: number; // vertices held by all meshes in the scene
   quality: string; // look tier: high / medium / low
   pixelRatio: number; // render pixels per CSS pixel
+  textures: number; // textures held by the scene
+  textureMB: number; // their approximate GPU memory (RGBA8 with mipmaps), MB
 }
 
 export interface GameRenderer {
@@ -141,6 +153,7 @@ const LOB_FROM_DZ = -1.2;
 const ROOM_MATERIALS: Record<RoomTheme, readonly string[]> = {
   bedroom: ['env-', 'props-'],
   freezer: ['freezer-', 'ice-', 'igloo-'],
+  workshop: ['workshop-'],
 };
 
 export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: RendererOptions = {}): GameRenderer {
@@ -160,6 +173,7 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
   const cannon = new Cannon(scene, look);
   const bars = new HpBars(scene);
   const ultimates = new UltimateVisuals(scene, look, effects);
+  const unitFx = new UnitFx(scene, look);
   // The Blizzard's frost sheet covers the enemy crowd's footprint, which only frame()
   // can read (the view is never retained), so its cue waits there for one frame.
   const enemyArea: CrowdBounds = { count: 0, minX: 0, maxX: 0, minZ: 0, maxZ: 0 };
@@ -168,9 +182,9 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
   const rooms = new RoomSlot<RoomKit>(
     (theme) => {
       look.setTheme(theme);
-      return theme === 'freezer'
-        ? { theme, props: createFreezerPropKit(scene, look) }
-        : { theme, props: createPropKit(scene, look) };
+      if (theme === 'freezer') return { theme, props: createFreezerPropKit(scene, look) };
+      if (theme === 'workshop') return { theme, props: createWorkshopPropKit(scene, look) };
+      return { theme, props: createPropKit(scene, look) };
     },
     (theme, kit) => {
       kit.props.dispose();
@@ -202,6 +216,8 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
     totalVertices: 0,
     quality: look.quality,
     pixelRatio: scaler.ratio,
+    textures: 0,
+    textureMB: 0,
   };
 
   const reframe = (): void => {
@@ -277,6 +293,7 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
         case 'defenderDestroyed':
           defenders.destroyed(e.id);
           if (e.kind === 'igloo') effects.snowDebris(e.x, e.z, defenderWidth(level.level, e.id));
+          else if (e.kind === 'shield') effects.tinShards(e.x, e.z, defenderWidth(level.level, e.id));
           else effects.debris(e.x, e.z, e.kind === 'wall', defenderWidth(level.level, e.id));
           break;
         // ---- World 2 ----
@@ -308,6 +325,19 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
         case 'bossPhase':
           level.bossPhase(e.phase);
           effects.phaseRing(e.x, e.z + 1.5, level.level.enemyBase.width);
+          break;
+        // ---- World 3 ----
+        case 'gateToggled':
+          effects.gateToggle(e.x, e.z, level.gateWidth(e.gateId), e.on, level.gateHasShutter(e.gateId));
+          break;
+        case 'gateMoved':
+          level.moveGate(e.gateId, e.fromX, e.fromZ, e.x, e.z, e.seconds);
+          break;
+        case 'sawHit':
+          effects.sawHit(e.id, e.x, e.z, e.weight, level.sawRadius(e.id));
+          break;
+        case 'shieldBlock':
+          if (defenders.clang(e.id)) effects.shieldClang(e.id, e.x, e.z);
           break;
         default:
           break;
@@ -352,6 +382,12 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
         effects.iglooRelease(door ? door.x : c.x, door ? door.z : c.z);
         break;
       }
+      case 'shuffleWarn':
+        level?.bossShuffleWarn(c.seconds);
+        break;
+      case 'shuffle':
+        level?.bossShuffle(c.glide);
+        break;
       default:
         break;
     }
@@ -371,11 +407,13 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
       if (rooms.theme !== theme) defenders.load(undefined);
       room = rooms.use(theme);
       level = new LevelVisuals(scene, look, def, room);
+      level.onGateLanded = (x, z, width) => effects.gateLanded(x, z, width);
       defenders.load(def.defenders);
       effects.setGustArea(def.lane.width / 2);
       cannon.setFireRate(def.cannon.fireRate);
       effects.clear();
       ultimates.clear();
+      unitFx.clear();
       blizzard = null;
       rig.resetZoom();
       // Sun shadows cover the lane, both bases, the flag and the props beside the rug.
@@ -399,6 +437,7 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
     frame(f: RenderFrame): void {
       const dt = Math.min(Math.max(f.dt, 0), 0.1);
       handleEvents(f.events);
+      unitFx.handleEvents(f.events);
       const gust = f.battle.gust;
       if (gust) effects.setGust(gust.dir, gust.warn, gust.active);
       if (room?.theme === 'freezer')
@@ -413,6 +452,7 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
       crowd.update(f.view, f.time, f.battle.enemyFrozen ?? 0);
       ultimates.update(dt);
       effects.update(dt);
+      unitFx.update(dt);
       bars.begin();
       level?.drawBars(bars);
       defenders.drawBars(bars);
@@ -447,6 +487,7 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
     },
 
     stats(): RenderStats {
+      countTextures(scene, lastStats);
       return { ...lastStats };
     },
 
@@ -486,6 +527,7 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
       level = null;
       crowd.dispose();
       ultimates.dispose();
+      unitFx.dispose();
       effects.dispose();
       defenders.dispose();
       cannon.dispose();
@@ -524,6 +566,20 @@ function defenderWidth(level: LevelDef, id: string): number {
       ? DEFENDER_DEFAULTS.wallWidth
       : d.kind === 'igloo'
         ? DEFENDER_DEFAULTS.wallWidth * 0.75
-        : DEFENDER_DEFAULTS.towerWidth)
+        : d.kind === 'shield'
+          ? SHIELD_DEFAULTS.width
+          : DEFENDER_DEFAULTS.towerWidth)
   );
+}
+
+// Texture count and approximate GPU memory (RGBA8, x 4/3 for mipmaps) for stats().
+function countTextures(scene: Scene, out: RenderStats): void {
+  let bytes = 0;
+  const list = scene.textures;
+  for (let i = 0; i < list.length; i++) {
+    const s = list[i].getSize();
+    bytes += s.width * s.height * 4 * (list[i].noMipmap ? 1 : 4 / 3);
+  }
+  out.textures = list.length;
+  out.textureMB = Math.round((bytes / (1024 * 1024)) * 10) / 10;
 }

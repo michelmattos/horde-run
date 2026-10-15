@@ -3,7 +3,11 @@
 // switch between them (each world keeps its own scroll position). World 1 is the bedroom
 // floor: wooden floorboards with a toy race track winding from the first level (bottom)
 // to the boss (top). World 2 is a freezer shelf: frosted wire shelving, an icy track,
-// frost-rimmed level badges and a snow-globe boss node. A world still locked behind an
+// frost-rimmed level badges and a snow-globe boss node. World 3 is the toymaker's
+// workshop: a pegboard wall with tools hanging on it under the desk lamp's glow, a
+// conveyor-belt track, level badges set in brass gears and a Jack-in-the-Box boss node
+// (a polka-dot tin box with its crank). With three worlds the tabs get compact so all
+// three fit a 360 px wide phone. A world still locked behind an
 // earlier world's stars shows its levels under frost with a padlock card ('Earn N more
 // stars in Bedroom Floor') and none of them can be played. The page scrolls natively and
 // nothing on it ever moves on its own except the one auto-scroll to the newest unlocked
@@ -28,7 +32,7 @@ import { UI, WOOD_BG, injectUiTheme, outlineShadow } from '../ui/theme.ts';
 import { coinIcon, compassIcon, lockIcon as lockSvg, snowflakeIcon, soldierIcon, starIcon } from '../ui/icons.ts';
 import { formatCoins } from './metaLogic.ts';
 import { cardsIcon, cogIcon, homeIcon } from './metaUi.ts';
-import { penguinIcon, snowmanIcon } from './worldArt.ts';
+import { gearIcon, gearPath, jackIcon, jesterIcon, penguinIcon, robotIcon, snowmanIcon } from './worldArt.ts';
 import { initialWorldIndex, levelTap, lockedWorldText, showsTitleCard, worldTabs } from './worldLogic.ts';
 import type { MapWorld, WorldTab } from './worldLogic.ts';
 
@@ -111,6 +115,37 @@ const FREEZER_BG =
   `${WIRES},` +
   `repeating-linear-gradient(97deg,transparent 0 11px,rgba(255,255,255,.08) 11px 12px,transparent 12px 31px),` +
   `linear-gradient(180deg,#eef8fd 0%,#d3ecf8 45%,#b8dcef 100%)`;
+
+// Workshop pegboard: a cool grey-blue board (art direction section 9) punched with a
+// 24 px grid of holes, a few tools hanging on pegs as soft dark silhouettes (a 240x432
+// SVG tile: a wrench, a screwdriver, pliers and a coil of wire), a warm desk-lamp glow
+// at the top and the bench's honey maple edge under the header.
+const TOOLS = (() => {
+  const sh = 'rgba(30,40,46,.16)';
+  const hi = 'rgba(255,255,255,.18)';
+  const peg = (x: number, y: number): string =>
+    `<circle cx='${x}' cy='${y}' r='3.4' fill='rgba(40,48,54,.55)'/><circle cx='${x - 0.8}' cy='${y - 0.8}' r='1.6' fill='rgba(210,163,63,.85)'/>`;
+  const wrench =
+    `<g transform='translate(48 40) rotate(12)'><path d='M-5 0 L5 0 L5 92 C13 96 15 108 9 116 L5 108 L-5 108 L-9 116 C-15 108 -13 96 -5 92 Z M-9 -14 C-15 -6 -13 6 -5 8 L5 8 C13 6 15 -6 9 -14 L5 -6 L-5 -6 Z' fill='${sh}'/>` +
+    `<path d='M-3 10 L-3 90' stroke='${hi}' stroke-width='1.6'/></g>`;
+  const driver =
+    `<g transform='translate(182 52) rotate(-8)'><rect x='-8' y='0' width='16' height='46' rx='6' fill='${sh}'/>` +
+    `<rect x='-2.5' y='46' width='5' height='58' fill='${sh}'/><path d='M-2.5 104 L2.5 104 L0 112 Z' fill='${sh}'/>` +
+    `<path d='M-4 6 L-4 40' stroke='${hi}' stroke-width='1.6'/></g>`;
+  const pliers =
+    `<g transform='translate(70 250) rotate(-14)'><path d='M-4 0 L-10 60 L-4 62 L2 6 Z M4 0 L10 60 L4 62 L-2 6 Z' fill='${sh}'/>` +
+    `<path d='M-4 -2 C-8 -20 -4 -34 0 -40 C4 -34 8 -20 4 -2 Z' fill='${sh}'/><circle cx='0' cy='2' r='4' fill='${sh}'/></g>`;
+  const coil = `<g transform='translate(180 290)' fill='none' stroke='${sh}' stroke-width='5'><ellipse rx='26' ry='22'/><ellipse rx='19' ry='16'/><ellipse rx='12' ry='10'/></g>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(
+    `<svg xmlns='http://www.w3.org/2000/svg' width='240' height='432'>${wrench}${driver}${pliers}${coil}${peg(48, 34)}${peg(182, 46)}${peg(70, 204)}${peg(180, 262)}</svg>`,
+  )}") 0 0/240px 432px`;
+})();
+const PEGBOARD_BG =
+  `radial-gradient(130% 34% at 30% 0%,rgba(255,199,143,.55),rgba(255,199,143,.12) 55%,transparent 75%),` +
+  `${TOOLS},` +
+  `radial-gradient(circle at 12px 12px,rgba(28,36,40,.5) 0 2.6px,rgba(255,255,255,.28) 2.8px 3.6px,transparent 4px) 0 0/24px 24px,` +
+  `repeating-linear-gradient(90deg,transparent 0 119px,rgba(30,40,46,.12) 119px 121px,transparent 121px 240px),` +
+  `linear-gradient(180deg,#b9c6ca 0%,#a9b7bb 40%,#94a4a9 100%)`;
 
 const CSS = `
 .hm-map{position:fixed;inset:0;height:var(--app-h);z-index:8;display:none;flex-direction:column;
@@ -315,6 +350,61 @@ const CSS = `
 .hm-card-art .hm-mini{width:64px;height:64px;align-self:flex-end;margin-left:-26px}
 .hm-card-art .hm-mini svg{width:50px;height:50px}
 .hm-card.hm-frost .hm-card-hint{color:#e6f6ff}
+
+/* ----- Three or more worlds: compact tabs so they share a 360 px phone ----- */
+.hm-tabs.hm-many{gap:7px}
+.hm-tabs.hm-many .hm-tab{gap:5px;padding:4px 6px 4px 4px;border-radius:14px}
+.hm-tabs.hm-many .hm-tab-ico{width:32px;height:32px;border-width:2.5px}
+.hm-tabs.hm-many .hm-tab-ico svg{width:24px;height:24px}
+.hm-tabs.hm-many .hm-tab-txt b{font-size:15px;letter-spacing:-.01em}
+.hm-tabs.hm-many .hm-tab-txt small{font-size:12px}
+.hm-tabs.hm-many .hm-tab-txt small svg{width:12px;height:12px}
+@media (max-width:374px){.hm-tabs.hm-many .hm-tab-ico{display:none}.hm-tabs.hm-many .hm-tab{padding-left:9px}}
+.hm-tab-ico.hm-workshop{background:radial-gradient(80% 70% at 35% 25%,#d9e1e4,#9aa9ae 55%,#5d6c72)}
+
+/* ----- World 3: the workshop pegboard ----- */
+.hm-map.hm-shop{background:#6f7d82}
+.hm-map.hm-shop .hm-shade{background:radial-gradient(130% 90% at 50% 55%,transparent 52%,rgba(24,26,34,.45) 100%)}
+.hm-scroll.hm-workshop{background:${PEGBOARD_BG};background-attachment:local}
+.hm-workshop .hm-disc{--c1:#9fdde0;--c2:#2f7f86;--c3:#1d5359;--edge:#123a3e}
+.hm-workshop .hm-disc::before{inset:5px;border:2px solid rgba(239,227,198,.55)}
+.hm-workshop .hm-node.hm-locked .hm-disc{--c1:#e6e9eb;--c2:#a7b0b6;--c3:#6e7980;--edge:#454e55}
+.hm-gear{position:absolute;left:50%;top:-11px;width:86px;height:86px;margin-left:-43px;pointer-events:none}
+.hm-gear svg{display:block;width:86px;height:86px}
+.hm-node.hm-locked .hm-gear{filter:saturate(.15) brightness(.95)}
+.hm-workshop .hm-name{background:#fbf1d8}
+.hm-workshop .hm-node.hm-locked .hm-name{background:#e1e4e2;color:#59646a}
+/* The Jack-in-the-Box: a polka-dot royal-blue tin box with a red frame and a brass crank. */
+.hm-workshop .hm-node.hm-boss .hm-disc{border-radius:20px;--c1:#6f97dc;--c2:#2e5aa8;--c3:#1f3f7a;--edge:#16295a;
+  background:radial-gradient(60% 40% at 30% 18%,rgba(255,255,255,.4),transparent 70%),
+    radial-gradient(circle,#efe3c6 0 2.4px,transparent 3px) 4px 4px/20px 20px,
+    linear-gradient(180deg,var(--c1),var(--c2) 45%,var(--c3))}
+.hm-workshop .hm-node.hm-boss .hm-disc::before{inset:6px;border-radius:13px;border:3px solid #b5372f}
+.hm-workshop .hm-node.hm-boss.hm-locked .hm-disc{--c1:#b9c0c6;--c2:#8a939b;--c3:#5f6870;--edge:#3a4148}
+/* Open, the jester springs out over the box; the BOSS plate sits on its front. */
+.hm-jester{position:absolute;left:50%;bottom:calc(100% - 16px);width:80px;height:80px;margin-left:-40px;pointer-events:none}
+.hm-jester svg{display:block;width:80px;height:80px}
+.hm-workshop .hm-node.hm-boss .hm-badge{top:auto;bottom:9px}
+.hm-workshop .hm-node.hm-boss .hm-disc .hm-lock{margin-top:-22px}
+.hm-crank{position:absolute;right:-21px;top:50%;width:22px;height:30px;margin-top:-18px;pointer-events:none}
+.hm-crank svg{display:block;width:22px;height:30px}
+
+/* ----- The workshop's title card: a brass plaque over the pegboard ----- */
+.hm-card.hm-tin{background:radial-gradient(110% 70% at 50% 40%,rgba(255,199,143,.28),rgba(18,22,30,.93)),${PEGBOARD_BG}}
+.hm-card.hm-tin .hm-card-title{position:relative;color:${UI.ink};text-shadow:0 2px 0 rgba(255,243,196,.7);
+  background:radial-gradient(circle at 12px 12px,#8a6a1f 0 3px,transparent 3.6px),radial-gradient(circle at calc(100% - 12px) 12px,#8a6a1f 0 3px,transparent 3.6px),
+    radial-gradient(circle at 12px calc(100% - 12px),#8a6a1f 0 3px,transparent 3.6px),radial-gradient(circle at calc(100% - 12px) calc(100% - 12px),#8a6a1f 0 3px,transparent 3.6px),
+    linear-gradient(165deg,#f7dc8c 0%,#d2a33f 48%,#a87a22 100%);
+  box-shadow:inset 0 3px 0 rgba(255,246,210,.75),inset 0 -5px 0 rgba(90,60,10,.35),0 7px 0 ${UI.ink},0 18px 24px rgba(0,0,0,.5)}
+.hm-card-art .hm-tinplate{background:radial-gradient(80% 70% at 35% 25%,#f2f4f6,#b9c0c6 55%,#5f6870)}
+.hm-card.hm-tin .hm-card-hint{color:#ffe7c2}
+/* A locked workshop: the padlock card is a riveted tin plate instead of a frosted one. */
+.hm-page-workshop .hm-wlock{color:#22355e;background:radial-gradient(120% 90% at 20% 0%,rgba(255,255,255,.75),transparent 55%),linear-gradient(160deg,#eef1f3,#b9c0c6);
+  box-shadow:0 7px 0 #6f7a83,0 7px 0 3.5px ${UI.ink},0 18px 24px rgba(10,16,24,.45)}
+.hm-page-workshop .hm-wlock::after{border:0;inset:9px;border-radius:15px;
+  background:radial-gradient(circle at 6px 6px,#8e979f 0 2.4px,transparent 3px),radial-gradient(circle at calc(100% - 6px) 6px,#8e979f 0 2.4px,transparent 3px),
+    radial-gradient(circle at 6px calc(100% - 6px),#8e979f 0 2.4px,transparent 3px),radial-gradient(circle at calc(100% - 6px) calc(100% - 6px),#8e979f 0 2.4px,transparent 3px)}
+
 @media (prefers-reduced-motion: reduce){.hm-card{transition:none}.hm-card-hint,.hm-node.hm-current .hm-disc::after{animation:none}}
 `;
 
@@ -406,7 +496,37 @@ const TRACKS: Readonly<Record<WorldTheme, readonly TrackStroke[]>> = {
     { stroke: 'rgba(255,255,255,.55)', width: 8, shift: 'translate(-4 -4)' },
     { stroke: '#e9f7ff', width: 3, dash: '3 14' },
   ],
+  // A conveyor belt across the pegboard: blued steel rails with bright bolt heads, the
+  // charcoal rubber belt and its worn mustard chevrons.
+  workshop: [
+    { stroke: 'rgba(24,30,36,.35)', width: 48, shift: 'translate(0 6)' },
+    { stroke: UI.ink, width: 42 },
+    { stroke: '#3d5170', width: 36 },
+    { stroke: '#c9ced4', width: 31, dash: '3 15', cap: 'round' },
+    { stroke: UI.ink, width: 27 },
+    { stroke: '#2f3336', width: 24 },
+    { stroke: 'rgba(255,255,255,.1)', width: 8, shift: 'translate(-3 -4)' },
+    { stroke: '#e2ad37', width: 8, dash: '4 14', cap: 'butt' },
+  ],
 };
+
+// A brass crank on the side of the Jack-in-the-Box node: axle, arm and a red knob.
+const CRANK =
+  `<svg viewBox="0 0 22 30" aria-hidden="true" focusable="false">` +
+  `<path d="M2 18 L9 18 L9 6 L15 6" fill="none" stroke="${UI.ink}" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>` +
+  `<path d="M2 18 L9 18 L9 6 L15 6" fill="none" stroke="#d2a33f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>` +
+  `<circle cx="16" cy="6" r="4.6" fill="#b5372f" stroke="${UI.ink}" stroke-width="2.4"/>` +
+  `<circle cx="4" cy="18" r="3.4" fill="#c9ced4" stroke="${UI.ink}" stroke-width="2.2"/>` +
+  `</svg>`;
+
+// The brass gear a workshop level badge sits in (ink-outlined, a darker sunk ring).
+const COG =
+  `<svg viewBox="0 0 86 86" aria-hidden="true" focusable="false">` +
+  `<path d="${gearPath(43, 45, 41, 33, 12)}" fill="${UI.ink}" stroke="${UI.ink}" stroke-width="4" stroke-linejoin="round"/>` +
+  `<path d="${gearPath(43, 43, 39.5, 32, 12)}" fill="#d2a33f" stroke="${UI.ink}" stroke-width="3" stroke-linejoin="round"/>` +
+  `<circle cx="43" cy="43" r="33" fill="#a87a22"/>` +
+  `<path d="M14 30 C18 22 25 15.5 33 12.5" fill="none" stroke="#fff3c4" stroke-width="3" stroke-linecap="round" opacity=".8"/>` +
+  `</svg>`;
 
 // A drift of snow sitting on a level badge, with two icicles (World 2).
 const SNOWCAP =
@@ -490,7 +610,7 @@ export function createWorldMap(
 
   const tabs: HTMLButtonElement[] = [];
   if (entries.length > 1) {
-    const tabRow = el('div', 'hm-tabs');
+    const tabRow = el('div', entries.length > 2 ? 'hm-tabs hm-many' : 'hm-tabs');
     tabRow.setAttribute('role', 'tablist');
     tabRow.setAttribute('aria-label', 'Worlds');
     entries.forEach((e, i) => {
@@ -521,7 +641,7 @@ export function createWorldMap(
   // ----- One page per world: teaser card on top, then the path track; padlock card over it -----
   const pages: Page[] = entries.map((entry, wi) => {
     const theme = themeOf(entry);
-    const page = el('div', 'hm-page');
+    const page = el('div', `hm-page hm-page-${theme}`);
     page.setAttribute('role', 'tabpanel');
     page.dataset.worldPage = entry.world.id;
     const scroll = el('div', `hm-scroll hm-${theme}`);
@@ -659,8 +779,10 @@ export function createWorldMap(
   // reads it); the art is ordered above it in CSS.
   const fillCard = (entry: MapWorld): void => {
     const w = entry.world;
-    const cold = themeOf(entry) === 'freezer';
+    const theme = themeOf(entry);
+    const cold = theme === 'freezer';
     card.classList.toggle('hm-frost', cold);
+    card.classList.toggle('hm-tin', theme === 'workshop');
     card.setAttribute('aria-label', worldTitle(w));
     card.dataset.titleCard = w.id;
     const art = el('div', 'hm-card-art');
@@ -668,6 +790,8 @@ export function createWorldMap(
     art.append(iconSpan('hm-army hm-green', soldierIcon(76, UI.cream)), el('span', 'hm-vs', 'VS'));
     if (cold)
       art.append(iconSpan('hm-army hm-ice', snowmanIcon(76)), iconSpan('hm-army hm-ice hm-mini', penguinIcon(50)));
+    else if (theme === 'workshop')
+      art.append(iconSpan('hm-army hm-tinplate', robotIcon(76)), iconSpan('hm-army hm-tinplate hm-mini', jackIcon(50)));
     else art.append(iconSpan('hm-army hm-tan', soldierIcon(76, UI.cream)));
     card.replaceChildren(
       el('h1', 'hm-card-title', worldTitle(w)),
@@ -801,12 +925,17 @@ export function createWorldMap(
       b.classList.toggle('hm-locked', !open);
       b.replaceChildren();
       const disc = el('span', 'hm-disc');
+      const shop = p.theme === 'workshop';
       if (lv.boss) disc.append(el('span', 'hm-badge', 'BOSS'));
       else if (p.theme === 'freezer') disc.append(iconSpan('hm-snowcap', SNOWCAP));
-      if (open) disc.append(levelNumber(lv.id));
+      if (open && lv.boss && shop) disc.append(iconSpan('hm-jester', jesterIcon(80)));
+      else if (open) disc.append(levelNumber(lv.id));
       else disc.append(iconSpan('hm-lock', lockSvg(lv.boss ? 36 : 30, '#f1ebe0')));
       if (lv.boss && p.theme === 'freezer') disc.append(el('span', 'hm-globe-base'));
+      if (lv.boss && shop) disc.append(iconSpan('hm-crank', CRANK));
       const starRow = iconSpan('hm-stars', stars.map((lit) => starIcon(18, lit ? '' : 'tb-off')).join(''));
+      // A workshop level badge sits in a brass gear (drawn first, so it stays under the badge).
+      if (shop && !lv.boss) b.append(iconSpan('hm-gear', COG));
       b.append(disc, starRow, el('span', 'hm-name', lv.name));
       const got = stars.filter(Boolean).length;
       b.setAttribute('aria-label', `${lv.id} ${lv.name}, ${open ? `${got} of 3 stars` : 'locked'}`);
@@ -845,6 +974,7 @@ export function createWorldMap(
     const { world } = entries[current];
     map.setAttribute('aria-label', `${world.name} map`);
     map.classList.toggle('hm-cold', pages[current].theme === 'freezer');
+    map.classList.toggle('hm-shop', pages[current].theme === 'workshop');
     worldName.textContent = world.name;
     faction.textContent = `vs ${world.faction}`;
     const got = starCount(save, world.levels);
@@ -935,7 +1065,11 @@ export function createWorldMap(
   };
 }
 
-// A world's round emblem figure: a soldier for the bedroom, a snowflake for the freezer.
+// A world's round emblem figure: a soldier for the bedroom, a snowflake for the freezer,
+// a brass gear for the workshop.
 function worldEmblem(entry: MapWorld): string {
-  return themeOf(entry) === 'freezer' ? snowflakeIcon(30) : soldierIcon(30, UI.cream);
+  const theme = themeOf(entry);
+  if (theme === 'freezer') return snowflakeIcon(30);
+  if (theme === 'workshop') return gearIcon(30);
+  return soldierIcon(30, UI.cream);
 }

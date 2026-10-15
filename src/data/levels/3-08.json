@@ -1,0 +1,250 @@
+{
+  "id": "3-8",
+  "name": "Reversing Belts",
+  "theme": "workshop",
+  "lane": {
+    "width": 10,
+    "length": 62
+  },
+  "cannon": {
+    "fireRate": 5.6,
+    "unitsPerShot": 3,
+    "aimLimit": 4
+  },
+  "playerBase": {
+    "hp": 26
+  },
+  "enemyBase": {
+    "hp": 800,
+    "x": 0,
+    "width": 6
+  },
+  "gates": [
+    {
+      "id": "3-8-x3",
+      "op": "mul",
+      "value": 3,
+      "x": -2.2,
+      "z": 22,
+      "width": 3.2,
+      "toggle": {
+        "on": 3.5,
+        "off": 1.5
+      }
+    },
+    {
+      "id": "3-8-x2",
+      "op": "mul",
+      "value": 2,
+      "x": 2.4,
+      "z": 22,
+      "width": 3
+    },
+    {
+      "id": "3-8-x2b",
+      "op": "mul",
+      "value": 2,
+      "x": 0,
+      "z": 38,
+      "width": 3.4
+    }
+  ],
+  "enemyWaves": [
+    {
+      "at": 10,
+      "count": 120,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 19,
+      "count": 131,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 28,
+      "count": 142,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 37,
+      "count": 153,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 46,
+      "count": 164,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 55,
+      "count": 169,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 64,
+      "count": 174,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 73,
+      "count": 179,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 82,
+      "count": 184,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 91,
+      "count": 189,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 100,
+      "count": 194,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 109,
+      "count": 199,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 118,
+      "count": 204,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 15,
+      "count": 10,
+      "x": -1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 25,
+      "count": 11,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 35,
+      "count": 12,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 45,
+      "count": 13,
+      "x": -1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 55,
+      "count": 14,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 65,
+      "count": 15,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 75,
+      "count": 16,
+      "x": -1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 85,
+      "count": 17,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 95,
+      "count": 18,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 105,
+      "count": 19,
+      "x": -1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 115,
+      "count": 20,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    }
+  ],
+  "enemySpawnRate": {
+    "perSecond": 15,
+    "startAt": 8
+  },
+  "champion": {
+    "chargeNeeded": 300,
+    "hp": 130,
+    "damage": 95
+  },
+  "targetTime": 130,
+  "intro": "The belts change direction every few seconds, and the saws ride on tracks. Keep your eyes on both.",
+  "conveyors": [
+    {
+      "id": "3-8-belt",
+      "x": 0,
+      "z": 10,
+      "width": 10,
+      "length": 6,
+      "vx": 1.8,
+      "vz": 0,
+      "flip": 8
+    }
+  ],
+  "saws": [
+    {
+      "id": "3-8-saw",
+      "x": -2.6,
+      "z": 30,
+      "radius": 0.9,
+      "bite": 15,
+      "path": {
+        "dx": 5.2,
+        "dz": 0,
+        "period": 9
+      }
+    }
+  ],
+  "trickleMix": {
+    "unit": "robot",
+    "every": 10
+  }
+}

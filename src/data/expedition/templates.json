@@ -320,6 +320,140 @@
         "unit": "penguin",
         "every": 6
       }
+    },
+    {
+      "name": "clockwork doubles",
+      "theme": "workshop",
+      "baseHp": 0.35,
+      "waves": 0.6,
+      "gates": [
+        {
+          "op": "mul",
+          "value": 2,
+          "x": 0,
+          "z": 17,
+          "width": 3.4,
+          "toggle": {
+            "on": 3,
+            "off": 1.5
+          }
+        },
+        {
+          "op": "mul",
+          "value": 3,
+          "x": -1,
+          "z": 36,
+          "width": 3,
+          "toggle": {
+            "on": 2.5,
+            "off": 2.5,
+            "alt": {
+              "op": "div",
+              "value": 2
+            }
+          }
+        }
+      ],
+      "trickleMix": {
+        "unit": "robot",
+        "every": 7
+      }
+    },
+    {
+      "name": "conveyor run",
+      "theme": "workshop",
+      "baseHp": 0.5,
+      "waves": 0.65,
+      "gates": [
+        {
+          "op": "mul",
+          "value": 3,
+          "x": 2.4,
+          "z": 21,
+          "width": 3
+        },
+        {
+          "op": "mul",
+          "value": 2,
+          "x": -1.5,
+          "z": 38,
+          "width": 3.4,
+          "toggle": {
+            "on": 3,
+            "off": 1.5
+          }
+        }
+      ],
+      "conveyors": [
+        {
+          "x": 0,
+          "z": 15,
+          "width": 10,
+          "length": 5,
+          "vx": 2.2,
+          "vz": 0
+        }
+      ],
+      "trickleMix": {
+        "unit": "robot",
+        "every": 8
+      }
+    },
+    {
+      "name": "saw alley",
+      "theme": "workshop",
+      "baseHp": 0.45,
+      "waves": 0.9,
+      "gates": [
+        {
+          "op": "mul",
+          "value": 2,
+          "x": -2.2,
+          "z": 17,
+          "width": 3.2
+        },
+        {
+          "op": "mul",
+          "value": 2,
+          "x": 2.2,
+          "z": 17,
+          "width": 3.2,
+          "toggle": {
+            "on": 3,
+            "off": 2
+          }
+        },
+        {
+          "op": "mul",
+          "value": 3,
+          "x": 0,
+          "z": 38,
+          "width": 3
+        }
+      ],
+      "saws": [
+        {
+          "x": -2.2,
+          "z": 33,
+          "radius": 1.0,
+          "bite": 8
+        },
+        {
+          "x": -2.5,
+          "z": 43,
+          "radius": 0.9,
+          "path": {
+            "dx": 5,
+            "dz": 0,
+            "period": 7
+          },
+          "bite": 8
+        }
+      ],
+      "trickleMix": {
+        "unit": "robot",
+        "every": 8
+      }
     }
   ],
   "defenderSets": [
@@ -778,5 +912,109 @@
     "An elite squad dug in here. Tougher fort, an extra defender, better pay.",
     "Veteran Tan Army troops: more waves and a sturdier fort. Worth the gold.",
     "The General's guard holds this ground. Break it for a richer reward."
-  ]
+  ],
+  "jackBoss": {
+    "name": "Jack-in-the-Box",
+    "theme": "workshop",
+    "lane": {
+      "width": 10,
+      "length": 62
+    },
+    "enemyBase": {
+      "hp": 2800,
+      "width": 6
+    },
+    "playerBaseHp": 240,
+    "gates": [
+      {
+        "op": "mul",
+        "value": 3,
+        "x": 0,
+        "z": 16,
+        "width": 3.2
+      },
+      {
+        "op": "mul",
+        "value": 2,
+        "x": -2.4,
+        "z": 32,
+        "width": 3.2
+      },
+      {
+        "op": "add",
+        "value": 1,
+        "x": 2.4,
+        "z": 32,
+        "width": 3.2
+      },
+      {
+        "op": "sub",
+        "value": 4,
+        "x": 0,
+        "z": 44,
+        "width": 3.2
+      }
+    ],
+    "waves": {
+      "name": "crank",
+      "first": 11,
+      "every": 10,
+      "waves": 14,
+      "count": 168,
+      "ramp": 33,
+      "step": 12,
+      "trickle": 24,
+      "trickleAt": 12
+    },
+    "robotEvery": 3,
+    "robotShare": 0.2,
+    "trickleMix": {
+      "unit": "robot",
+      "every": 8
+    },
+    "phases": [
+      {
+        "belowHp": 1,
+        "strafe": {
+          "amplitude": 0.8,
+          "period": 10
+        },
+        "shuffle": {
+          "every": 16,
+          "warn": 2.4,
+          "glide": 1.2
+        }
+      },
+      {
+        "belowHp": 0.6,
+        "strafe": {
+          "amplitude": 1,
+          "period": 8
+        },
+        "summon": 30,
+        "trickle": 26,
+        "shuffle": {
+          "every": 13,
+          "warn": 2,
+          "glide": 1
+        }
+      },
+      {
+        "belowHp": 0.25,
+        "strafe": {
+          "amplitude": 1.2,
+          "period": 6
+        },
+        "summon": 40,
+        "trickle": 32,
+        "shuffle": {
+          "every": 10,
+          "warn": 1.8,
+          "glide": 0.9
+        }
+      }
+    ],
+    "targetTime": 140,
+    "intro": "The Jack-in-the-Box cranks up and shuffles your gates. Robots pop out as it cracks."
+  }
 }

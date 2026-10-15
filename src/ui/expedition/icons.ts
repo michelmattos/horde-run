@@ -1,6 +1,6 @@
-// Inline SVG stickers for the Expedition screens: 25 upgrade icons (one per UpgradeIcon
-// and UpgradeIconW2 key, each a figure on a disc tinted by its category; an upgrade with
-// an iconW2 is drawn with it, see upgradeIconOf) and 5 run-map node
+// Inline SVG stickers for the Expedition screens: 30 upgrade icons (one per UpgradeIcon,
+// UpgradeIconW2 and UpgradeIconW3 key, each a figure on a disc tinted by its category; an
+// upgrade with an iconW3 or iconW2 is drawn with it, see upgradeIconOf) and 5 run-map node
 // icons (figure only; the node badge is the disc). Same two-pass style as
 // src/ui/icons.ts: a wide ink pass for the die-cut outline, then the fill colour.
 // Shapes are chunky so they read at 28 px. Every icon is decorative (aria-hidden).
@@ -10,6 +10,7 @@ import type {
   UpgradeDef,
   UpgradeIcon,
   UpgradeIconW2,
+  UpgradeIconW3,
   UpgradeRarity,
 } from '../../contracts.ts';
 import { HEX } from '../../render/look/palette.ts';
@@ -25,6 +26,12 @@ const GOLD_D = '#d08f00';
 const ICE = '#dff3fc';
 const ICE_D = '#8fcbea';
 const SNOW = '#f6fbfe';
+// World 3 workshop colours (docs/art-direction.md section 9).
+const BRASS = HEX.brass;
+const STEEL = '#c9ced4';
+const STEEL_D = '#8e979f';
+const HAZARD = '#f2c230';
+const LITHO_BLUE = '#2e5aa8';
 
 // Ribbon / card tint per rarity: common cream-blue, rare green, epic purple.
 export const RARITY_COLORS: Record<UpgradeRarity, { face: string; edge: string; label: string }> = {
@@ -137,7 +144,7 @@ function flakePath(cx: number, cy: number, r: number): string {
   return d;
 }
 
-export type UpgradeArt = UpgradeIcon | UpgradeIconW2;
+export type UpgradeArt = UpgradeIcon | UpgradeIconW2 | UpgradeIconW3;
 
 const UPGRADE_ART: Record<UpgradeArt, { cat: UpgradeCategory; body: () => string }> = {
   // ----- Gate -----
@@ -423,11 +430,90 @@ const UPGRADE_ART: Record<UpgradeArt, { cat: UpgradeCategory; body: () => string
       detail('M35 46 C37 48.5 41 48.5 43.5 46', ICE_D, 1.8) +
       sticker([{ d: flakePath(52, 9, 5), w: 2, open: true }], ICE, 1.4),
   },
+  // ----- World 3: the workshop -----
+  // Clockwork Gate: a brass alarm clock (cream face, hands at ten past ten, two bells).
+  'gate-clock': {
+    cat: 'gate',
+    body: () =>
+      sticker(
+        [
+          { d: 'M19 21 C14 17 16 9 23 10', w: 4.5, open: true },
+          { d: 'M45 21 C50 17 48 9 41 10', w: 4.5, open: true },
+          { d: 'M21 51 L17 56 M43 51 L47 56', w: 4, open: true },
+        ],
+        BRASS,
+        2,
+      ) +
+      sticker([{ d: circle(32, 35, 19), w: 1.5 }], BRASS) +
+      sticker([{ d: circle(32, 35, 14.5), w: 1 }], CREAM, 1.6) +
+      detail('M32 22.5 L32 25.5 M32 44.5 L32 47.5 M19.5 35 L22.5 35 M41.5 35 L44.5 35', INK, 2) +
+      detail('M32 35 L25 30 M32 35 L39.5 29', INK, 2.8) +
+      `<circle cx="32" cy="35" r="2.4" fill="${HEX.uiRed}" stroke="${INK}" stroke-width="1.2"/>` +
+      detail('M20 28 C21.5 24 24.5 21.5 28 20.5', '#fff', 2.4),
+  },
+  // Rubber Boots: a red wellington with a chunky tread and a cream band.
+  'mob-boots': {
+    cat: 'mob',
+    body: () =>
+      sticker(
+        [{ d: 'M21 10 L37 10 L37 34 C45 35 52 39 52 45 L52 50 L19 50 L19 40 C19 30 21 20 21 10 Z', w: 2 }],
+        HEX.uiRed,
+      ) +
+      sticker([{ d: 'M17.5 50 L53.5 50 L53.5 55 L17.5 55 Z', w: 1.5 }], '#3a3f49', 2) +
+      detail('M22 52.5 L25 52.5 M29 52.5 L32 52.5 M36 52.5 L39 52.5 M43 52.5 L46 52.5', '#8b8f97', 1.8) +
+      detail('M20.6 15 L37 15', CREAM, 3) +
+      detail('M25 20 C24.5 27 24 33 23.5 41', '#ff9a90', 2.6),
+  },
+  // Saw Guards: a steel saw blade with a red enamel ring, half under a hazard-striped guard.
+  'relic-sawguard': {
+    cat: 'relic',
+    body: () => {
+      let teeth = '';
+      for (let i = 0; i < 14; i++) {
+        const a = (i / 14) * Math.PI * 2;
+        const p = (r: number, da: number): string =>
+          `${(32 + Math.cos(a + da) * r).toFixed(2)} ${(35 + Math.sin(a + da) * r).toFixed(2)}`;
+        teeth += `${i === 0 ? 'M' : 'L'}${p(17, 0)} L${p(23, 0.12)} L${p(17, 0.45)} `;
+      }
+      return (
+        sticker([{ d: `${teeth}Z`, w: 1.2 }], STEEL) +
+        `<circle cx="32" cy="35" r="11" fill="none" stroke="${HEX.uiRed}" stroke-width="3.2"/>` +
+        sticker([{ d: circle(32, 35, 4), w: 1 }], STEEL_D, 1.4) +
+        sticker([{ d: 'M7 33 C7 14 57 14 57 33 L50 33 C50 21 14 21 14 33 Z', w: 2 }], HAZARD) +
+        detail('M13 25.5 L18 20 M21 21 L26 16.5 M30 19 L34.5 15.5 M38.5 19.5 L42 16 M46 22 L49.5 19.5', INK, 3) +
+        detail('M40 45 C43 42 45 39 46 36', '#fff', 2.2)
+      );
+    },
+  },
+  // Crowbar: a red crowbar prying at a dented blue tin shield, a spark where it bites.
+  'champ-crowbar': {
+    cat: 'champion',
+    body: () =>
+      sticker([{ d: 'M30 30 L54 30 L54 54 L30 54 Z', w: 2 }], LITHO_BLUE) +
+      detail('M30 39 C35 37 38 42 43 40 C47 38.5 50 41 54 40', '#6f97dc', 2.2) +
+      `<circle cx="34" cy="34" r="1.5" fill="${BRASS}"/><circle cx="50" cy="34" r="1.5" fill="${BRASS}"/>` +
+      `<circle cx="34" cy="50" r="1.5" fill="${BRASS}"/><circle cx="50" cy="50" r="1.5" fill="${BRASS}"/>` +
+      sticker([{ d: 'M10 54 L36 22 C39 18 44 17 47 20 L44 23', w: 5.5, open: true }], HEX.uiRed) +
+      detail('M13 49 L33 24.5', '#ff9a90', 1.6) +
+      sticker([{ d: starPath(39, 30, 6, 2.6), w: 1 }], PALE_YELLOW, 1.6),
+  },
+  // Bank Shot: a brass ball bouncing off a steel lane wall, its zigzag path dashed behind it.
+  'cannon-bank': {
+    cat: 'cannon',
+    body: () =>
+      sticker([{ d: 'M50 8 L50 56', w: 6, open: true }], STEEL) +
+      detail('M50 14 L50 18 M50 26 L50 30 M50 38 L50 42 M50 50 L50 54', STEEL_D, 6) +
+      sticker([{ d: 'M14 52 L44 32 L18 14', w: 3.4, open: true }], CREAM, 1.6) +
+      detail('M44 32 L41 29.5 M44 32 L41 34.5', YELLOW, 2.2) +
+      sticker([{ d: 'M18 14 L26 13.5 M18 14 L21.5 21', w: 3.4, open: true }], CREAM, 1.6) +
+      sticker([{ d: circle(14, 51, 6.5), w: 1 }], BRASS, 2) +
+      detail(circle(12, 49, 1.8), '#fff3c4'),
+  },
 };
 
-// The art an upgrade card draws: the World 2 sticker when the upgrade has one.
-export function upgradeIconOf(def: Pick<UpgradeDef, 'icon' | 'iconW2'>): UpgradeArt {
-  return def.iconW2 ?? def.icon;
+// The art an upgrade card draws: the World 3 or World 2 sticker when the upgrade has one.
+export function upgradeIconOf(def: Pick<UpgradeDef, 'icon' | 'iconW2' | 'iconW3'>): UpgradeArt {
+  return def.iconW3 ?? def.iconW2 ?? def.icon;
 }
 
 export function upgradeIconSvg(icon: UpgradeArt, size: number | string): string {

@@ -13,12 +13,20 @@
 // (icePatch.ts), ice walls (iceWall.ts), a signpost between fork gates, and freezing
 // gates that grow an ice sheet, crack as units chip it and shatter or melt away. Which
 // room's assets are alive is index.ts's job (RoomSlot); this class only uses them.
+//
+// World 3 (theme 'workshop'): the Clockwork Workshop bench (models/workshopRoom.ts) and
+// its props (workshopProps.ts via scenery.ts); conveyor belts, turntables and saw blades
+// on the lane (conveyor.ts, turntable.ts, saw.ts) driven by the contracts' own clocks;
+// toggling gates (clock token, shutter or split-flap card, all a pure function of the
+// battle time); gates that glide to a new spot (gateMoved: lift, glide, drop) and tremble
+// while the Jack-in-the-Box winds up a shuffle (BattleState.shuffle.warn). The camera
+// never moves for any of it.
 import type { Scene } from '@babylonjs/core/scene';
 import type { Node } from '@babylonjs/core/node';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
-import type { BattleState, GateDef, LevelDef } from '../contracts.ts';
-import { LAYOUT, gateLabel, gateX } from '../contracts.ts';
+import type { BattleState, ConveyorDef, GateDef, LevelDef, SawDef, TurntableDef } from '../contracts.ts';
+import { LAYOUT, conveyorDir, gateLabel, gateX, sawPos, turntableSpin } from '../contracts.ts';
 import type { Look } from './look/index.ts';
 import { createEnvironment } from './models/environment.ts';
 import type { EnvironmentModel } from './models/environment.ts';
@@ -35,22 +43,45 @@ import type { FortModel as PlayerFortModel } from './models/playerFort.ts';
 import { createEnemyFort } from './models/enemyFort.ts';
 import type { FortModel as EnemyFortModel } from './models/enemyFort.ts';
 import type { PropKit } from './models/props.ts';
-import { layoutFreezerScenery, layoutScenery } from './scenery.ts';
-import { SnowGlobeGiant, TinGeneral } from './boss.ts';
+import { createWorkshopRoom } from './models/workshopRoom.ts';
+import type { WorkshopPropKit } from './models/workshopProps.ts';
+import { createConveyor } from './models/conveyor.ts';
+import type { ConveyorModel } from './models/conveyor.ts';
+import { createTurntable } from './models/turntable.ts';
+import type { TurntableModel } from './models/turntable.ts';
+import { SAW_SPIN, createSaw } from './models/saw.ts';
+import type { SawModel } from './models/saw.ts';
+import { layoutFreezerScenery, layoutScenery, layoutWorkshopScenery } from './scenery.ts';
+import { JackInTheBox, SnowGlobeGiant, TinGeneral } from './boss.ts';
 import type { HpBars } from './hpBars.ts';
 import {
+  GLIDE_LIFT,
   ICE_GROW_TIME,
   ICE_MELT_TIME,
+  beltScroll,
+  beltYaw,
+  clockWarn,
+  flapAt,
   forkSigns,
   gateBreakAt,
+  glidePoseAt,
   hpFraction,
   iceCrackStage,
   iceGrowAt,
+  sawRaiseAt,
+  shuffleJitter,
+  shutterAt,
+  toggleLabels,
+  toggleViewAt,
+  turntableAngle,
 } from './fxLogic.ts';
-import type { RoomTheme } from './fxLogic.ts';
+import type { GlidePose, RoomTheme, ToggleView } from './fxLogic.ts';
 
 // The current room's long-lived assets (index.ts keeps exactly one theme alive).
-export type RoomKit = { theme: 'bedroom'; props: PropKit } | { theme: 'freezer'; props: FreezerPropKit };
+export type RoomKit =
+  | { theme: 'bedroom'; props: PropKit }
+  | { theme: 'freezer'; props: FreezerPropKit }
+  | { theme: 'workshop'; props: WorkshopPropKit };
 
 // What level.ts needs of a boss model. TinGeneral implements it; the Snow Globe Giant
 // (BossDef.model 'snowGlobeGiant') plugs in through BOSS_DRIVERS without other changes.
@@ -62,15 +93,19 @@ export interface BossDriver {
   lob?(): void;
   gustWarn?(dir: number, seconds: number): void;
   gust?(dir: number, duration: number): void;
+  // Jack-in-the-Box only: cranks for `seconds` before a shuffle, then springs as the gates glide.
+  shuffleWarn?(seconds: number): void;
+  shuffle?(glide: number): void;
   update(x: number, zCenter: number, time: number, dt: number, alive: boolean): void;
   dispose(): void;
 }
-export type BossModelId = 'tinGeneral' | 'snowGlobeGiant';
+export type BossModelId = 'tinGeneral' | 'snowGlobeGiant' | 'jackInTheBox';
 export type BossFactory = (scene: Scene, look: Look, width: number, depth: number, hullHeight: number) => BossDriver;
 // Boss model registry: a missing entry falls back to the Tin General.
 export const BOSS_DRIVERS: Partial<Record<BossModelId, BossFactory>> = {
   tinGeneral: (scene, look, width, depth, hullHeight) => new TinGeneral(scene, look, width, depth, hullHeight),
   snowGlobeGiant: (scene, look, width, depth, hullHeight) => new SnowGlobeGiant(scene, look, width, depth, hullHeight),
+  jackInTheBox: (scene, look, width, depth, hullHeight) => new JackInTheBox(scene, look, width, depth, hullHeight),
 };
 export function createBossDriver(
   scene: Scene,
@@ -110,6 +145,31 @@ interface GateVisual {
   iceK: number; // current cover sent to the model
   iceFrom: number; // cover when the melt started
   crack: number; // 0..3, only rises while frozen
+  // World 3: base spot (moved by gateMoved), the current glide, toggle faces.
+  spotX: number;
+  spotZ: number;
+  glide: { fromX: number; fromZ: number; toX: number; toZ: number; seconds: number; elapsed: number } | null;
+  labels: { on: string; off: string } | null; // toggling gates: '' off face = shutter
+  altGood: boolean;
+  face: string; // label on the card now
+  faceGood: boolean;
+  phase: number; // decorrelates the shuffle tremble
+}
+
+interface Conveyor {
+  def: ConveyorDef;
+  model: ConveyorModel;
+  offset: number;
+}
+interface Turntable {
+  def: TurntableDef;
+  model: TurntableModel;
+  angle: number;
+}
+interface Saw {
+  def: SawDef;
+  model: SawModel;
+  spin: number;
 }
 
 interface BaseFlash {
@@ -131,6 +191,17 @@ export class LevelVisuals {
   private readonly icePatches: IcePatchModel | null;
   private readonly iceWalls: IceWallModel | null;
   private readonly forks: ForkSignModel[] = [];
+  private readonly conveyors: Conveyor[] = [];
+  private readonly turntables: Turntable[] = [];
+  private readonly saws: Saw[] = [];
+  private readonly sawById = new Map<string, Saw>();
+  private readonly view: ToggleView = { on: true, closed: false, flipIn: 0, progress: 0, since: 0 };
+  private readonly glidePose: GlidePose = { x: 0, z: 0, lift: 0, landed: true };
+  private readonly jitter = { x: 0, z: 0 };
+  private readonly sawAt = { x: 0, z: 0 };
+  private readonly shuffles: boolean;
+  // Called when a gliding gate lands (for a dust puff).
+  onGateLanded: ((x: number, z: number, width: number) => void) | null = null;
   private readonly playerFlash: BaseFlash = { flash: 0, max: BASE_FLASH_TIME, last: -1 };
   private readonly enemyFlash: BaseFlash = { flash: 0, max: BASE_FLASH_TIME, last: -1 };
   private readonly breakOut = { scale: 1, alpha: 1, done: false };
@@ -155,10 +226,15 @@ export class LevelVisuals {
       zMax: length + LAYOUT.enemyBaseDepth,
     };
     this.env =
-      room.theme === 'freezer' ? createFreezerRoom(scene, look, envOpts) : createEnvironment(scene, look, envOpts);
+      room.theme === 'freezer'
+        ? createFreezerRoom(scene, look, envOpts)
+        : room.theme === 'workshop'
+          ? createWorkshopRoom(scene, look, envOpts)
+          : createEnvironment(scene, look, envOpts);
     this.env.root.parent = this.root;
     scene.clearColor.copyFrom(this.env.clearColor);
     if (room.theme === 'freezer') layoutFreezerScenery(room.props, level);
+    else if (room.theme === 'workshop') layoutWorkshopScenery(room.props, level);
     else layoutScenery(room.props, level);
 
     // World 2 lane features (any theme may carry them; absent on World 1 levels).
@@ -172,6 +248,25 @@ export class LevelVisuals {
       sign.root.position.set(f.x, 0, f.z);
       sign.root.rotation.y = Math.PI; // authored facing +Z: turn it to the camera
       this.forks.push(sign);
+    }
+
+    // World 3 lane hazards (any theme may carry them).
+    (level.conveyors ?? []).forEach((def, i) => {
+      const model = createConveyor(scene, look, def, i);
+      model.root.parent = this.root;
+      this.conveyors.push({ def, model, offset: 0 });
+    });
+    for (const def of level.turntables ?? []) {
+      const model = createTurntable(scene, look, def);
+      model.root.parent = this.root;
+      this.turntables.push({ def, model, angle: 0 });
+    }
+    for (const def of level.saws ?? []) {
+      const model = createSaw(scene, look, def);
+      model.root.parent = this.root;
+      const saw: Saw = { def, model, spin: 0 };
+      this.saws.push(saw);
+      this.sawById.set(def.id, saw);
     }
 
     // Player fort along the bottom of the lane (yaw 0: its front faces up the lane).
@@ -208,6 +303,7 @@ export class LevelVisuals {
       w,
     );
     const bossFreezes = !!level.boss?.phases.some((p) => p.freezeGates);
+    this.shuffles = !!level.boss?.phases.some((p) => p.shuffle);
     level.gates.forEach((g, i) => this.buildGate(scene, look, g, slots[i], bossFreezes));
   }
 
@@ -244,6 +340,8 @@ export class LevelVisuals {
   ): void {
     const good = g.op === 'mul' || g.op === 'add';
     const usesLeft = g.uses !== undefined && g.uses > 0 ? g.uses : -1;
+    const alt = g.toggle?.alt;
+    const altGood = alt ? alt.op === 'mul' || alt.op === 'add' : good;
     const model = createGate(scene, look, {
       width: g.width,
       good,
@@ -253,6 +351,9 @@ export class LevelVisuals {
       layer: slot.layer,
       freezing: !!g.freeze,
       freezable: bossFreezes,
+      toggle: !!g.toggle,
+      altGood: alt ? altGood : undefined,
+      shuffles: this.shuffles,
     });
     model.root.parent = this.root;
     model.root.position.set(gateX(g, 0), 0, g.z);
@@ -271,6 +372,14 @@ export class LevelVisuals {
       iceK: 0,
       iceFrom: 0,
       crack: 0,
+      spotX: g.x,
+      spotZ: g.z,
+      glide: null,
+      labels: g.toggle ? toggleLabels(g) : null,
+      altGood,
+      face: gateLabel(g),
+      faceGood: good,
+      phase: this.gates.length * 1.7,
     };
     this.gates.push(visual);
     this.gateById.set(g.id, visual);
@@ -295,15 +404,116 @@ export class LevelVisuals {
     const n = Math.max(0, Math.floor(usesLeft));
     if (n === g.usesLeft) return;
     g.usesLeft = n;
-    g.model.setLabel(gateLabel(g.def), n);
+    g.model.setLabel(g.face, n);
   }
 
-  // Starts the pop-shrink-fade; the gate stays hidden afterwards. Returns whether the gate's op is good.
+  // Starts the pop-shrink-fade; the gate stays hidden afterwards. Returns whether the
+  // face it shows (a toggling gate may show its alt) is good.
   breakGate(id: string): boolean {
     const g = this.gateById.get(id);
     if (!g) return true;
     if (g.breakTime < 0) g.breakTime = 0;
-    return g.good;
+    return g.faceGood;
+  }
+
+  // ---------- World 3: gliding gates, toggles, hazards ----------
+
+  // gateMoved: the gate lifts, glides from (fromX, fromZ) to (x, z) over `seconds` (base
+  // spots, without its move sway) and drops. Returns false for an unknown or broken gate.
+  moveGate(id: string, fromX: number, fromZ: number, x: number, z: number, seconds: number): boolean {
+    const g = this.gateById.get(id);
+    if (!g || g.breakTime >= 0) return false;
+    if (seconds <= 0) {
+      g.spotX = x;
+      g.spotZ = z;
+      g.glide = null;
+      return true;
+    }
+    g.glide = { fromX, fromZ, toX: x, toZ: z, seconds, elapsed: 0 };
+    return true;
+  }
+
+  // Whether a gate closes behind a shutter while off (toggle without alt).
+  gateHasShutter(id: string): boolean {
+    const l = this.gateById.get(id)?.labels;
+    return !!l && l.off === '';
+  }
+
+  // Blade radius of a saw (for its sparks), or 1 when unknown.
+  sawRadius(id: string): number {
+    return this.sawById.get(id)?.def.radius ?? 1;
+  }
+
+  // Toggle faces, shutter, split-flap and clock: all from the gate's clock at `time`.
+  private updateToggle(g: GateVisual, time: number): void {
+    const toggle = g.def.toggle;
+    const labels = g.labels;
+    if (!toggle || !labels) return;
+    const v = toggleViewAt(toggle, time, this.view);
+    if (labels.off === '') {
+      g.face = labels.on;
+      g.faceGood = g.good;
+      g.model.setFace(labels.on, g.good, v.closed);
+      g.model.setShutter(shutterAt(v));
+    } else {
+      // The card is edge-on at the flip, so it always shows the current state's face.
+      g.face = v.on ? labels.on : labels.off;
+      g.faceGood = v.on ? g.good : g.altGood;
+      g.model.setFace(g.face, g.faceGood, false);
+      g.model.setFlap(flapAt(v));
+    }
+    g.model.setClock(v.progress, clockWarn(v.flipIn), v.on);
+  }
+
+  // Where the gate stands now: its spot (or glide) plus its move sway and any tremble.
+  private placeGate(g: GateVisual, time: number, dt: number, warn: number): void {
+    const sway = g.def.move ? gateX(g.def, time) - g.def.x : 0;
+    let x = g.spotX + sway;
+    let z = g.spotZ;
+    let lift = 0;
+    const gl = g.glide;
+    if (gl) {
+      gl.elapsed += dt;
+      const p = glidePoseAt(gl.elapsed, gl.seconds, gl.fromX, gl.fromZ, gl.toX, gl.toZ, sway, this.glidePose);
+      x = p.x;
+      z = p.z;
+      lift = p.lift;
+      if (p.landed) {
+        g.spotX = gl.toX;
+        g.spotZ = gl.toZ;
+        g.glide = null;
+        this.onGateLanded?.(x, z, g.def.width);
+      }
+    }
+    if (warn > 0) {
+      shuffleJitter(warn, time, g.phase, this.jitter);
+      x += this.jitter.x;
+      z += this.jitter.z;
+    }
+    g.model.root.position.set(x, lift, z);
+    g.model.setLifted(lift / GLIDE_LIFT);
+    if (this.shuffles) g.model.setGlow(warn);
+  }
+
+  private updateHazards(time: number, dt: number): void {
+    for (const c of this.conveyors) {
+      c.model.setYaw(beltYaw(c.def, conveyorDir(c.def, time)));
+      c.offset = beltScroll(c.offset, c.def, dt);
+      c.model.setScroll(c.offset);
+    }
+    for (const t of this.turntables) {
+      t.angle = turntableAngle(t.angle, t.def, time, dt);
+      t.model.setAngle(t.angle);
+      t.model.setSpinSign(Math.sign(turntableSpin(t.def, time)));
+    }
+    for (const s of this.saws) {
+      sawPos(s.def, time, this.sawAt);
+      s.model.setPos(this.sawAt.x, this.sawAt.z);
+      const k = sawRaiseAt(s.def.cycle, time);
+      s.model.setRaise(k);
+      s.spin = (s.spin + SAW_SPIN * k * dt) % (Math.PI * 2);
+      s.model.setSpin(s.spin);
+    }
   }
 
   // ---------- World 2: freezing gates ----------
@@ -348,10 +558,10 @@ export class LevelVisuals {
     }
   }
 
-  // Current x of a gate (moving gates follow the battle time), or NaN when unknown.
+  // Current x of a gate (its spot plus its move sway at `time`), or NaN when unknown.
   gateXNow(id: string, time: number): number {
     const g = this.gateById.get(id);
-    return g ? gateX(g.def, time) : Number.NaN;
+    return g ? g.spotX + gateX(g.def, time) - g.def.x : Number.NaN;
   }
 
   private updateIce(g: GateVisual, dt: number): void {
@@ -406,21 +616,31 @@ export class LevelVisuals {
   bossGust(dir: number, duration: number): void {
     this.boss?.gust?.(dir, duration);
   }
+  // Jack-in-the-Box cues (no-ops for the other bosses).
+  bossShuffleWarn(seconds: number): void {
+    this.boss?.shuffleWarn?.(seconds);
+  }
+  bossShuffle(glide: number): void {
+    this.boss?.shuffle?.(glide);
+  }
 
   update(time: number, dt: number, battle: BattleState): void {
+    const warn = battle.shuffle && !battle.shuffle.active ? battle.shuffle.warn : 0;
     for (const g of this.gates) {
       if (g.hidden) continue;
       if (g.breakTime >= 0) {
         this.updateBreak(g, dt);
         continue;
       }
-      if (g.def.move) g.model.root.position.x = gateX(g.def, time);
+      this.placeGate(g, time, dt, warn);
+      this.updateToggle(g, time);
       if (g.pulse > 0) {
         g.pulse = Math.max(0, g.pulse - dt);
         g.model.pulse(g.pulse / GATE_PULSE_TIME, g.pulseStrong);
       }
       this.updateIce(g, dt);
     }
+    this.updateHazards(time, dt);
 
     this.baseX = battle.enemyBaseX ?? this.level.enemyBase.x;
     const zc = this.enemyCenterZ;
@@ -494,6 +714,11 @@ export class LevelVisuals {
     this.iceWalls?.dispose();
     for (const f of this.forks) f.dispose();
     this.forks.length = 0;
+    for (const h of [...this.conveyors, ...this.turntables, ...this.saws]) h.model.dispose();
+    this.conveyors.length = 0;
+    this.turntables.length = 0;
+    this.saws.length = 0;
+    this.sawById.clear();
     this.env.dispose();
     this.root.dispose(false, false);
   }

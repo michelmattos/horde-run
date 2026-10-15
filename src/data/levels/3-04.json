@@ -1,0 +1,158 @@
+{
+  "id": "3-4",
+  "name": "Saw Mill",
+  "theme": "workshop",
+  "lane": {
+    "width": 10,
+    "length": 60
+  },
+  "cannon": {
+    "fireRate": 5.6,
+    "unitsPerShot": 3,
+    "aimLimit": 4
+  },
+  "playerBase": {
+    "hp": 300
+  },
+  "enemyBase": {
+    "hp": 1800,
+    "x": 0,
+    "width": 6
+  },
+  "gates": [
+    {
+      "id": "3-4-x3",
+      "op": "mul",
+      "value": 3,
+      "x": -2.2,
+      "z": 18,
+      "width": 3.2
+    },
+    {
+      "id": "3-4-x2",
+      "op": "mul",
+      "value": 2,
+      "x": 2.5,
+      "z": 18,
+      "width": 3
+    },
+    {
+      "id": "3-4-x2b",
+      "op": "mul",
+      "value": 2,
+      "x": 0,
+      "z": 38,
+      "width": 3.4
+    }
+  ],
+  "enemyWaves": [
+    {
+      "at": 10,
+      "count": 105,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 20,
+      "count": 119,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 30,
+      "count": 133,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 40,
+      "count": 147,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 50,
+      "count": 161,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 60,
+      "count": 167,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 70,
+      "count": 173,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 80,
+      "count": 179,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 90,
+      "count": 185,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 100,
+      "count": 191,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 110,
+      "count": 197,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 120,
+      "count": 203,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 130,
+      "count": 209,
+      "x": 0,
+      "spread": 3.5
+    }
+  ],
+  "enemySpawnRate": {
+    "perSecond": 9.0,
+    "startAt": 8
+  },
+  "champion": {
+    "chargeNeeded": 280,
+    "hp": 110,
+    "damage": 85
+  },
+  "targetTime": 100,
+  "intro": "Saw blades cut through both armies. Steer your stream around them, or let the enemy walk into them.",
+  "saws": [
+    {
+      "id": "3-4-saw",
+      "x": -2.2,
+      "z": 28,
+      "radius": 1.1
+    },
+    {
+      "id": "3-4-slide",
+      "x": -3,
+      "z": 46,
+      "radius": 1.0,
+      "path": {
+        "dx": 6,
+        "dz": 0,
+        "period": 7
+      }
+    }
+  ]
+}
