@@ -74,6 +74,9 @@ const RESULT_DELAY = 1.2;
 
 declare global {
   interface Window {
+    __hordeBooted?: boolean; // set once the first screen is up (index.html boot guard)
+    __hordeBootError?: (message: string) => void; // shows a start-up failure on screen (index.html)
+    __hordeFatal?: (message: string) => void; // shows a later, unrecoverable failure on screen (index.html)
     __horde?: {
       state(): BattleState;
       fps(): number; // frames actually drawn per second (capped at 60)
@@ -95,12 +98,25 @@ const app = document.getElementById('app') as HTMLElement;
 
 // MSAA is expensive at phone DPRs and barely visible there; keep it for low-DPR screens.
 const antialias = window.devicePixelRatio < 2;
-const engine = new Engine(
-  canvas,
-  antialias,
-  { stencil: false, preserveDrawingBuffer: false, powerPreference: 'high-performance', audioEngine: false },
-  false, // the renderer owns hardware scaling (automatic resolution scaling)
-);
+const engine = createEngine();
+
+function createEngine(): Engine {
+  try {
+    return new Engine(
+      canvas,
+      antialias,
+      { stencil: false, preserveDrawingBuffer: false, powerPreference: 'high-performance', audioEngine: false },
+      false, // the renderer owns hardware scaling (automatic resolution scaling)
+    );
+  } catch (e) {
+    // No WebGL context (the browser refused one): the index.html boot guard shows why.
+    window.__hordeBootError?.(
+      `The graphics (WebGL) would not start: ${e instanceof Error ? e.message : String(e)}\n\n` +
+        'Close the game and Safari completely, then open it again. If that does not help, restart the phone.',
+    );
+    throw e;
+  }
+}
 
 const world: WorldDef = getWorld('w1') ?? {
   id: 'w1',
@@ -606,6 +622,11 @@ engine.onContextLostObservable.add(() => {
     reloadWhenVisible();
     return;
   }
+  // Lost again right after two reloads: stop reloading and say so instead of a blank screen.
+  window.__hordeFatal?.(
+    "This phone keeps dropping the game's graphics (WebGL context lost). " +
+      'Close the game and Safari completely, then open it again. If that does not help, restart the phone.',
+  );
   pause('hidden');
 });
 
@@ -640,6 +661,7 @@ function boot(): void {
   showMap();
 }
 boot();
+window.__hordeBooted = true; // the first screen is up: the index.html boot guard stands down
 
 window.__horde = {
   state: () => (battle ? battle.state : ({} as BattleState)),
