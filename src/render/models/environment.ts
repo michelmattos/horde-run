@@ -129,7 +129,8 @@ const SKIRT_TOP = 1.45; // the skirt hangs from the bed frame at this height
 const DUVET_TOP = 2.55; // top of the duvet
 
 // ---------- small deterministic noise ----------
-function rng(seed: number): () => number {
+// (exported for the World 2 freezer room, models/freezerRoom.ts, which shares the recipes)
+export function rng(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) | 0;
@@ -139,14 +140,14 @@ function rng(seed: number): () => number {
   };
 }
 
-function hash2(x: number, y: number, seed: number): number {
+export function hash2(x: number, y: number, seed: number): number {
   let h = (x * 374761393 + y * 668265263 + seed * 982451653) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
 }
 
 // Value noise in world units (period-free), 0..1.
-function noise(x: number, y: number, seed: number): number {
+export function noise(x: number, y: number, seed: number): number {
   const x0 = Math.floor(x);
   const y0 = Math.floor(y);
   const fx = x - x0;
@@ -161,7 +162,7 @@ function noise(x: number, y: number, seed: number): number {
 }
 
 // Tileable value noise on a period-p lattice (for textures), 0..1.
-function tnoise(u: number, v: number, pu: number, pv: number, seed: number): number {
+export function tnoise(u: number, v: number, pu: number, pv: number, seed: number): number {
   const x = u * pu;
   const y = v * pv;
   const x0 = Math.floor(x);
@@ -179,7 +180,7 @@ function tnoise(u: number, v: number, pu: number, pv: number, seed: number): num
   return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
 }
 
-function tfbm(u: number, v: number, pu: number, pv: number, oct: number, seed: number): number {
+export function tfbm(u: number, v: number, pu: number, pv: number, oct: number, seed: number): number {
   let s = 0;
   let amp = 0.5;
   let n = 0;
@@ -192,7 +193,7 @@ function tfbm(u: number, v: number, pu: number, pv: number, oct: number, seed: n
 }
 
 // ---------- geometry accumulator ----------
-class Geo {
+export class Geo {
   pos: number[] = [];
   nrm: number[] = [];
   uv: number[] = [];
@@ -242,7 +243,7 @@ class Geo {
 }
 
 // ---------- procedural textures ----------
-function rawTex(
+export function rawTex(
   scene: Scene,
   name: string,
   data: Uint8Array,
@@ -270,7 +271,7 @@ function rawTex(
 }
 
 // Height field (0..1, wrapped) to a tangent-space normal map (OpenGL +Y).
-function heightToNormal(h: Float32Array, w: number, hgt: number, strength: number): Uint8Array {
+export function heightToNormal(h: Float32Array, w: number, hgt: number, strength: number): Uint8Array {
   const out = new Uint8Array(w * hgt * 4);
   const at = (x: number, y: number): number => h[((y + hgt) % hgt) * w + ((x + w) % w)];
   for (let y = 0; y < hgt; y++) {
@@ -327,7 +328,8 @@ function woolTextures(scene: Scene): { albedo: Texture; normal: Texture } {
 const woolCache = new WeakMap<Look, { albedo: Texture; normal: Texture }>();
 function sharedWool(scene: Scene, look: Look): { albedo: Texture; normal: Texture } {
   let w = woolCache.get(look);
-  if (!w || w.albedo.getScene() !== scene) {
+  // Rebuilt after a theme change released them (look.releaseMaterials('env-')).
+  if (!w || w.albedo.getScene() !== scene || !w.albedo.getInternalTexture()) {
     w = woolTextures(scene);
     woolCache.set(look, w);
   }
@@ -602,7 +604,7 @@ function sunMaterial(scene: Scene, look: Look): StandardMaterial {
 }
 
 // No tone mapping or grading on the light decals: their output is a light amount, not a colour.
-function rawImageProcessing(): ImageProcessingConfiguration {
+export function rawImageProcessing(): ImageProcessingConfiguration {
   const ip = new ImageProcessingConfiguration();
   ip.isEnabled = false;
   return ip;
@@ -625,7 +627,7 @@ interface BlendState {
 // Multiplicative brightening (dst * (1 + src)): set right before the decal's draw call and
 // restored after it. If the engine's blend state is not reachable, the decal falls back to
 // a plain (weaker-looking) additive blend.
-function sunBlend(mesh: Mesh): void {
+export function sunBlend(mesh: Mesh): void {
   const st = (mesh.getScene().getEngine() as unknown as { _alphaState?: BlendState })._alphaState;
   if (!st || typeof st.setAlphaBlendFunctionParameters !== 'function' || typeof st.setAlphaMode !== 'function') return;
   mesh.onBeforeDrawObservable.add(() => st.setAlphaBlendFunctionParameters(GL_DST_COLOR, GL_ONE, GL_ZERO, GL_ONE, 0));

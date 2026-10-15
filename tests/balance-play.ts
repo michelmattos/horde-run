@@ -1,8 +1,11 @@
-// Shared by the balance tests: plays one World 1 level headless with the real sim and
-// the autoplay bot. `attempt` shifts the bot's aim noise in time (a separate try by the
-// same player); the sim seed is attempt + 1 so every attempt also sees different spawns.
-// An optional BattleLoadout (Milestone 4) is handed to the battle and the bot, which then
-// also uses the ultimate.
+// Shared by the balance tests: plays one level headless with the real sim and the
+// autoplay bot. `attempt` shifts the bot's aim noise in time (a separate try by the same
+// player); the sim seed is attempt + 1 so every attempt also sees different spawns.
+//
+// Campaign battles are tuned with the gear a new player owns (concept §9.2): humanRuns and
+// playStarter resolve the STARTER loadout through progression's real resolveLoadout over
+// an empty profile (ultimate included). play() takes the loadout explicitly and plays
+// loadout-free without one, as Expedition battles do in the game.
 import { createSim } from '../src/sim/index.ts';
 import { createBattle } from '../src/game/battle.ts';
 import { createAutoplay } from '../src/game/autoplay.ts';
@@ -94,8 +97,20 @@ export const BOSS = ['1-10'];
 // win rates: easy 100%, 1-5..1-7 81-88%, 1-8 and 1-9 63%, the boss 56%.
 export const HUMAN_ATTEMPTS = 8;
 
+// The starter loadout as a new player has it, applied to `level`.
+export function starterSetup(level: LevelDef): { level: LevelDef; loadout: BattleLoadout } {
+  return resolveCase(level, STARTER_CASE);
+}
+
+export function playStarter(level: LevelDef, who: number | 'human', attempt = 0): PlayResult {
+  const s = starterSetup(level);
+  return play(s.level, who, attempt, s.loadout);
+}
+
+// Human attempts 0..n-1 with the starter loadout, or with an explicit (already resolved) loadout.
 export function humanRuns(level: LevelDef, n = HUMAN_ATTEMPTS, loadout?: BattleLoadout): PlayResult[] {
-  return Array.from({ length: n }, (_, a) => play(level, 'human', a, loadout));
+  const s = loadout ? { level, loadout } : starterSetup(level);
+  return Array.from({ length: n }, (_, a) => play(s.level, 'human', a, s.loadout));
 }
 
 export function median(xs: readonly number[]): number {
@@ -180,3 +195,9 @@ export const ITEM_CASES: ItemCase[] = [
   { name: 'repeater', ids: { cannon: 'repeater' } },
   { name: 'blunderbuss', ids: { cannon: 'blunderbuss' } },
 ];
+
+// ---------- Milestone 5: World 2 ----------
+// The World 2 curve (concept §9.1): 2-1 is easy, 2-8 to the boss take a retry or two
+// with starter gear.
+export const W2_EASY = ['2-1', '2-2', '2-3'];
+export const W2_HARD = ['2-8', '2-9', '2-10'];

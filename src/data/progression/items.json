@@ -15,15 +15,15 @@
           "unitsPerShot": 1
         },
         {
-          "fireRate": 1.08,
+          "fireRate": 1.02,
           "unitsPerShot": 1
         },
         {
-          "fireRate": 1.16,
+          "fireRate": 1.04,
           "unitsPerShot": 1
         },
         {
-          "fireRate": 1.25,
+          "fireRate": 1.06,
           "unitsPerShot": 1
         }
       ]
@@ -43,15 +43,15 @@
           "unitsPerShot": 0.67
         },
         {
-          "fireRate": 1.51,
+          "fireRate": 1.43,
           "unitsPerShot": 0.67
         },
         {
-          "fireRate": 1.62,
+          "fireRate": 1.46,
           "unitsPerShot": 0.67
         },
         {
-          "fireRate": 1.75,
+          "fireRate": 1.48,
           "unitsPerShot": 0.67
         }
       ]
@@ -72,19 +72,67 @@
           "shotSpread": 0.9
         },
         {
-          "fireRate": 0.46,
+          "fireRate": 0.439,
           "unitsPerShot": 2.4,
           "shotSpread": 0.9
         },
         {
-          "fireRate": 0.5,
+          "fireRate": 0.447,
           "unitsPerShot": 2.4,
           "shotSpread": 0.9
         },
         {
-          "fireRate": 0.54,
+          "fireRate": 0.456,
           "unitsPerShot": 2.4,
           "shotSpread": 0.9
+        }
+      ]
+    },
+    {
+      "id": "snowball-launcher",
+      "slot": "cannon",
+      "name": "Snowball Launcher",
+      "text": "Lobs rolling snowballs that scoop up your troops and gates, then burst into a squad.",
+      "unlock": {
+        "type": "level",
+        "level": "2-3"
+      },
+      "tiers": [
+        {
+          "fireRate": 0.72,
+          "unitsPerShot": 1.34,
+          "shot": {
+            "kind": "snowball",
+            "burstWeight": 40,
+            "maxRadius": 1.3
+          }
+        },
+        {
+          "fireRate": 0.73,
+          "unitsPerShot": 1.34,
+          "shot": {
+            "kind": "snowball",
+            "burstWeight": 40,
+            "maxRadius": 1.3
+          }
+        },
+        {
+          "fireRate": 0.75,
+          "unitsPerShot": 1.34,
+          "shot": {
+            "kind": "snowball",
+            "burstWeight": 40,
+            "maxRadius": 1.3
+          }
+        },
+        {
+          "fireRate": 0.76,
+          "unitsPerShot": 1.34,
+          "shot": {
+            "kind": "snowball",
+            "burstWeight": 40,
+            "maxRadius": 1.3
+          }
         }
       ]
     },
@@ -108,22 +156,22 @@
         },
         {
           "perShot": null,
-          "hp": 1.08,
+          "hp": 1,
+          "damage": 1.04,
+          "radius": 0.28,
+          "speed": 7
+        },
+        {
+          "perShot": null,
+          "hp": 1,
           "damage": 1.08,
           "radius": 0.28,
           "speed": 7
         },
         {
           "perShot": null,
-          "hp": 1.16,
-          "damage": 1.16,
-          "radius": 0.28,
-          "speed": 7
-        },
-        {
-          "perShot": null,
-          "hp": 1.25,
-          "damage": 1.25,
+          "hp": 1,
+          "damage": 1.12,
           "radius": 0.28,
           "speed": 7
         }
@@ -149,6 +197,13 @@
         },
         {
           "perShot": 1,
+          "hp": 10.4,
+          "damage": 10.4,
+          "radius": 0.55,
+          "speed": 5.5
+        },
+        {
+          "perShot": 1,
           "hp": 10.8,
           "damage": 10.8,
           "radius": 0.55,
@@ -156,15 +211,8 @@
         },
         {
           "perShot": 1,
-          "hp": 11.6,
-          "damage": 11.6,
-          "radius": 0.55,
-          "speed": 5.5
-        },
-        {
-          "perShot": 1,
-          "hp": 12.5,
-          "damage": 12.5,
+          "hp": 11.2,
+          "damage": 11.2,
           "radius": 0.55,
           "speed": 5.5
         }
@@ -191,22 +239,22 @@
         },
         {
           "perShot": null,
-          "hp": 1.08,
+          "hp": 1,
+          "damage": 0.83,
+          "radius": 0.24,
+          "speed": 10
+        },
+        {
+          "perShot": null,
+          "hp": 1,
           "damage": 0.86,
           "radius": 0.24,
           "speed": 10
         },
         {
           "perShot": null,
-          "hp": 1.16,
-          "damage": 0.93,
-          "radius": 0.24,
-          "speed": 10
-        },
-        {
-          "perShot": null,
-          "hp": 1.25,
-          "damage": 1,
+          "hp": 1,
+          "damage": 0.9,
           "radius": 0.24,
           "speed": 10
         }
@@ -237,36 +285,82 @@
         },
         {
           "perShot": 1.5,
-          "hp": 2.16,
+          "hp": 2,
+          "damage": 1.04,
+          "radius": 0.32,
+          "speed": 6,
+          "deathBlast": {
+            "radius": 1.4,
+            "damage": 4.14
+          }
+        },
+        {
+          "perShot": 1.5,
+          "hp": 2,
           "damage": 1.08,
           "radius": 0.32,
           "speed": 6,
           "deathBlast": {
             "radius": 1.4,
-            "damage": 4.3
+            "damage": 4.29
           }
         },
         {
           "perShot": 1.5,
-          "hp": 2.32,
-          "damage": 1.16,
+          "hp": 2,
+          "damage": 1.12,
           "radius": 0.32,
           "speed": 6,
           "deathBlast": {
             "radius": 1.4,
-            "damage": 4.6
+            "damage": 4.48
           }
+        }
+      ]
+    },
+    {
+      "id": "giant",
+      "slot": "mob",
+      "name": "Giant",
+      "text": "A huge, slow toy giant. When it falls, the squad on its back jumps off and fights on.",
+      "unlock": {
+        "type": "level",
+        "level": "2-5"
+      },
+      "variant": 4,
+      "kind": "heavy",
+      "tiers": [
+        {
+          "perShot": 0.25,
+          "hp": 20,
+          "damage": 8,
+          "radius": 0.8,
+          "speed": 3,
+          "riders": 6
         },
         {
-          "perShot": 1.5,
-          "hp": 2.5,
-          "damage": 1.25,
-          "radius": 0.32,
-          "speed": 6,
-          "deathBlast": {
-            "radius": 1.4,
-            "damage": 5
-          }
+          "perShot": 0.25,
+          "hp": 20.8,
+          "damage": 8.3,
+          "radius": 0.8,
+          "speed": 3,
+          "riders": 6
+        },
+        {
+          "perShot": 0.25,
+          "hp": 21.6,
+          "damage": 8.6,
+          "radius": 0.8,
+          "speed": 3,
+          "riders": 6
+        },
+        {
+          "perShot": 0.25,
+          "hp": 22.4,
+          "damage": 9,
+          "radius": 0.8,
+          "speed": 3,
+          "riders": 6
         }
       ]
     },
@@ -289,6 +383,14 @@
           "echo": 0
         },
         {
+          "hpMul": 1.04,
+          "damageMul": 1.04,
+          "radius": 1,
+          "speed": 4.5,
+          "chargeMul": 1,
+          "echo": 0
+        },
+        {
           "hpMul": 1.08,
           "damageMul": 1.08,
           "radius": 1,
@@ -297,16 +399,8 @@
           "echo": 0
         },
         {
-          "hpMul": 1.16,
-          "damageMul": 1.16,
-          "radius": 1,
-          "speed": 4.5,
-          "chargeMul": 1,
-          "echo": 0
-        },
-        {
-          "hpMul": 1.25,
-          "damageMul": 1.25,
+          "hpMul": 1.12,
+          "damageMul": 1.12,
           "radius": 1,
           "speed": 4.5,
           "chargeMul": 1,
@@ -334,7 +428,15 @@
           "echo": 0
         },
         {
-          "hpMul": 1.73,
+          "hpMul": 1.66,
+          "damageMul": 1.3,
+          "radius": 1.2,
+          "speed": 3.2,
+          "chargeMul": 1.3,
+          "echo": 0
+        },
+        {
+          "hpMul": 1.72,
           "damageMul": 1.35,
           "radius": 1.2,
           "speed": 3.2,
@@ -342,16 +444,8 @@
           "echo": 0
         },
         {
-          "hpMul": 1.86,
-          "damageMul": 1.45,
-          "radius": 1.2,
-          "speed": 3.2,
-          "chargeMul": 1.3,
-          "echo": 0
-        },
-        {
-          "hpMul": 2,
-          "damageMul": 1.56,
+          "hpMul": 1.79,
+          "damageMul": 1.4,
           "radius": 1.2,
           "speed": 3.2,
           "chargeMul": 1.3,
@@ -380,6 +474,14 @@
           "echo": 24
         },
         {
+          "hpMul": 0.78,
+          "damageMul": 0.83,
+          "radius": 0.9,
+          "speed": 5,
+          "chargeMul": 0.85,
+          "echo": 25
+        },
+        {
           "hpMul": 0.81,
           "damageMul": 0.86,
           "radius": 0.9,
@@ -388,20 +490,12 @@
           "echo": 26
         },
         {
-          "hpMul": 0.87,
-          "damageMul": 0.93,
+          "hpMul": 0.84,
+          "damageMul": 0.9,
           "radius": 0.9,
           "speed": 5,
           "chargeMul": 0.85,
-          "echo": 28
-        },
-        {
-          "hpMul": 0.94,
-          "damageMul": 1,
-          "radius": 0.9,
-          "speed": 5,
-          "chargeMul": 0.85,
-          "echo": 30
+          "echo": 27
         }
       ]
     },
@@ -420,15 +514,15 @@
         },
         {
           "chargeNeeded": 360,
-          "power": 21.5
+          "power": 20.7
         },
         {
           "chargeNeeded": 360,
-          "power": 23
+          "power": 21.4
         },
         {
           "chargeNeeded": 360,
-          "power": 25
+          "power": 22.4
         }
       ]
     },
@@ -448,15 +542,15 @@
         },
         {
           "chargeNeeded": 450,
-          "power": 29
+          "power": 28
         },
         {
           "chargeNeeded": 450,
-          "power": 31
+          "power": 28.9
         },
         {
           "chargeNeeded": 450,
-          "power": 34
+          "power": 30.4
         }
       ]
     },
@@ -476,15 +570,43 @@
         },
         {
           "chargeNeeded": 420,
-          "power": 43
+          "power": 41.4
         },
         {
           "chargeNeeded": 420,
-          "power": 46
+          "power": 42.9
         },
         {
           "chargeNeeded": 420,
-          "power": 50
+          "power": 44.8
+        }
+      ]
+    },
+    {
+      "id": "blizzard",
+      "slot": "ultimate",
+      "name": "Blizzard",
+      "text": "Freezes the whole enemy crowd solid for a few seconds.",
+      "unlock": {
+        "type": "level",
+        "level": "2-7"
+      },
+      "tiers": [
+        {
+          "chargeNeeded": 400,
+          "power": 4
+        },
+        {
+          "chargeNeeded": 400,
+          "power": 4.16
+        },
+        {
+          "chargeNeeded": 400,
+          "power": 4.32
+        },
+        {
+          "chargeNeeded": 400,
+          "power": 4.48
         }
       ]
     }

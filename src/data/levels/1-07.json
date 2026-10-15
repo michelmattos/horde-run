@@ -61,79 +61,79 @@
   "enemyWaves": [
     {
       "at": 10,
-      "count": 129,
+      "count": 181,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 18,
-      "count": 147,
+      "count": 206,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 28,
-      "count": 169,
+      "count": 237,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 38,
-      "count": 192,
+      "count": 269,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 48,
-      "count": 201,
+      "count": 281,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 58,
-      "count": 205,
+      "count": 287,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 68,
-      "count": 209,
+      "count": 293,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 78,
-      "count": 213,
+      "count": 298,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 88,
-      "count": 217,
+      "count": 304,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 98,
-      "count": 222,
+      "count": 311,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 108,
-      "count": 226,
+      "count": 316,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 118,
-      "count": 230,
+      "count": 322,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 128,
-      "count": 234,
+      "count": 328,
       "x": 0,
       "spread": 3.5
     }

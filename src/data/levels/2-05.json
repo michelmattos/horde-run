@@ -1,0 +1,223 @@
+{
+  "id": "2-5",
+  "name": "Penguin Pass",
+  "theme": "freezer",
+  "lane": {
+    "width": 10,
+    "length": 60
+  },
+  "cannon": {
+    "fireRate": 5.6,
+    "unitsPerShot": 3,
+    "aimLimit": 4
+  },
+  "playerBase": {
+    "hp": 320
+  },
+  "enemyBase": {
+    "hp": 2200,
+    "x": 0,
+    "width": 6
+  },
+  "gates": [
+    {
+      "id": "2-5-x2",
+      "op": "mul",
+      "value": 2,
+      "x": 0,
+      "z": 14,
+      "width": 4
+    },
+    {
+      "id": "2-5-x3",
+      "op": "mul",
+      "value": 2,
+      "x": 0,
+      "z": 34,
+      "width": 2.6
+    }
+  ],
+  "enemyWaves": [
+    {
+      "at": 10,
+      "count": 126,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 20,
+      "count": 146,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 30,
+      "count": 165,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 40,
+      "count": 185,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 50,
+      "count": 204,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 60,
+      "count": 224,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 70,
+      "count": 244,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 80,
+      "count": 263,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 90,
+      "count": 290,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 100,
+      "count": 300,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 110,
+      "count": 309,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 120,
+      "count": 319,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 13,
+      "count": 28,
+      "x": -2,
+      "spread": 3.5,
+      "unit": "penguin"
+    },
+    {
+      "at": 24,
+      "count": 35,
+      "x": 2,
+      "spread": 3.5,
+      "unit": "penguin"
+    },
+    {
+      "at": 35,
+      "count": 42,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "penguin"
+    },
+    {
+      "at": 46,
+      "count": 49,
+      "x": -2,
+      "spread": 3.5,
+      "unit": "penguin"
+    },
+    {
+      "at": 57,
+      "count": 56,
+      "x": 2,
+      "spread": 3.5,
+      "unit": "penguin"
+    },
+    {
+      "at": 68,
+      "count": 63,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "penguin"
+    },
+    {
+      "at": 79,
+      "count": 66,
+      "x": -2,
+      "spread": 3.5,
+      "unit": "penguin"
+    },
+    {
+      "at": 90,
+      "count": 69,
+      "x": 2,
+      "spread": 3.5,
+      "unit": "penguin"
+    },
+    {
+      "at": 101,
+      "count": 71,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "penguin"
+    },
+    {
+      "at": 112,
+      "count": 74,
+      "x": -2,
+      "spread": 3.5,
+      "unit": "penguin"
+    }
+  ],
+  "enemySpawnRate": {
+    "perSecond": 9.0,
+    "startAt": 8
+  },
+  "champion": {
+    "chargeNeeded": 300,
+    "hp": 120,
+    "damage": 90
+  },
+  "targetTime": 105,
+  "intro": "Ice walls squeeze the lane into a gap. Wind-up penguins are fast: meet them early.",
+  "iceWalls": [
+    {
+      "id": "2-5-wl",
+      "x": -3.4,
+      "z": 25,
+      "width": 3.2,
+      "depth": 2
+    },
+    {
+      "id": "2-5-wr",
+      "x": 3.4,
+      "z": 25,
+      "width": 3.2,
+      "depth": 2
+    }
+  ],
+  "ice": [
+    {
+      "x": 0,
+      "z": 40,
+      "width": 6,
+      "length": 8
+    }
+  ],
+  "trickleMix": {
+    "unit": "penguin",
+    "every": 4
+  }
+}

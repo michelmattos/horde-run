@@ -1,5 +1,5 @@
 // Expedition battle generator (concept §4.2): turns a RunBattleSpec into a LevelDef
-// built from World 1 pieces in src/data/expedition/templates.json. The spec's seed
+// built from World 1 and World 2 pieces in src/data/expedition/templates.json. The spec's seed
 // picks a lane length, a gate layout, a defender set, a wave pattern and a name, and
 // may mirror the lane in x; the battle index (0..3) scales the enemy base, the waves,
 // the trickle and the defenders. Each gate layout carries its own enemy-base and wave
@@ -8,19 +8,31 @@
 // coin toss at every index); the boss (index 4) is the Tin General of 1-10 with the
 // same phases, tuned for a run: it expects a few upgrades and crushes a bare cannon.
 //
+// World 2 pieces: three gate layouts play in the freezer (theme 'freezer') with freezing
+// gates, a fork split by an ice wall, an ice-wall chokepoint, ice patches and a penguin
+// share of the trickle. The seed picks the run boss: the Tin General, or the Snow Globe
+// Giant, a full boss of its own in templates.json (lobbed snowballs, then frozen gates,
+// then gusts; boss.model 'snowGlobeGiant'), never derived from the campaign's 2-10.
+//
 // Every template keeps two z-bands of the player's half free of gates and defenders
 // (RUN_FREE_BANDS) so the gates that run upgrades add always have room.
 //
 // Pure and deterministic: the same spec always gives the same level. No Babylon.
 
 import type {
+  BossPhaseDef,
   DefenderDef,
   DefenderKind,
+  EnemyUnit,
   EnemyWaveDef,
   GateDef,
+  GateFreezeDef,
   GateOp,
+  IcePatchDef,
+  IceWallDef,
   LevelDef,
   RunBattleSpec,
+  WorldTheme,
 } from '../contracts.ts';
 import { createRng } from '../core/rng.ts';
 import type { Rng } from '../core/rng.ts';
@@ -35,6 +47,18 @@ interface GateTemplate {
   width: number;
   move?: { amplitude: number; period: number };
   uses?: number;
+  freeze?: GateFreezeDef;
+  fork?: string; // gates sharing a fork id stand on one z line, side by side
+}
+
+type IceWallTemplate = Omit<IceWallDef, 'id'>;
+
+// World 2 hazards a gate layout (or the Snow Globe Giant) brings along.
+interface HazardTemplate {
+  theme?: WorldTheme;
+  ice?: IcePatchDef[];
+  iceWalls?: IceWallTemplate[];
+  trickleMix?: { unit: EnemyUnit; every: number };
 }
 
 interface DefenderTemplate {
@@ -63,7 +87,7 @@ interface WavePattern {
 interface Templates {
   lanes: number[];
   // baseHp scales the enemy base, waves the waves and trickle: strong gate chains face more.
-  gateLayouts: { name: string; baseHp: number; waves: number; gates: GateTemplate[] }[];
+  gateLayouts: ({ name: string; baseHp: number; waves: number; gates: GateTemplate[] } & HazardTemplate)[];
   defenderSets: { name: string; baseHp: number; defenders: DefenderTemplate[]; extras: DefenderTemplate[] }[];
   wavePatterns: WavePattern[];
   scale: {
@@ -90,6 +114,19 @@ interface Templates {
     targetTime: number;
     intro: string;
   };
+  snowBoss: {
+    name: string;
+    lane: LevelDef['lane'];
+    enemyBase: { hp: number; width: number };
+    playerBaseHp: number;
+    gates: GateTemplate[];
+    waves: WavePattern;
+    snowmanEvery: number; // every Nth wave is snowmen,
+    snowmanShare: number; // that many of them (snowmen are tanky)
+    phases: BossPhaseDef[];
+    targetTime: number;
+    intro: string;
+  } & HazardTemplate;
   names: string[];
   eliteNames: string[];
   eliteIntros: string[];
@@ -119,6 +156,17 @@ export const RUN_FREE_BANDS: readonly (readonly [number, number])[] = [
 // Since the cannon fires on its own (no thumb lifts) the base cannon fires 5.6/s instead
 // of 6, re-measured: battle 0 20/20, battle 3 16/20, elite 1 9/20, boss rapid x2 + sharp
 // + pep 5/12.
+// With the three freezer layouts in the draw (9 layouts, so seeds remap), re-measured:
+//   battle 0: 20/20, 57 s    elite 0: 16/20, 87 s
+//   battle 1: 20/20, 58 s    elite 1: 11/20, 85 s
+//   battle 2: 19/20, 83 s    elite 2: 11/20, 90 s
+//   battle 3: 16/20, 101 s   elite 3: 12/20, 95 s
+// Boss, rapid x2 + sharp + pep over 12 seeds (spec seed 5000 + 7919k): Tin General 5/12
+// (99 s), Snow Globe Giant 6/12 (90 s; over 10 attempts: bare cannon 0, tripler 10 in
+// 79 s, Big Multiplier 10 in 33 s, a lone Frost Gate 1, a lone Doubler 9).
+// With the ice skid (soldiers stepping onto ice slide sideways) and the Snow Globe Giant's
+// phase-2 gate ice at hp 60 (was 30, chipped open almost at once), re-measured: battle 3
+// 16/20, elite 1 9/20, Snow Globe Giant with rapid x2 + sharp + pep 5/12.
 export const RUN_BATTLE_TARGETS = {
   seeds: 6,
   battle: [
@@ -136,6 +184,9 @@ const WAVE_XS = [0, -1.5, 1.5];
 const WAVE_SPREAD = 3.5;
 const BOSS_ID = '1-10';
 
+// The two run bosses; the battle seed picks one (runBossModel).
+export type RunBossModel = 'tinGeneral' | 'snowGlobeGiant';
+
 const round1 = (v: number): number => Math.round(v * 10) / 10;
 // x mirrored when flip is -1; `+ 0` keeps a centred x at 0 rather than -0.
 const mirror = (x: number, flip: number): number => flip * x + 0;
@@ -145,8 +196,19 @@ function gates(list: readonly GateTemplate[], id: string, flip: number): GateDef
     const gate: GateDef = { id: `${id}-g${i}`, op: g.op, value: g.value, x: mirror(g.x, flip), z: g.z, width: g.width };
     if (g.move) gate.move = { ...g.move };
     if (g.uses !== undefined) gate.uses = g.uses;
+    if (g.freeze) gate.freeze = { ...g.freeze };
+    if (g.fork !== undefined) gate.fork = `${id}-${g.fork}`;
     return gate;
   });
+}
+
+// Copies a template's World 2 hazards onto the level, mirrored with the gates.
+function addHazards(level: LevelDef, h: HazardTemplate, id: string, flip: number): void {
+  if (h.theme) level.theme = h.theme;
+  if (h.ice?.length) level.ice = h.ice.map((p) => ({ ...p, x: mirror(p.x, flip) }));
+  if (h.iceWalls?.length)
+    level.iceWalls = h.iceWalls.map((w, i) => ({ id: `${id}-iw${i}`, ...w, x: mirror(w.x, flip) }));
+  if (h.trickleMix) level.trickleMix = { ...h.trickleMix };
 }
 
 function waves(p: WavePattern, mul: number, flip: number): EnemyWaveDef[] {
@@ -244,10 +306,11 @@ function battleLevel(spec: RunBattleSpec, id: string, p: RunBattlePicks): LevelD
     targetTime: T.base.targetTime,
   };
   if (intro) level.intro = intro;
+  addHazards(level, layout, id, flip);
   return level;
 }
 
-function bossLevel(id: string, rng: Rng): LevelDef {
+function tinGeneralLevel(id: string, rng: Rng): LevelDef {
   const src = getLevelById(BOSS_ID);
   if (!src?.boss) throw new Error(`Expedition boss needs shipped level ${BOSS_ID} with a boss`);
   const b = T.boss;
@@ -278,12 +341,54 @@ function bossLevel(id: string, rng: Rng): LevelDef {
   return level;
 }
 
+// The Snow Globe Giant, built from its own template: every snowmanEvery-th wave is a
+// smaller wave of snowmen, the trickle mixes in penguins.
+function snowGlobeLevel(id: string, rng: Rng): LevelDef {
+  const b = T.snowBoss;
+  const flip = rng.next() < 0.5 ? -1 : 1;
+  const enemyWaves = waves(b.waves, 1, flip).map((w, k) =>
+    (k + 1) % b.snowmanEvery === 0
+      ? { ...w, count: Math.max(1, Math.round(w.count * b.snowmanShare)), unit: 'snowman' as const }
+      : w,
+  );
+  const level: LevelDef = {
+    id,
+    name: b.name,
+    lane: { ...b.lane },
+    cannon: { ...T.base.cannon },
+    playerBase: { hp: b.playerBaseHp },
+    enemyBase: { hp: b.enemyBase.hp, x: 0, width: b.enemyBase.width },
+    gates: gates(b.gates, id, flip),
+    enemyWaves,
+    enemySpawnRate: { perSecond: b.waves.trickle, startAt: b.waves.trickleAt },
+    champion: { ...T.base.champion },
+    boss: { name: b.name, model: 'snowGlobeGiant', phases: structuredClone(b.phases) },
+    targetTime: b.targetTime,
+    intro: b.intro,
+  };
+  addHazards(level, b, id, flip);
+  return level;
+}
+
+// Which boss a boss spec fights. A hash of the seed of its own, so the rest of the
+// boss battle (its mirror) draws from the seed exactly as before.
+export function runBossModel(seed: number): RunBossModel {
+  return Math.imul((seed >>> 0) ^ 0x5bd1e995, 0x2545f491) >>> 31 === 0 ? 'tinGeneral' : 'snowGlobeGiant';
+}
+
+// A boss battle for an explicit boss (generateRunBattle picks it from the seed). Exposed
+// for tuning sweeps and tests.
+export function composeRunBoss(spec: RunBattleSpec, model: RunBossModel): LevelDef {
+  const seed = spec.seed >>> 0;
+  const id = `x${spec.index}-boss-${seed % 10000}`;
+  const rng = createRng(seed);
+  return validateLevel(model === 'snowGlobeGiant' ? snowGlobeLevel(id, rng) : tinGeneralLevel(id, rng), id);
+}
+
 // The battle for one node of a run. Deterministic per spec; always passes validateLevel.
 export function generateRunBattle(spec: RunBattleSpec): LevelDef {
+  if (spec.kind === 'boss') return composeRunBoss(spec, runBossModel(spec.seed));
   const seed = spec.seed >>> 0;
   const id = `x${spec.index}-${spec.kind}-${seed % 10000}`;
-  const rng = createRng(seed);
-  const level =
-    spec.kind === 'boss' ? bossLevel(id, rng) : battleLevel(spec, id, drawPicks(rng, spec.kind === 'elite'));
-  return validateLevel(level, id);
+  return validateLevel(battleLevel(spec, id, drawPicks(createRng(seed), spec.kind === 'elite')), id);
 }

@@ -286,11 +286,14 @@ test('battles are independent (no module-level state)', () => {
 
 // ---------- Levels ----------
 
-test('all shipped levels validate and form World 1', () => {
-  assert.equal(levelCount(), 10);
+const W1_IDS = ['1-1', '1-2', '1-3', '1-4', '1-5', '1-6', '1-7', '1-8', '1-9', '1-10'];
+const W2_IDS = W1_IDS.map((id) => id.replace('1-', '2-'));
+
+test('all shipped levels validate and form Worlds 1 and 2', () => {
+  assert.equal(levelCount(), 20);
   assert.deepEqual(
     LEVELS.map((l) => l.id),
-    ['1-1', '1-2', '1-3', '1-4', '1-5', '1-6', '1-7', '1-8', '1-9', '1-10'],
+    [...W1_IDS, ...W2_IDS],
   );
   assert.equal(LEVELS[0].name, 'First Charge');
   for (const l of LEVELS) {
@@ -306,26 +309,33 @@ test('all shipped levels validate and form World 1', () => {
   assert.ok(gates.some((g) => g.op === 'sub' || g.op === 'div'));
   assert.ok(gates.some((g) => g.move));
   assert.ok(gates.some((g) => g.uses));
-  for (const g of gates) assert.ok(g.width >= 2.5 && g.width <= 4, `${g.id} width`);
+  for (const g of gates) assert.ok(g.width >= 2.4 && g.width <= 4, `${g.id} width`);
+  assert.ok(
+    LEVELS.slice(10).every((l) => l.theme === 'freezer'),
+    'World 2 is the Freezer',
+  );
   const defenders = LEVELS.flatMap((l) => l.defenders ?? []);
   assert.ok(defenders.some((d) => d.kind === 'tower') && defenders.some((d) => d.kind === 'wall'));
   const boss = LEVELS[9].boss;
   assert.ok(boss && boss.name === 'Tin General' && boss.phases.length === 3);
-  assert.ok(LEVELS.slice(0, 9).every((l) => !l.boss));
+  const giant = LEVELS[19].boss;
+  assert.ok(giant && giant.name === 'Snow Globe Giant' && giant.phases.length === 3);
+  assert.deepEqual(
+    LEVELS.filter((l) => l.boss).map((l) => l.id),
+    ['1-10', '2-10'],
+  );
 });
 
 test('the World 1 file lists every level in order and validates', () => {
-  assert.equal(WORLDS.length, 1);
+  assert.equal(WORLDS.length, 2);
   const w = getWorld('w1');
   assert.ok(w);
   assert.deepEqual(
     { ...w, levels: undefined },
     { id: 'w1', name: 'Bedroom Floor', faction: 'Tan Army', levels: undefined },
   );
-  assert.deepEqual(
-    w.levels,
-    LEVELS.map((l) => l.id),
-  );
+  assert.deepEqual(w.levels, W1_IDS);
+  assert.deepEqual(getWorld('w2')?.levels, W2_IDS);
   assert.equal(getWorld('w9'), undefined);
   const bad = (mutate: (o: any) => void, pattern: RegExp) => {
     const o = JSON.parse(JSON.stringify(w));
@@ -351,8 +361,9 @@ test('levels by id', () => {
 
 test('getLevel wraps safely', () => {
   assert.equal(getLevel(0), LEVELS[0]);
-  assert.equal(getLevel(10), LEVELS[0]);
-  assert.equal(getLevel(-1), LEVELS[9]);
+  assert.equal(getLevel(10), LEVELS[10]);
+  assert.equal(getLevel(20), LEVELS[0]);
+  assert.equal(getLevel(-1), LEVELS[19]);
   assert.equal(getLevel(1.7), LEVELS[1]);
   assert.equal(getLevel(Number.NaN), LEVELS[0]);
 });

@@ -34,7 +34,7 @@ export {
 export interface PlayOptions {
   x?: number; // world x for stereo pan
   volume?: number; // 0..1, multiplies the sound's base volume
-  variant?: string; // 'barrage' | 'paratroopers' | 'marble' for 'ultimate'; 'sarge' | 'tank' | 'drummer' for 'championLaunch'
+  variant?: string; // 'barrage' | 'paratroopers' | 'marble' | 'blizzard' for 'ultimate'; 'sarge' | 'tank' | 'drummer' for 'championLaunch'
 }
 
 export interface GameAudio {
@@ -67,6 +67,9 @@ const JITTER = new Set<SoundId>([
   'blast',
   'tap',
   'gateGood',
+  'iceChip',
+  'snowballBurst',
+  'lobHit',
 ]);
 const OFFLINE_RATE = 44100;
 const GESTURES = ['touchend', 'pointerup', 'click', 'keydown'] as const;

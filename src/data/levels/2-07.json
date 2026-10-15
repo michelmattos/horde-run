@@ -1,0 +1,219 @@
+{
+  "id": "2-7",
+  "name": "Shaken Globe",
+  "theme": "freezer",
+  "lane": {
+    "width": 10,
+    "length": 60
+  },
+  "cannon": {
+    "fireRate": 5.6,
+    "unitsPerShot": 3,
+    "aimLimit": 4
+  },
+  "playerBase": {
+    "hp": 330
+  },
+  "enemyBase": {
+    "hp": 2100,
+    "x": 0,
+    "width": 6
+  },
+  "gates": [
+    {
+      "id": "2-7-x3",
+      "op": "mul",
+      "value": 3,
+      "x": 0,
+      "z": 20,
+      "width": 3.2
+    },
+    {
+      "id": "2-7-minus3l",
+      "op": "sub",
+      "value": 3,
+      "x": -3.7,
+      "z": 28,
+      "width": 2.4
+    },
+    {
+      "id": "2-7-minus3r",
+      "op": "sub",
+      "value": 3,
+      "x": 3.7,
+      "z": 28,
+      "width": 2.4
+    },
+    {
+      "id": "2-7-x2",
+      "op": "mul",
+      "value": 2,
+      "x": 0,
+      "z": 36,
+      "width": 3.4
+    }
+  ],
+  "enemyWaves": [
+    {
+      "at": 10,
+      "count": 172,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 20,
+      "count": 197,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 30,
+      "count": 222,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 40,
+      "count": 246,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 50,
+      "count": 271,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 60,
+      "count": 296,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 70,
+      "count": 321,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 80,
+      "count": 354,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 90,
+      "count": 365,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 100,
+      "count": 376,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 110,
+      "count": 387,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 120,
+      "count": 398,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 18,
+      "count": 9,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "snowman"
+    },
+    {
+      "at": 31,
+      "count": 12,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "snowman"
+    },
+    {
+      "at": 44,
+      "count": 16,
+      "x": -1.5,
+      "spread": 3.5,
+      "unit": "snowman"
+    },
+    {
+      "at": 57,
+      "count": 19,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "snowman"
+    },
+    {
+      "at": 70,
+      "count": 22,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "snowman"
+    },
+    {
+      "at": 83,
+      "count": 23,
+      "x": -1.5,
+      "spread": 3.5,
+      "unit": "snowman"
+    },
+    {
+      "at": 96,
+      "count": 25,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "snowman"
+    },
+    {
+      "at": 109,
+      "count": 27,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "snowman"
+    }
+  ],
+  "enemySpawnRate": {
+    "perSecond": 10.0,
+    "startAt": 8
+  },
+  "champion": {
+    "chargeNeeded": 300,
+    "hp": 120,
+    "damage": 90
+  },
+  "targetTime": 105,
+  "intro": "When the snow globe shakes, a gust shoves everyone sideways. Watch for the swirl and aim against it.",
+  "gusts": [
+    {
+      "at": 12,
+      "warn": 2,
+      "duration": 2.5,
+      "force": 1.6,
+      "every": 13,
+      "alternate": true
+    }
+  ],
+  "ice": [
+    {
+      "x": 0,
+      "z": 10,
+      "width": 6,
+      "length": 6
+    }
+  ],
+  "trickleMix": {
+    "unit": "penguin",
+    "every": 6
+  }
+}

@@ -5,6 +5,9 @@
 // InstancedMesh copy of a few hidden sources, so any number of defenders costs ~5 draw
 // calls (+ their shadow pass). load() rebuilds the pieces per level; update() follows the
 // live DefenderView list; hits flash the piece and pop its scale. The camera never moves.
+// World 2 igloos (kind 'igloo', models/igloo.ts) come from a kit built only for levels
+// that have them (and dropped on the next load without any): they show damage stages,
+// pop when they release units (iglooRelease) and sink into the snow when destroyed.
 import type { Scene } from '@babylonjs/core/scene';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import type { DefenderDef, DefenderKind, DefenderView } from '../contracts.ts';
@@ -14,8 +17,10 @@ import { createTowerKit } from './models/tower.ts';
 import type { TowerKit, TowerModel } from './models/tower.ts';
 import { createWallKit } from './models/wall.ts';
 import type { WallKit, WallModel } from './models/wall.ts';
+import { createIglooKit } from './models/igloo.ts';
+import type { IglooKit, IglooModel } from './models/igloo.ts';
 import type { HpBars } from './hpBars.ts';
-import { showHpBar } from './fxLogic.ts';
+import { popScale, showHpBar } from './fxLogic.ts';
 
 const MAX_DEFENDERS = 16;
 const FLASH_TIME = 0.12;
@@ -23,6 +28,11 @@ const FIRE_TIME = 0.28; // blaster kick: sharp rise, eased return
 const ENEMY_YAW = Math.PI; // side 'enemy': the lettered fronts face the camera
 const BAR_GAP_TOWER = 1.0; // clears the shooter's helmet
 const BAR_GAP_WALL = 0.4;
+const BAR_GAP_IGLOO = 0.35;
+const IGLOO_WIDTH = DEFENDER_DEFAULTS.wallWidth * 0.75; // the sim's default footprint
+const IGLOO_DEPTH = 1.6;
+const POP_TIME = 0.35; // igloo release pop
+const COLLAPSE_TIME = 0.45; // igloo sinks into the snow
 
 interface Slot {
   id: string;
@@ -37,6 +47,9 @@ interface Slot {
   fire: number; // seconds left of the firing kick
   tower: TowerModel | null;
   wall: WallModel | null;
+  igloo: IglooModel | null;
+  pop: number; // seconds left of the release pop
+  collapse: number; // seconds into the collapse; -1 = standing
   lastHit: number;
   lastFire: number;
 }
@@ -50,6 +63,10 @@ export interface DartLaunch {
 export class DefenderVisuals {
   private readonly towers: TowerKit;
   private readonly walls: WallKit;
+  private readonly scene: Scene;
+  private readonly look: Look;
+  private igloos: IglooKit | null = null;
+  private readonly door: DartLaunch = { x: 0, y: 0, z: 0 };
   private slots: Slot[] = [];
   private readonly byId = new Map<string, Slot>();
   private readonly launch: DartLaunch = { x: 0, y: 0, z: 0 };
@@ -58,17 +75,27 @@ export class DefenderVisuals {
   onBlocksFell: ((points: readonly Vector3[]) => void) | null = null;
 
   constructor(scene: Scene, look: Look) {
+    this.scene = scene;
+    this.look = look;
     this.walls = createWallKit(scene, look);
     this.towers = createTowerKit(scene, look); // after the wall kit: shares its block atlas
   }
 
   load(defs: readonly DefenderDef[] | undefined): void {
     this.clear();
-    if (!defs) return;
-    for (const d of defs.slice(0, MAX_DEFENDERS)) {
+    const list = defs ? defs.slice(0, MAX_DEFENDERS) : [];
+    // The igloo kit lives only while a level has igloos.
+    if (list.some((d) => d.kind === 'igloo')) this.igloos ??= createIglooKit(this.scene, this.look);
+    else if (this.igloos) {
+      this.igloos.dispose();
+      this.igloos = null;
+    }
+    for (const d of list) {
       const tower = d.kind === 'tower';
-      const width = d.width ?? (tower ? DEFENDER_DEFAULTS.towerWidth : DEFENDER_DEFAULTS.wallWidth);
-      const depth = tower ? width : DEFENDER_DEFAULTS.wallDepth;
+      const igloo = d.kind === 'igloo';
+      const width =
+        d.width ?? (tower ? DEFENDER_DEFAULTS.towerWidth : igloo ? IGLOO_WIDTH : DEFENDER_DEFAULTS.wallWidth);
+      const depth = tower ? width : igloo ? IGLOO_DEPTH : DEFENDER_DEFAULTS.wallDepth;
       const slot: Slot = {
         id: d.id,
         kind: d.kind,
@@ -82,6 +109,9 @@ export class DefenderVisuals {
         fire: 0,
         tower: null,
         wall: null,
+        igloo: null,
+        pop: 0,
+        collapse: -1,
         lastHit: -1,
         lastFire: -1,
       };
@@ -91,6 +121,12 @@ export class DefenderVisuals {
         t.root.rotation.y = ENEMY_YAW;
         t.setAim(0);
         slot.tower = t;
+      } else if (igloo && this.igloos) {
+        const m = this.igloos.create(width, depth);
+        m.root.position.set(d.x, 0, d.z);
+        m.root.rotation.y = ENEMY_YAW; // door towards the player
+        m.setDamage(0);
+        slot.igloo = m;
       } else {
         const w = this.walls.create(width, depth);
         w.root.position.set(d.x, 0, d.z);
@@ -107,6 +143,7 @@ export class DefenderVisuals {
     for (const s of this.slots) {
       s.tower?.dispose();
       s.wall?.dispose();
+      s.igloo?.dispose();
     }
     this.slots = [];
     this.byId.clear();
@@ -117,12 +154,36 @@ export class DefenderVisuals {
     if (s) s.flash = FLASH_TIME;
   }
 
-  // Marks a defender down right away (its debris comes from Effects).
+  // Marks a defender down right away (its debris comes from Effects); an igloo sinks
+  // into the snow over a moment first.
   destroyed(id: string): void {
     const s = this.byId.get(id);
     if (!s) return;
     s.hp = 0;
+    if (s.igloo) {
+      if (s.collapse < 0) s.collapse = 0;
+      s.igloo.setDamage(1);
+      return;
+    }
     this.hide(s);
+  }
+
+  // Defender kind by id (undefined when unknown).
+  kindOf(id: string): DefenderKind | undefined {
+    return this.byId.get(id)?.kind;
+  }
+
+  // An igloo releases units: it pops. Returns the world point in front of its door
+  // (reused object), or null when the id is not a standing igloo.
+  iglooRelease(id: string): DartLaunch | null {
+    const s = this.byId.get(id);
+    const m = s?.igloo;
+    if (!s || !m || s.hp <= 0) return null;
+    s.pop = POP_TIME;
+    this.door.x = s.x;
+    this.door.y = 0;
+    this.door.z = s.z - m.doorZ; // yaw PI: the door's local +Z faces world -Z
+    return this.door;
   }
 
   // A tower fires at (tx, tz): it turns to the target and kicks. Returns the world point
@@ -149,6 +210,7 @@ export class DefenderVisuals {
       s.wall.setDamage(1);
       s.wall.root.setEnabled(false);
     }
+    if (s.igloo) s.igloo.root.setEnabled(false);
   }
 
   // `views` is the sim's live list (read this frame only); without it the defs stand at full HP.
@@ -166,6 +228,18 @@ export class DefenderVisuals {
     }
     for (const s of this.slots) {
       if (s.hp <= 0) {
+        if (s.igloo && s.igloo.root.isEnabled()) {
+          // Collapse: the dome slumps and sinks, then goes.
+          if (s.collapse < 0) {
+            s.collapse = 0;
+            s.igloo.setDamage(1);
+          }
+          s.collapse += dt;
+          const c = Math.min(1, s.collapse / COLLAPSE_TIME);
+          s.igloo.root.scaling.set(1 + c * 0.15, Math.max(0.02, 1 - c * c), 1 + c * 0.15);
+          if (c >= 1) this.hide(s);
+          continue;
+        }
         if ((s.tower && s.tower.root.isEnabled()) || (s.wall && s.wall.root.isEnabled())) this.hide(s);
         continue;
       }
@@ -186,6 +260,18 @@ export class DefenderVisuals {
           t.setFiring(f);
           s.lastFire = f;
         }
+      } else if (s.igloo) {
+        const m = s.igloo;
+        m.root.position.set(s.x, 0, s.z);
+        if (k !== s.lastHit) {
+          m.setHit(k);
+          s.lastHit = k;
+        }
+        if (s.pop > 0) {
+          s.pop = Math.max(0, s.pop - dt);
+          m.setPop(popScale(s.pop / POP_TIME, 1) - 1); // jumps out, eases back
+        } else m.setPop(0);
+        m.setDamage(s.maxHp > 0 ? 1 - s.hp / s.maxHp : 0);
       } else if (s.wall) {
         const w = s.wall;
         if (w.root.position.x !== s.x || w.root.position.z !== s.z) {
@@ -206,7 +292,11 @@ export class DefenderVisuals {
   drawBars(bars: HpBars): void {
     for (const s of this.slots) {
       if (s.hp <= 0 || !showHpBar(s.hp, s.maxHp)) continue;
-      const y = s.tower ? s.tower.muzzleHeight + BAR_GAP_TOWER : (s.wall?.topY() ?? 1.3) + BAR_GAP_WALL;
+      const y = s.tower
+        ? s.tower.muzzleHeight + BAR_GAP_TOWER
+        : s.igloo
+          ? s.igloo.topY() + BAR_GAP_IGLOO
+          : (s.wall?.topY() ?? 1.3) + BAR_GAP_WALL;
       const bw = Math.max(1.4, Math.min(s.width, 2.8));
       bars.bar(s.x, y, s.z - s.depth / 2 - 0.15, bw, s.hp / s.maxHp, 'enemy');
     }
@@ -216,5 +306,7 @@ export class DefenderVisuals {
     this.clear();
     this.towers.dispose();
     this.walls.dispose();
+    this.igloos?.dispose();
+    this.igloos = null;
   }
 }

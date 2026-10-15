@@ -8,7 +8,7 @@ import type { RunNodeKind, UpgradeDef } from '../../contracts.ts';
 import { tickIcon, soldierIcon } from '../icons.ts';
 import { UI } from '../theme.ts';
 import { button, el, goldChip, hpChip, iconSpan, ownedIcon } from './dom.ts';
-import { RARITY_COLORS, backSvg, moreSvg, nodeIconSvg, upgradeIconSvg } from './icons.ts';
+import { RARITY_COLORS, backSvg, moreSvg, nodeIconSvg, upgradeIconOf, upgradeIconSvg } from './icons.ts';
 import { NODE_INFO, formatDailyDate, runMapLayout } from './layout.ts';
 import type { MapOptions } from './types.ts';
 
@@ -145,7 +145,7 @@ export function createMapScreen(parent: HTMLElement, done: (fn: () => void) => v
     name.append(rarity);
     text.append(name, el('p', '', def.text));
     if (def.drawback) text.append(el('span', 'hx-up-bad', def.drawback));
-    tip.replaceChildren(iconSpan('', upgradeIconSvg(def.icon, 48)), text);
+    tip.replaceChildren(iconSpan('', upgradeIconSvg(upgradeIconOf(def), 48)), text);
     tip.classList.add('hx-on');
   };
 

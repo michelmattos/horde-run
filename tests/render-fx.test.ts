@@ -255,18 +255,18 @@ test('tracers report the slot of each landed dart', () => {
   assert.equal(t.x0[t.endedSlot[0]], 1);
 });
 
-test('effects pools stay within the 600-particle budget', async () => {
+test('effects pools stay within the 700-particle budget', async () => {
   const src = await import('node:fs').then((fs) =>
     fs.readFileSync(new URL('../src/render/effects.ts', import.meta.url), 'utf8'),
   );
   const num = (name: string) => Number(new RegExp(`const ${name} = (\\d+)`).exec(src)![1]);
-  const total = ['TRACERS', 'FALLEN', 'SOLIDS', 'CONFETTI', 'PUFFS', 'SPARKS', 'RINGS', 'STREAMERS', 'FLARES'].reduce(
-    (a, k) => a + num(k),
-    0,
-  );
-  assert.ok(total <= 600, `pooled ${total}`);
-  // At most nine thin-instance batches (draw calls) for every effect together.
-  assert.ok((src.match(/new FxBatch\(/g) ?? []).length <= 9);
+  const pools = ['TRACERS', 'FALLEN', 'SOLIDS', 'CONFETTI', 'PUFFS', 'SPARKS', 'RINGS', 'STREAMERS', 'FLARES'];
+  // Milestone 5: snow lumps, boss snowballs (two floor markers each) and gust streaks.
+  pools.push('SNOW', 'LOBS', 'GUSTS');
+  const total = pools.reduce((a, k) => a + num(k), 0) + num('LOBS') * 2;
+  assert.ok(total <= 700, `pooled ${total}`);
+  // At most eleven thin-instance batches (draw calls) for every effect together.
+  assert.ok((src.match(/new FxBatch\(/g) ?? []).length <= 11);
   assert.ok(
     !/camera\.(position|rotation|target|alpha|beta|radius|fov)\s*[=+\-*]/.test(src),
     'effects never move the camera',

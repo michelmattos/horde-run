@@ -7,6 +7,8 @@ import {
   coinTallyAt,
   formatCoinDelta,
   rangeValueAt,
+  frozenSecondsLabel,
+  gustChipLook,
   ultimateTagText,
 } from '../src/ui/uiLogic.ts';
 
@@ -15,7 +17,8 @@ test('ultimate tag: short labels as given, long ones shortened per ultimate', ()
   assert.equal(ultimateTagText('paratroopers', 'Paratroopers'), 'PARAS');
   assert.equal(ultimateTagText('marble', 'Giant Marble'), 'MARBLE');
   assert.equal(ultimateTagText('marble', ''), 'MARBLE');
-  for (const id of ['barrage', 'paratroopers', 'marble']) {
+  assert.equal(ultimateTagText('blizzard', ''), 'FREEZE');
+  for (const id of ['barrage', 'paratroopers', 'marble', 'blizzard']) {
     for (const label of ['', 'X', 'A very long ultimate name']) {
       const t = ultimateTagText(id, label);
       assert.ok(t.length > 0 && t.length <= ULT_TAG_MAX, `${id} ${label}`);
@@ -46,4 +49,28 @@ test('coin tally counts up to the exact values', () => {
   assert.equal(formatCoinDelta(-5), '-5');
   assert.equal(formatCoinDelta(0), '0');
   assert.equal(formatCoinDelta(12345), '+12.3k');
+});
+
+test('gust chip: hidden without a gust, fills with the warning, full and pulsing while it blows', () => {
+  assert.equal(gustChipLook(undefined).show, false);
+  assert.equal(gustChipLook({ dir: 0, warn: 0.5, active: false }).show, false, 'no direction, no chip');
+  assert.equal(gustChipLook({ dir: 1, warn: 0, active: false }).show, false, 'nothing coming yet');
+  const coming = gustChipLook({ dir: -1, warn: 0.43, active: false });
+  assert.deepEqual(coming, { show: true, dir: -1, fill: 0.44, active: false }, 'snapped so the DOM updates rarely');
+  assert.deepEqual(gustChipLook({ dir: 1, warn: 0, active: true }), { show: true, dir: 1, fill: 1, active: true });
+  assert.equal(gustChipLook({ dir: 1, warn: 7, active: false }).fill, 1, 'clamped');
+  assert.equal(gustChipLook({ dir: 1, warn: Number.NaN, active: true }).fill, 1);
+  // Over a telegraph the fill only grows and takes few distinct values.
+  const fills = Array.from({ length: 200 }, (_, k) => gustChipLook({ dir: 1, warn: k / 199, active: false }).fill);
+  assert.ok(fills.every((f, i) => i === 0 || f >= fills[i - 1]));
+  assert.ok(new Set(fills).size <= 51);
+});
+
+test('frost chip shows whole seconds left of a Blizzard freeze, nothing otherwise', () => {
+  assert.equal(frozenSecondsLabel(undefined), '');
+  assert.equal(frozenSecondsLabel(0), '');
+  assert.equal(frozenSecondsLabel(-1), '');
+  assert.equal(frozenSecondsLabel(Number.POSITIVE_INFINITY), '');
+  assert.equal(frozenSecondsLabel(2.1), '3');
+  assert.equal(frozenSecondsLabel(0.05), '1', 'the last sliver still shows');
 });

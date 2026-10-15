@@ -237,3 +237,15 @@ export function radialTexture(scene: Scene): Texture {
   c.set('radial', t);
   return t;
 }
+
+// True for the scene-wide procedural textures above (surfaces and the radial blob): they
+// are shared by many materials and must survive a material release.
+export function isSharedTexture(scene: Scene, t: unknown): boolean {
+  const c = cache.get(scene);
+  if (!c) return false;
+  for (const v of c.values()) {
+    if (v === t) return true;
+    if ('albedo' in v && (v.albedo === t || v.normal === t)) return true;
+  }
+  return false;
+}

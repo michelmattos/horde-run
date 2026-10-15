@@ -1,0 +1,262 @@
+{
+  "id": "2-8",
+  "name": "Whiteout",
+  "theme": "freezer",
+  "lane": {
+    "width": 10,
+    "length": 62
+  },
+  "cannon": {
+    "fireRate": 5.6,
+    "unitsPerShot": 3,
+    "aimLimit": 4
+  },
+  "playerBase": {
+    "hp": 24
+  },
+  "enemyBase": {
+    "hp": 1600,
+    "x": 0,
+    "width": 6
+  },
+  "gates": [
+    {
+      "id": "2-8-x3",
+      "op": "mul",
+      "value": 3,
+      "x": -1.2,
+      "z": 16,
+      "width": 3.2,
+      "freeze": {
+        "after": 300,
+        "duration": 6,
+        "hp": 75
+      }
+    },
+    {
+      "id": "2-8-div2",
+      "op": "div",
+      "value": 2,
+      "x": 3,
+      "z": 16,
+      "width": 2.8
+    },
+    {
+      "id": "2-8-x2",
+      "op": "mul",
+      "value": 2,
+      "x": 1.2,
+      "z": 32,
+      "width": 3.2
+    },
+    {
+      "id": "2-8-minus3",
+      "op": "sub",
+      "value": 3,
+      "x": -3.6,
+      "z": 32,
+      "width": 2.4
+    }
+  ],
+  "enemyWaves": [
+    {
+      "at": 10,
+      "count": 77,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 19,
+      "count": 88,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 28,
+      "count": 100,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 37,
+      "count": 111,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 46,
+      "count": 123,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 55,
+      "count": 134,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 64,
+      "count": 146,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 73,
+      "count": 159,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 82,
+      "count": 164,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 91,
+      "count": 169,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 100,
+      "count": 174,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 109,
+      "count": 179,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 118,
+      "count": 184,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 15,
+      "count": 5,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "snowman"
+    },
+    {
+      "at": 25,
+      "count": 6,
+      "x": -1.5,
+      "spread": 3.5,
+      "unit": "snowman"
+    },
+    {
+      "at": 35,
+      "count": 8,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "snowman"
+    },
+    {
+      "at": 45,
+      "count": 9,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "snowman"
+    },
+    {
+      "at": 55,
+      "count": 10,
+      "x": -1.5,
+      "spread": 3.5,
+      "unit": "snowman"
+    },
+    {
+      "at": 65,
+      "count": 12,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "snowman"
+    },
+    {
+      "at": 75,
+      "count": 13,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "snowman"
+    },
+    {
+      "at": 85,
+      "count": 13,
+      "x": -1.5,
+      "spread": 3.5,
+      "unit": "snowman"
+    },
+    {
+      "at": 95,
+      "count": 14,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "snowman"
+    },
+    {
+      "at": 105,
+      "count": 15,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "snowman"
+    },
+    {
+      "at": 115,
+      "count": 15,
+      "x": -1.5,
+      "spread": 3.5,
+      "unit": "snowman"
+    }
+  ],
+  "enemySpawnRate": {
+    "perSecond": 12.0,
+    "startAt": 8
+  },
+  "champion": {
+    "chargeNeeded": 300,
+    "hp": 130,
+    "damage": 95
+  },
+  "targetTime": 130,
+  "defenders": [
+    {
+      "id": "2-8-t",
+      "kind": "tower",
+      "x": 3.8,
+      "z": 24,
+      "hp": 160,
+      "fireRate": 5,
+      "damage": 1,
+      "range": 6
+    }
+  ],
+  "gusts": [
+    {
+      "at": 20,
+      "warn": 2,
+      "duration": 2.5,
+      "force": 1.6,
+      "every": 16,
+      "alternate": true
+    }
+  ],
+  "ice": [
+    {
+      "x": 0,
+      "z": 20,
+      "width": 8,
+      "length": 8
+    }
+  ],
+  "trickleMix": {
+    "unit": "snowman",
+    "every": 10
+  }
+}

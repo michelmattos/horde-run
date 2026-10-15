@@ -18,6 +18,11 @@
 // In an Expedition run, setRun() adds a static strip under the top row (run HP, gold,
 // the elite/boss tag and the upgrade icons). It is built once per battle, never touched
 // by update(), takes no touches, and hudReserve() grows by its height while it is set.
+// World 2 adds two hazard widgets, both pure DOM (the camera and the canvas never move):
+// a gust telegraph, an arrow chip docked at the right edge off the lane that fills
+// toward the push while the gust is coming and pulses while it blows, and a frost tint
+// with a snowflake countdown chip on the enemy column while the Blizzard holds the enemy
+// crowd frozen (state.enemyFrozen). Neither takes touches nor changes hudReserve().
 import type { Scene } from '@babylonjs/core/scene';
 import type { BattleState } from '../contracts.ts';
 import type { Input } from '../core/input.ts';
@@ -27,6 +32,8 @@ import {
   formatCount,
   formatRunHp,
   formatStacks,
+  frozenSecondsLabel,
+  gustChipLook,
   hpFraction,
   hudReserveFor,
   hudTopHeight,
@@ -40,7 +47,16 @@ import {
   splitRunIcons,
 } from './uiLogic.ts';
 import { UI, WOOD_BG, injectUiTheme, outlineShadow } from './theme.ts';
-import { championIconFor, coinIcon, fortIcon, heartIcon, pauseIcon, ultimateIcon } from './icons.ts';
+import {
+  championIconFor,
+  coinIcon,
+  fortIcon,
+  gustArrowIcon,
+  heartIcon,
+  pauseIcon,
+  snowflakeIcon,
+  ultimateIcon,
+} from './icons.ts';
 import type { ChampionIconId, UltimateIconId } from './icons.ts';
 
 // Optional per-level extras: the boss's name and phase count (phase pips by the enemy bar).
@@ -238,7 +254,33 @@ const CSS = `
   background:${WOOD_BG};box-shadow:0 2px 0 ${UI.ink};display:flex;align-items:center;justify-content:center;
   color:${UI.cream};text-shadow:${outlineShadow(1.4)};font-size:14px;font-weight:700;line-height:1}
 
-@media (prefers-reduced-motion: reduce){.tb-cbtn.tb-ready .tb-champ-body,.tb-cbtn.tb-ready .tb-glow{animation:none}}
+/* ----- World 2: gust telegraph. Docked at the right edge at 30% height, off the lane and
+   clear of both HP columns, so the enemy base and the boss at the lane's far end stay in
+   view while a gust is warned and while it blows. No touches. ----- */
+.tb-gust{position:absolute;top:30%;right:calc(${SAR} + ${M.edge}px);width:116px;height:44px;
+  box-sizing:border-box;border-radius:22px;border:3px solid ${UI.ink};background:${WOOD_BG};overflow:hidden;
+  box-shadow:inset 0 2px 0 rgba(255,225,180,.28),0 4px 0 ${UI.ink},0 8px 10px rgba(20,10,2,.3);transform-origin:50% 50%}
+.tb-gust[hidden]{display:none}
+.tb-gust-fill{position:absolute;inset:0;transform:scaleX(0);transform-origin:0 50%;will-change:transform;
+  background:linear-gradient(180deg,#e6f6ff 0%,#9fd6f0 55%,#5fb4e0 100%)}
+.tb-gust.tb-left .tb-gust-fill{transform-origin:100% 50%}
+.tb-gust-ico{position:absolute;left:50%;top:50%;width:48px;height:48px;margin:-24px 0 0 -24px}
+.tb-gust-ico svg{width:48px;height:48px;display:block}
+.tb-gust.tb-left .tb-gust-ico{transform:scaleX(-1)}
+.tb-gust.tb-on{animation:tb-gust 420ms ease-in-out infinite;border-color:${UI.ink}}
+.tb-gust.tb-on .tb-gust-fill{background:linear-gradient(180deg,#ffffff 0%,#bfe6f8 50%,#7cc4e8 100%)}
+@keyframes tb-gust{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+
+/* ----- World 2: the enemy crowd frozen by the Blizzard (frost tint + countdown chip) ----- */
+.tb-enemy.tb-frozen .tb-frame{box-shadow:inset 2px 0 0 rgba(255,255,255,.5),0 0 0 3px #bfe6f8,0 3px 0 ${UI.ink},0 0 12px rgba(160,220,250,.9)}
+.tb-enemy.tb-frozen .tb-fill-tan{filter:saturate(.35) brightness(1.15) hue-rotate(160deg)}
+.tb-enemy.tb-frozen .tb-ebadge{background:radial-gradient(80% 70% at 35% 25%,#f2fbff,#8fd0ee 55%,#3f8fbf)}
+.tb-efrost{flex:none;display:flex;align-items:center;gap:2px;height:26px;padding:0 7px 0 2px;border-radius:13px;border:2.5px solid ${UI.ink};box-sizing:border-box;
+  background:linear-gradient(180deg,#e6f6ff,#8fcbea);box-shadow:0 2px 0 ${UI.ink};color:#16405e;font-size:14px;font-weight:700;line-height:1}
+.tb-efrost[hidden]{display:none}
+.tb-efrost svg{width:22px;height:22px}
+
+@media (prefers-reduced-motion: reduce){.tb-cbtn.tb-ready .tb-champ-body,.tb-cbtn.tb-ready .tb-glow,.tb-gust.tb-on{animation:none}}
 `;
 
 let stylesInjected = false;
@@ -325,7 +367,18 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
   enemy.root.append(pipsBox);
   const ePct = div('tb-epct');
   ePct.setAttribute('aria-hidden', 'true');
-  enemyCol.append(enemy.root, ePct);
+  const eFrost = div('tb-efrost', snowflakeIcon(22));
+  eFrost.hidden = true;
+  const eFrostText = document.createElement('span');
+  eFrost.append(eFrostText);
+  enemyCol.append(enemy.root, ePct, eFrost);
+
+  // ----- Gust telegraph: hidden until a gust is coming -----
+  const gust = div('tb-gust');
+  gust.hidden = true;
+  gust.setAttribute('role', 'img');
+  const gustFill = div('tb-gust-fill');
+  gust.append(gustFill, div('tb-gust-ico', gustArrowIcon(48)));
 
   // ----- Right column: player base HP (green fortress badge) above the CHAMP button -----
   const playerCol = div('tb-player');
@@ -377,7 +430,7 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
   const runIcons = div('tb-run-r');
   run.append(runLeft, runIcons);
 
-  hud.append(pause, title, run, enemyCol, playerCol, ult);
+  hud.append(pause, title, run, gust, enemyCol, playerCol, ult);
   host.appendChild(hud);
 
   // ----- Hits -----
@@ -494,6 +547,11 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
   let lastPips = -1;
   let lastPhase = -1;
   let pulseTimer = 0;
+  let lastGustShow = false;
+  let lastGustDir = 0;
+  let lastGustFill = -1;
+  let lastGustActive = false;
+  let lastFrozen = '';
 
   return {
     update(state, levelName, info) {
@@ -552,6 +610,35 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
         lastPlayerFill = pf;
         player.fill.style.transform = `scaleY(${pf})`;
         player.root.setAttribute('aria-valuenow', String(Math.ceil(pf * 100)));
+      }
+
+      // ----- World 2: gust telegraph and the frozen enemy crowd -----
+      const g = gustChipLook(state.gust);
+      if (g.show !== lastGustShow) {
+        lastGustShow = g.show;
+        gust.hidden = !g.show;
+      }
+      if (g.show) {
+        if (g.dir !== lastGustDir) {
+          lastGustDir = g.dir;
+          gust.classList.toggle('tb-left', g.dir < 0);
+          gust.setAttribute('aria-label', `Gust blowing to the ${g.dir < 0 ? 'left' : 'right'}`);
+        }
+        if (g.fill !== lastGustFill) {
+          lastGustFill = g.fill;
+          gustFill.style.transform = `scaleX(${g.fill})`;
+        }
+        if (g.active !== lastGustActive) {
+          lastGustActive = g.active;
+          gust.classList.toggle('tb-on', g.active);
+        }
+      }
+      const frozen = frozenSecondsLabel(state.enemyFrozen);
+      if (frozen !== lastFrozen) {
+        enemyCol.classList.toggle('tb-frozen', frozen !== '');
+        eFrost.hidden = frozen === '';
+        eFrostText.textContent = frozen;
+        lastFrozen = frozen;
       }
 
       const charge = Math.round(Math.min(1, Math.max(0, state.championCharge)) * 100) / 100;

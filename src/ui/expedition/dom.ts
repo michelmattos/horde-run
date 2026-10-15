@@ -2,7 +2,7 @@
 // HP and gold chips, and the upgrade card used by the pick and shop screens.
 import type { UpgradeDef } from '../../contracts.ts';
 import { coinIcon, tickIcon } from '../icons.ts';
-import { CATEGORY_COLORS, RARITY_COLORS, coinSvg, heartSvg, upgradeIconSvg } from './icons.ts';
+import { CATEGORY_COLORS, RARITY_COLORS, coinSvg, heartSvg, upgradeIconOf, upgradeIconSvg } from './icons.ts';
 import { formatGold, formatHp, hpPercent, hpTone } from './layout.ts';
 
 export function el<K extends keyof HTMLElementTagNameMap>(
@@ -130,7 +130,7 @@ export function upgradeCard(def: UpgradeDef, owned: number, selectable: boolean)
   if (owned > 0) tags.append(el('span', 'hx-pill hx-owned', `Owned x${owned}`));
   body.append(tags);
   card.append(
-    iconSpan('hx-up-ico', upgradeIconSvg(def.icon, 64)),
+    iconSpan('hx-up-ico', upgradeIconSvg(upgradeIconOf(def), 64)),
     body,
     el('span', 'hx-ribbon', r.label),
     iconSpan('hx-check', tickIcon(30)),
@@ -147,7 +147,7 @@ export function ownedIcon(def: UpgradeDef, stacks: number, tag: 'button' | 'span
   }
   b.dataset.upgradeId = def.id;
   b.setAttribute('aria-label', stacks > 1 ? `${def.name} x${stacks}` : def.name);
-  b.innerHTML = upgradeIconSvg(def.icon, 48);
+  b.innerHTML = upgradeIconSvg(upgradeIconOf(def), 48);
   if (stacks > 1) b.append(el('i', '', `x${stacks}`));
   return b;
 }

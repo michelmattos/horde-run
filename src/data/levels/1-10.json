@@ -11,7 +11,7 @@
     "aimLimit": 4
   },
   "playerBase": {
-    "hp": 150
+    "hp": 60
   },
   "enemyBase": {
     "hp": 2000,

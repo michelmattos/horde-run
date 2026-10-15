@@ -59,6 +59,7 @@ import {
   dartHeight,
   dartPitch,
   fxEnvelope,
+  lobHeight,
   mulberry32,
   writeBillboard,
   writeStreak,
@@ -75,8 +76,27 @@ const SPARKS = 32; // boss-phase, launch and blast sparks
 const RINGS = 12; // floor rings
 const STREAMERS = 40; // victory paper streamers
 const FLARES = 4; // barrage muzzle flares
-const EMITTERS = 4; // victory / defeat emitters (not drawn themselves)
-export const FX_POOL_TOTAL = TRACERS + FALLEN + SOLIDS + CONFETTI + PUFFS + SPARKS + RINGS + STREAMERS + FLARES; // 560
+const EMITTERS = 6; // victory / defeat / melt emitters (not drawn themselves)
+// Milestone 5 (World 2): snow lumps, ice chips and melt drips; boss snowballs in flight
+// (each with two floor markers drawn among the rings); gust streaks and drifting snow.
+const SNOW = 48;
+const LOBS = 4;
+const LOB_MARKERS = LOBS * 2;
+const GUSTS = 40;
+export const FX_POOL_TOTAL =
+  TRACERS +
+  FALLEN +
+  SOLIDS +
+  CONFETTI +
+  PUFFS +
+  SPARKS +
+  RINGS +
+  STREAMERS +
+  FLARES +
+  SNOW +
+  LOBS +
+  LOB_MARKERS +
+  GUSTS; // 660
 
 const DART_TIME = 0.2;
 const DART_FROM_Y = 2.6; // the tan dart shooter on top of a block tower
@@ -92,6 +112,11 @@ const VICTORY_TIME = 2.6;
 const DEFEAT_TIME = 1.6;
 const VICTORY = 0;
 const DEFEAT = 1;
+const MELT = 2;
+const MELT_TIME = 0.9;
+const LOB_PEAK = 2.6; // extra height of a boss snowball's arc
+const LOB_GRACE = 0.25; // a snowball waits this long past its flight for the lobHit event
+const ICE_WALL_INTERVAL = 0.25; // chips per ice wall
 const GRAVITY = 16;
 
 // Solid shapes (one pool, two meshes).
@@ -198,6 +223,44 @@ export class Effects {
   private readonly streamRot = new Float32Array(STREAMERS * 3);
   private readonly streamSpin = new Float32Array(STREAMERS * 3);
 
+  // World 2: snow lumps / drips (one pool), boss snowballs in flight, gust streaks.
+  private readonly snow = new ParticlePool(SNOW, { bounce: 0.22, groundY: 0.02, drag: 0.4 });
+  private readonly snowRot = new Float32Array(SNOW * 3);
+  private readonly snowSpin = new Float32Array(SNOW * 3);
+  private readonly lobFromX = new Float32Array(LOBS);
+  private readonly lobFromY = new Float32Array(LOBS);
+  private readonly lobFromZ = new Float32Array(LOBS);
+  private readonly lobX = new Float32Array(LOBS);
+  private readonly lobZ = new Float32Array(LOBS);
+  private readonly lobR = new Float32Array(LOBS);
+  private readonly lobT = new Float32Array(LOBS);
+  private readonly lobFlight = new Float32Array(LOBS); // 0 = free slot
+  private nextLob = 0;
+  private readonly gx = new Float32Array(GUSTS);
+  private readonly gy = new Float32Array(GUSTS);
+  private readonly gz = new Float32Array(GUSTS);
+  private readonly gvx = new Float32Array(GUSTS);
+  private readonly gvy = new Float32Array(GUSTS);
+  private readonly gLife = new Float32Array(GUSTS);
+  private readonly gMax = new Float32Array(GUSTS);
+  private readonly gW = new Float32Array(GUSTS);
+  private readonly gLen = new Float32Array(GUSTS);
+  private readonly gAlpha = new Float32Array(GUSTS);
+  private readonly gPhase = new Float32Array(GUSTS);
+  private nextGust = 0;
+  private readonly gustAcc = new Float32Array(1);
+  // Gust state: driven each frame by setGust() (BattleState.gust), else by the cue timers.
+  private gustExt = false;
+  private gustExtDir = 0;
+  private gustExtWarn = 0;
+  private gustExtActive = false;
+  private gustWarnDir = 0;
+  private gustWarnLeft = 0;
+  private gustWarnTotal = 1;
+  private gustDir = 0;
+  private gustLeft = 0;
+  private gustHalfWidth = 5;
+
   // Flares: fixed slots (billboarded starbursts).
   private readonly flareX = new Float32Array(FLARES);
   private readonly flareY = new Float32Array(FLARES);
@@ -225,6 +288,7 @@ export class Effects {
   private readonly baseChips = new KeyedThrottle(2, 0.12);
   private readonly muzzleCd = new Cooldown(MUZZLE_INTERVAL);
   private readonly clashCd = new Cooldown(CLASH_INTERVAL);
+  private readonly iceWallCd = new KeyedThrottle(8, ICE_WALL_INTERVAL);
 
   // Camera axes for sprites (world space), refreshed each update from the active camera.
   private rX = 1;
@@ -247,6 +311,8 @@ export class Effects {
   private readonly ringBatch: FxBatch;
   private readonly streamerBatch: FxBatch;
   private readonly flareBatch: FxBatch;
+  private readonly snowBatch: FxBatch;
+  private readonly gustBatch: FxBatch;
   private readonly materials: Material[] = [];
   private readonly textures: Texture[] = [];
 
@@ -272,6 +338,12 @@ export class Effects {
     purple: rgb(HEX.toyPurple),
     teal: rgb(HEX.toyTeal),
     orange: rgb(HEX.toyOrange),
+    snow: rgb('#f3f7fa'),
+    snowShade: rgb('#dbe7ef'),
+    ice: rgb('#bfe3f5'),
+    iceLight: rgb('#e6f5fc'),
+    iceDark: rgb('#8cc3e3'),
+    drop: rgb('#9fd3f0'),
   };
 
   // Sprite colours (sRGB): puffs, rings, sparks.
@@ -290,6 +362,12 @@ export class Effects {
     flash: srgbRgb('#ffe2a8'),
     dustGrey: srgbRgb('#bdb6ad'),
     smoke: srgbRgb('#e9e2d6'),
+    snowPuff: srgbRgb('#f4f8fc'),
+    frost: srgbRgb('#cfeaff'),
+    frostRing: srgbRgb('#9fd8ff'),
+    lobRing: srgbRgb('#e9f6ff'),
+    lobFill: srgbRgb('#7fc4f2'),
+    wind: srgbRgb('#f6fbff'),
   };
 
   constructor(scene: Scene, look?: Look) {
@@ -321,7 +399,7 @@ export class Effects {
     this.confBatch = new FxBatch(meshFrom(scene, 'fxConfetti', confettiGeometry()), paperMat, CONFETTI, this.root);
     this.puffBatch = new FxBatch(meshFrom(scene, 'fxPuffs', spriteGeometry(true)), puffMat, PUFFS, this.root);
     this.sparkBatch = new FxBatch(meshFrom(scene, 'fxSparks', spriteGeometry(false)), sparkMat, SPARKS, this.root);
-    this.ringBatch = new FxBatch(meshFrom(scene, 'fxRings', ringGeometry()), ringMat, RINGS, this.root);
+    this.ringBatch = new FxBatch(meshFrom(scene, 'fxRings', ringGeometry()), ringMat, RINGS + LOB_MARKERS, this.root);
     this.streamerBatch = new FxBatch(
       meshFrom(scene, 'fxStreamers', streamerGeometry()),
       paperMat,
@@ -330,6 +408,15 @@ export class Effects {
     );
     const flareMat = this.own(flareMaterial(scene));
     this.flareBatch = new FxBatch(meshFrom(scene, 'fxFlares', flareGeometry()), flareMat, FLARES, this.root);
+
+    // --- World 2: snow lumps (and boss snowballs in flight), gust streaks ---
+    const snowMat = this.own(
+      plasticMaterial(scene, null, { name: 'fxSnow', instanceColor: true, roughness: 0.82, envIntensity: 0.7 }),
+    );
+    this.snowBatch = new FxBatch(meshFrom(scene, 'fxSnow', snowGeometry()), snowMat, SNOW + LOBS, this.root);
+    const windTex = this.ownTex(windTexture(scene));
+    const windMat = this.own(spriteMaterial(scene, 'fxWindMat', windTex, false));
+    this.gustBatch = new FxBatch(meshFrom(scene, 'fxGust', spriteGeometry(false)), windMat, GUSTS, this.root);
   }
 
   private own<T extends Material>(m: T): T {
@@ -918,6 +1005,445 @@ export class Effects {
     );
   }
 
+  // ---------- Milestone 5 (World 2) spawners ----------
+
+  // Where gust streaks may fly: the lane's half width (streaks start a few units beyond).
+  setGustArea(halfWidth: number): void {
+    this.gustHalfWidth = Math.max(2, halfWidth);
+  }
+
+  // Per frame from BattleState.gust: dir -1 / 0 / 1, warn 0..1 (telegraph), active (push).
+  // While this is called it overrides the cue timers below.
+  setGust(dir: number, warn: number, active: boolean): void {
+    this.gustExt = true;
+    this.gustExtDir = dir;
+    this.gustExtWarn = warn;
+    this.gustExtActive = active;
+  }
+
+  // Cue fallbacks: a gust is coming from `dir` in `seconds` / is pushing for `duration`.
+  gustWarn(dir: number, seconds: number): void {
+    this.gustWarnDir = dir;
+    this.gustWarnLeft = Math.max(0.05, seconds);
+    this.gustWarnTotal = this.gustWarnLeft;
+  }
+
+  gust(dir: number, duration: number): void {
+    this.gustWarnLeft = 0;
+    this.gustDir = dir;
+    this.gustLeft = Math.max(0.05, duration);
+  }
+
+  // The boss lobs a snowball from (fromX, fromY, fromZ) to land on (x, z) after `flight`
+  // seconds: a cold ring of `radius` on the floor with a fill growing inside it as the
+  // snowball arcs over. lobHit() (or the flight running out) ends it.
+  lob(x: number, z: number, radius: number, flight: number, fromX: number, fromY: number, fromZ: number): void {
+    let i = -1;
+    for (let k = 0; k < LOBS; k++)
+      if (this.lobFlight[k] <= 0) {
+        i = k;
+        break;
+      }
+    if (i < 0) {
+      i = this.nextLob;
+      this.nextLob = (i + 1) % LOBS;
+    }
+    this.lobFromX[i] = fromX;
+    this.lobFromY[i] = fromY;
+    this.lobFromZ[i] = fromZ;
+    this.lobX[i] = x;
+    this.lobZ[i] = z;
+    this.lobR[i] = Math.max(0.3, radius);
+    this.lobT[i] = 0;
+    this.lobFlight[i] = Math.max(0.1, flight);
+  }
+
+  // The snowball lands: the matching marker goes, snow lumps and puffs burst out and a
+  // white ring rolls over the area.
+  lobHit(x: number, z: number, radius: number): void {
+    let best = -1;
+    let bestD = Infinity;
+    for (let k = 0; k < LOBS; k++) {
+      if (this.lobFlight[k] <= 0) continue;
+      const d = (this.lobX[k] - x) ** 2 + (this.lobZ[k] - z) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        best = k;
+      }
+    }
+    if (best >= 0) this.lobFlight[best] = 0;
+    const R = Math.max(0.5, radius);
+    this.ring(x, z, R * 0.5, R * 2.6, 1, 0.55, this.S.lobRing, 1.2, 0.9);
+    this.ring(x, z, R * 0.3, R * 1.8, 1, 0.8, this.S.frostRing, 1, 0.55);
+    this.snowBurst(x, z, R * 0.4, this.count(16), 3.2, 0.14, 0.26);
+    const c = this.S.snowPuff;
+    for (let i = 0; i < this.count(5); i++) {
+      const a = (i / 5) * Math.PI * 2 + this.r(-0.3, 0.3);
+      this.puff(
+        x + Math.cos(a) * R * 0.5,
+        this.r(0.25, 0.6),
+        z + Math.sin(a) * R * 0.5,
+        Math.cos(a) * 1.6,
+        this.r(0.3, 0.8),
+        Math.sin(a) * 1.6,
+        0.8,
+        2.2,
+        this.r(0.7, 1),
+        c.r,
+        c.g,
+        c.b,
+        0.85,
+      );
+    }
+  }
+
+  // A snowman's snowball (or a frozen unit) bursts at (x, z): a small pop of snow lumps.
+  snowballBurst(x: number, z: number, count: number): void {
+    this.snowBurst(x, z, 0.3, this.count(Math.min(10, 4 + Math.max(0, count))), 2.2, 0.1, 0.2);
+    const c = this.S.snowPuff;
+    this.puff(x, 0.45, z, 0, 0.5, 0, 0.5, 1.8, 0.6, c.r, c.g, c.b, 0.8);
+  }
+
+  // A snow giant toppled at (x, z): a wide ring of snow dust and a heavy spray of lumps.
+  giantFell(x: number, z: number): void {
+    this.ring(x, z, 1, 6, 1, 1, this.S.snowPuff, 1.1, 0.8);
+    this.snowBurst(x, z, 0.8, this.count(16), 2.8, 0.16, 0.3);
+    const c = this.S.snowPuff;
+    const n = this.count(10);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + this.r(-0.2, 0.2);
+      const sp = this.r(1.8, 3);
+      this.puff(
+        x + Math.cos(a) * 0.9,
+        this.r(0.3, 0.7),
+        z + Math.sin(a) * 0.9,
+        Math.cos(a) * sp,
+        this.r(0.2, 0.6),
+        Math.sin(a) * sp,
+        1.1,
+        2.4,
+        this.r(0.9, 1.3),
+        c.r,
+        c.g,
+        c.b,
+        0.75,
+      );
+    }
+  }
+
+  // Units bumped an ice wall at (x, z): a few ice chips and a frost puff, throttled per wall.
+  iceWallHit(id: string, x: number, z: number): void {
+    let key = 0;
+    for (let i = 0; i < id.length; i++) key = (key * 31 + id.charCodeAt(i)) | 0;
+    if (!this.iceWallCd.allow(key)) return;
+    const C = this.C;
+    for (let i = 0; i < this.count(3); i++) {
+      const a = this.rand() * Math.PI * 2;
+      this.solid(
+        SHARD,
+        x + this.r(-0.4, 0.4),
+        this.r(0.5, 1.1),
+        z - 0.1,
+        Math.cos(a) * 1.4,
+        this.r(2.5, 4),
+        -this.r(0.6, 1.8),
+        this.r(0.6, 0.9),
+        this.r(0.08, 0.13),
+        i % 2 ? C.ice : C.iceLight,
+      );
+    }
+    const f = this.S.frost;
+    this.puff(x, 0.7, z - 0.2, 0, 0.3, -0.4, 0.5, 1.7, 0.55, f.r, f.g, f.b, 0.7);
+  }
+
+  // An igloo lets its defenders out at (x, z): a puff of snow at the door.
+  iglooRelease(x: number, z: number): void {
+    const c = this.S.snowPuff;
+    for (let i = 0; i < 3; i++)
+      this.puff(
+        x + this.r(-0.4, 0.4),
+        this.r(0.2, 0.5),
+        z + this.r(-0.2, 0.2),
+        this.r(-1, 1),
+        this.r(0.3, 0.7),
+        -this.r(0.8, 1.6),
+        0.6,
+        2,
+        this.r(0.55, 0.75),
+        c.r,
+        c.g,
+        c.b,
+        0.8,
+      );
+    this.snowBurst(x, z, 0.3, this.count(4), 1.6, 0.08, 0.14);
+  }
+
+  // A destroyed igloo: snow blocks and lumps tumble out of the collapse, plus snow dust.
+  snowDebris(x: number, z: number, width: number): void {
+    const spread = Math.max(0.6, width * 0.4);
+    this.snowBurst(x, z, spread, this.count(14), 2.6, 0.14, 0.3);
+    const C = this.C;
+    for (let i = 0; i < this.count(4); i++) {
+      const a = this.rand() * Math.PI * 2;
+      this.solid(
+        BLOCK,
+        x + this.r(-1, 1) * spread,
+        this.r(0.6, 1.3),
+        z + this.r(-0.3, 0.3),
+        Math.cos(a) * 2,
+        this.r(3.5, 5.5),
+        Math.sin(a) * 1.4,
+        2.2,
+        this.r(0.3, 0.42),
+        i % 2 ? C.snow : C.snowShade,
+      );
+    }
+    const c = this.S.snowPuff;
+    for (let i = 0; i < 4; i++)
+      this.puff(
+        x + this.r(-1, 1) * spread,
+        this.r(0.3, 0.8),
+        z + this.r(-0.3, 0.3),
+        this.r(-0.8, 0.8),
+        0.4,
+        this.r(-0.5, 0.5),
+        0.9,
+        2.2,
+        this.r(0.9, 1.3),
+        c.r,
+        c.g,
+        c.b,
+        0.75,
+      );
+  }
+
+  // A gate freezes over at (x, z): a frost burst of pale blue puffs and a cold ring.
+  gateFrozen(x: number, z: number, width: number): void {
+    const w = Math.max(1, width);
+    this.ring(x, z, w * 0.3, w * 1.1, 0.7, 0.6, this.S.frostRing, 1.1, 0.85);
+    const f = this.S.frost;
+    for (let i = 0; i < this.count(6); i++)
+      this.puff(
+        x + this.r(-0.5, 0.5) * w,
+        this.r(0.4, 1.6),
+        z + this.r(-0.15, 0.15),
+        this.r(-0.6, 0.6),
+        this.r(0.2, 0.6),
+        -this.r(0.2, 0.8),
+        0.7,
+        2,
+        this.r(0.55, 0.8),
+        f.r,
+        f.g,
+        f.b,
+        0.75,
+      );
+  }
+
+  // Units chipped a frozen gate open: the ice sheet shatters into glassy chips.
+  iceShatter(x: number, z: number, width: number): void {
+    const w = Math.max(1, width);
+    const C = this.C;
+    const n = this.count(16);
+    for (let i = 0; i < n; i++) {
+      const px = x + this.r(-0.5, 0.5) * w;
+      this.solid(
+        SHARD,
+        px,
+        this.r(0.4, 1.9),
+        z,
+        (px - x) * 1.3,
+        this.r(2.5, 5),
+        this.r(-2.4, 0.4),
+        this.r(1.1, 1.6),
+        this.r(0.14, 0.26),
+        i % 3 === 0 ? C.iceDark : i % 3 === 1 ? C.ice : C.iceLight,
+      );
+    }
+    this.ring(x, z, w * 0.3, w * 1.2, 0.7, 0.5, this.S.frost, 1.2, 0.8);
+    this.snowBurst(x, z, w * 0.3, this.count(5), 2, 0.07, 0.12);
+  }
+
+  // A frozen gate's time ran out: the ice melts away in drips along its width.
+  meltDrips(x: number, z: number, width: number): void {
+    this.emitters.start(MELT, x, z, Math.max(1, width), MELT_TIME);
+  }
+
+  // Units frozen by a snowball or blizzard at (x, z): a frost ring over the area.
+  frostRing(x: number, z: number, radius: number): void {
+    const R = Math.max(0.5, radius);
+    this.ring(x, z, R * 0.6, R * 2.4, 1, 0.7, this.S.frostRing, 1.15, 0.8);
+    const f = this.S.frost;
+    this.puff(x, 0.4, z, 0, 0.4, 0, 0.6, 2, R * 0.6, f.r, f.g, f.b, 0.6);
+  }
+
+  private snowBurst(x: number, z: number, spread: number, n: number, speed: number, s0: number, s1: number): void {
+    const C = this.C;
+    for (let i = 0; i < n; i++) {
+      const a = this.rand() * Math.PI * 2;
+      const sp = this.r(0.5, 1) * speed;
+      this.snowLump(
+        x + Math.cos(a) * spread * this.rand(),
+        this.r(0.3, 0.8),
+        z + Math.sin(a) * spread * this.rand(),
+        Math.cos(a) * sp,
+        this.r(2.5, 5),
+        Math.sin(a) * sp,
+        this.r(0.9, 1.4),
+        this.r(s0, s1),
+        i % 3 === 0 ? C.snowShade : C.snow,
+      );
+    }
+  }
+
+  private snowLump(
+    x: number,
+    y: number,
+    z: number,
+    vx: number,
+    vy: number,
+    vz: number,
+    life: number,
+    size: number,
+    c: Rgb,
+  ): void {
+    const s = this.snow.spawn(x, y, z, vx, vy, vz, life, size, c.r, c.g, c.b, GRAVITY);
+    const o = s * 3;
+    this.snowRot[o] = this.rand() * Math.PI * 2;
+    this.snowRot[o + 1] = this.rand() * Math.PI * 2;
+    this.snowRot[o + 2] = this.rand() * Math.PI * 2;
+    this.snowSpin[o] = this.r(-5, 5);
+    this.snowSpin[o + 1] = this.r(-8, 8);
+    this.snowSpin[o + 2] = this.r(-8, 8);
+  }
+
+  // Lumps, drips and the boss snowballs in flight.
+  private stepSnow(dt: number): void {
+    const p = this.snow;
+    p.step(dt);
+    const b = this.snowBatch;
+    b.count = 0;
+    const rot = this.snowRot;
+    const spin = this.snowSpin;
+    for (let i = 0; i < p.capacity; i++) {
+      if (!p.isLive(i)) continue;
+      const o = i * 3;
+      if (!p.grounded(i)) {
+        rot[o] += spin[o] * dt;
+        rot[o + 1] += spin[o + 1] * dt;
+        rot[o + 2] += spin[o + 2] * dt;
+      }
+      const k = p.remaining(i);
+      const s = p.size[i] * (k < 0.3 ? k / 0.3 : 1);
+      const j = b.next();
+      if (j < 0) break;
+      writeTRS(b.m, j * 16, p.px[i], p.py[i] + s * 0.4, p.pz[i], s, s * 0.85, s, rot[o], rot[o + 1], rot[o + 2]);
+      b.color(j, p.r[i], p.g[i], p.b[i], 1);
+    }
+    const C = this.C;
+    for (let i = 0; i < LOBS; i++) {
+      if (this.lobFlight[i] <= 0) continue;
+      this.lobT[i] += dt;
+      const f = this.lobFlight[i];
+      if (this.lobT[i] > f + LOB_GRACE) {
+        this.lobFlight[i] = 0;
+        continue;
+      }
+      const k = Math.min(1, this.lobT[i] / f);
+      const j = b.next();
+      if (j < 0) continue;
+      const x = this.lobFromX[i] + (this.lobX[i] - this.lobFromX[i]) * k;
+      const z = this.lobFromZ[i] + (this.lobZ[i] - this.lobFromZ[i]) * k;
+      const y = lobHeight(k, this.lobFromY[i], 0.35, LOB_PEAK);
+      const s = 0.62;
+      writeTRS(b.m, j * 16, x, y, z, s, s, s, this.lobT[i] * 4, this.lobT[i] * 7, 0);
+      b.color(j, C.snow.r, C.snow.g, C.snow.b, 1);
+    }
+    b.commit();
+  }
+
+  // Gust streaks: thin white lines blowing across the lane (light during the telegraph,
+  // a strong stream while the gust pushes) plus small drifting snowflakes.
+  private stepGust(dt: number): void {
+    let dir = 0;
+    let warn = 0;
+    let active = false;
+    if (this.gustLeft > 0) this.gustLeft -= dt;
+    if (this.gustWarnLeft > 0) this.gustWarnLeft -= dt;
+    if (this.gustExt) {
+      dir = this.gustExtDir;
+      warn = this.gustExtWarn;
+      active = this.gustExtActive;
+      this.gustExt = false;
+    } else if (this.gustLeft > 0) {
+      dir = this.gustDir;
+      active = true;
+    } else if (this.gustWarnLeft > 0) {
+      dir = this.gustWarnDir;
+      warn = 1 - this.gustWarnLeft / this.gustWarnTotal;
+    }
+    const low = this.look?.quality === 'low' ? 0.6 : 1;
+    const rate = dir === 0 ? 0 : active ? 55 * low : warn > 0 ? (5 + 20 * warn) * low : 0;
+    const n = emitCount(this.gustAcc, 0, rate, dt);
+    if (n > 0) {
+      // Spawn around where the camera looks at the floor (read only).
+      const cam = this.scene.activeCamera;
+      let cz = 0;
+      if (cam) {
+        const pos = cam.globalPosition;
+        cz = this.fY < -0.05 ? pos.z + this.fZ * (-pos.y / this.fY) : pos.z + 12;
+      }
+      const span = this.gustHalfWidth + 7;
+      const d = dir < 0 ? -1 : 1;
+      for (let k = 0; k < n; k++) {
+        const i = this.nextGust;
+        this.nextGust = (i + 1) % GUSTS;
+        const flake = this.rand() < (active ? 0.45 : 0.3);
+        const speed = active ? this.r(12, 18) : this.r(7, 10);
+        this.gx[i] = -d * (span + this.r(0, 3));
+        this.gy[i] = flake ? this.r(0.15, 1.6) : this.r(0.35, 2.4);
+        this.gz[i] = cz + this.r(-12, 14);
+        this.gvx[i] = d * speed * (flake ? 0.8 : 1);
+        this.gvy[i] = flake ? this.r(-0.6, 0.1) : this.r(-0.2, 0.2);
+        this.gMax[i] = this.gLife[i] = (2 * span + 3) / (speed * (flake ? 0.8 : 1));
+        this.gW[i] = flake ? this.r(0.07, 0.11) : this.r(0.04, 0.07);
+        this.gLen[i] = flake ? this.gW[i] * 1.2 : this.r(0.9, 1.8) * (active ? 1.3 : 1);
+        this.gAlpha[i] = flake ? 0.9 : active ? this.r(0.4, 0.6) : this.r(0.22, 0.38) * (0.5 + warn * 0.5);
+        this.gPhase[i] = this.rand() * Math.PI * 2;
+      }
+    }
+    const b = this.gustBatch;
+    b.count = 0;
+    const w = this.S.wind;
+    for (let i = 0; i < GUSTS; i++) {
+      if (this.gLife[i] <= 0) continue;
+      this.gLife[i] -= dt;
+      if (this.gLife[i] <= 0) continue;
+      this.gPhase[i] += dt * 5;
+      this.gx[i] += this.gvx[i] * dt;
+      this.gy[i] = Math.max(0.08, this.gy[i] + (this.gvy[i] + Math.sin(this.gPhase[i]) * 0.5) * dt);
+      const j = b.next();
+      if (j < 0) break;
+      writeStreak(
+        b.m,
+        j * 16,
+        this.gx[i],
+        this.gy[i],
+        this.gz[i],
+        this.gvx[i],
+        Math.sin(this.gPhase[i]) * 0.6,
+        0,
+        this.gW[i],
+        this.gLen[i],
+        this.fX,
+        this.fY,
+        this.fZ,
+      );
+      b.color(j, w.r, w.g, w.b, this.gAlpha[i] * fxEnvelope(this.gLife[i] / this.gMax[i], 0.15, 0.2));
+    }
+    b.commit();
+  }
+
   private flare(x: number, y: number, z: number, size: number): void {
     const i = this.nextFlare;
     this.nextFlare = (i + 1) % FLARES;
@@ -1002,6 +1528,22 @@ export class Effects {
             );
           }
         }
+      } else if (e.kind[i] === MELT) {
+        // Drips run off the melting ice sheet and fall from its bottom edge.
+        const n = emitCount(e.acc, i, 26 * low * (1 - k * 0.5), dt);
+        const C = this.C;
+        for (let j = 0; j < n; j++)
+          this.snowLump(
+            x + this.r(-0.48, 0.48) * w,
+            this.r(0.4, 2.2) * (1 - k * 0.6),
+            z + this.r(-0.05, 0.05),
+            0,
+            this.r(-1, 0),
+            0,
+            this.r(0.5, 0.8),
+            this.r(0.05, 0.08),
+            j % 2 ? C.drop : C.iceLight,
+          );
       } else {
         const n = emitCount(e.acc, i, 16 * low * (1 - k), dt);
         const c = this.S.dustGrey;
@@ -1249,6 +1791,7 @@ export class Effects {
     this.baseChips.tick(dt);
     this.muzzleCd.tick(dt);
     this.clashCd.tick(dt);
+    this.iceWallCd.tick(dt);
     this.readCamera();
     this.stepEmitters(dt);
 
@@ -1260,6 +1803,8 @@ export class Effects {
     this.stepRings(dt);
     this.stepStreamers(dt);
     this.stepFlares(dt);
+    this.stepSnow(dt);
+    this.stepGust(dt);
   }
 
   private readCamera(): void {
@@ -1538,6 +2083,25 @@ export class Effects {
         this.ringCol[c + 3] * fxEnvelope(k, 0.08, 0.75),
       );
     }
+    // Boss lob markers: a cold outline ring at the landing radius, pulsing, and a fill
+    // growing inside it until the snowball lands.
+    const o = this.S.lobRing;
+    const fill = this.S.lobFill;
+    for (let i = 0; i < LOBS; i++) {
+      if (this.lobFlight[i] <= 0) continue;
+      const k = Math.min(1, this.lobT[i] / this.lobFlight[i]);
+      const w = (this.lobR[i] * 2) / 0.82; // the ring texture's band sits at 0.82 of the quad
+      const pulse = 0.5 + 0.5 * Math.sin(this.lobT[i] * 14);
+      let j = b.next();
+      if (j < 0) break;
+      writeTRS(b.m, j * 16, this.lobX[i], 0.05, this.lobZ[i], w, 1, w, 0, 0, 0);
+      b.color(j, o.r * 1.2, o.g * 1.2, o.b * 1.2, Math.min(1, k * 4) * (0.65 + 0.3 * pulse));
+      j = b.next();
+      if (j < 0) break;
+      const wf = Math.max(0.05, w * k);
+      writeTRS(b.m, j * 16, this.lobX[i], 0.047, this.lobZ[i], wf, 1, wf, 0, 0, 0);
+      b.color(j, fill.r, fill.g, fill.b, 0.85);
+    }
     b.commit();
   }
 
@@ -1559,6 +2123,13 @@ export class Effects {
     this.gateTrickle.clear();
     this.baseChips.clear();
     this.sinceDust = DUST_INTERVAL;
+    this.snow.clear();
+    this.lobFlight.fill(0);
+    this.gLife.fill(0);
+    this.gustExt = false;
+    this.gustLeft = 0;
+    this.gustWarnLeft = 0;
+    this.iceWallCd.clear();
     for (const b of [
       this.darts,
       this.shardBatch,
@@ -1569,6 +2140,8 @@ export class Effects {
       this.ringBatch,
       this.streamerBatch,
       this.flareBatch,
+      this.snowBatch,
+      this.gustBatch,
     ]) {
       b.count = 0;
       b.commit();
@@ -1582,7 +2155,10 @@ export class Effects {
     for (let i = 0; i < FLARES; i++) if (this.flareLife[i] > 0) rings++;
     let darts = 0;
     for (let i = 0; i < TRACERS; i++) if (this.tracers.isLive(i)) darts++;
+    for (let i = 0; i < LOBS; i++) if (this.lobFlight[i] > 0) darts++;
+    for (let i = 0; i < GUSTS; i++) if (this.gLife[i] > 0) darts++;
     return (
+      this.snow.liveCount() +
       darts +
       rings +
       this.fallen.liveCount() +
@@ -1853,5 +2429,47 @@ function ringTexture(scene: Scene): Texture {
     );
     const glow = r < 0.82 ? 0.22 * Math.pow(r / 0.82, 3) : 0;
     return r >= 1 ? 0 : band + glow;
+  });
+}
+
+// A lump of snow, about 1 across: a low-poly ball with its vertices knocked in and out so
+// it reads as packed snow, not a marble; slightly darker underneath. Also the boss's
+// snowball in flight (instance colour white).
+function snowGeometry(): VertexData {
+  const vd = lathe(
+    [
+      [0, -0.5],
+      [0.25, -0.44],
+      [0.43, -0.25],
+      [0.5, 0],
+      [0.43, 0.25],
+      [0.25, 0.44],
+      [0, 0.5],
+    ],
+    9,
+  );
+  const p = vd.positions as number[];
+  for (let i = 0; i < p.length; i += 3) {
+    const k = 1 + 0.16 * Math.sin(p[i] * 13 + p[i + 1] * 7) * Math.sin(p[i + 2] * 11 - p[i + 1] * 5);
+    p[i] *= k;
+    p[i + 1] *= k;
+    p[i + 2] *= k;
+  }
+  vd.positions = p;
+  const normals: number[] = [];
+  VertexData.ComputeNormals(p, vd.indices as number[], normals);
+  vd.normals = normals;
+  return setColors(vd, (_x, y) => {
+    const k = y < -0.2 ? 0.86 : 1;
+    return [k, k, k];
+  });
+}
+
+// A soft wind streak: thin across (u), fading at both ends along its length (v).
+function windTexture(scene: Scene): Texture {
+  return alphaTexture(scene, 'fxWind', 32, (u, v) => {
+    const across = Math.exp(-Math.pow(u / 0.2, 2));
+    const along = Math.pow(Math.max(0, Math.cos(v * Math.PI)), 0.8);
+    return across * along;
   });
 }

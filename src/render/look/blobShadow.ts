@@ -12,7 +12,9 @@ import { radialTexture } from './textures.ts';
 
 export const BLOB_Y = 0.012; // just above the rug, below any base plate
 
-let shared: WeakMap<Scene, StandardMaterial> | null = null;
+// One material per scene and opacity, so reloading a level or switching rooms never
+// adds materials.
+let shared: WeakMap<Scene, Map<number, StandardMaterial>> | null = null;
 
 // Unit (1 x 1) quad in the XZ plane at y = BLOB_Y. opacity: darkness at the centre.
 export function createBlobShadowMesh(scene: Scene, name = 'blobShadow', opacity = 0.55): Mesh {
@@ -31,8 +33,11 @@ export function createBlobShadowMesh(scene: Scene, name = 'blobShadow', opacity 
 
 function blobMaterial(scene: Scene, opacity: number): StandardMaterial {
   shared ??= new WeakMap();
-  const key = shared.get(scene);
-  if (key && Math.abs(key.alpha - opacity) < 1e-3) return key;
+  let byOpacity = shared.get(scene);
+  if (!byOpacity) shared.set(scene, (byOpacity = new Map()));
+  const key = Math.round(opacity * 1000);
+  const cached = byOpacity.get(key);
+  if (cached && scene.materials.includes(cached)) return cached; // unless a room disposed it
   const m = new StandardMaterial(`blobShadowMat`, scene);
   m.disableLighting = true;
   m.diffuseColor = Color3.Black();
@@ -43,6 +48,6 @@ function blobMaterial(scene: Scene, opacity: number): StandardMaterial {
   m.disableDepthWrite = true;
   m.zOffset = -2; // win against the rug without z-fighting
   m.backFaceCulling = true;
-  if (!key) shared.set(scene, m);
+  byOpacity.set(key, m);
   return m;
 }

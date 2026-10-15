@@ -1,6 +1,8 @@
-// The Expedition upgrade pool: 20 data-only definitions. Ids are save keys, so never
-// rename one. What each upgrade does to a battle lives in modifiers.ts; run-level
-// effects (Sturdy Fort) live in run.ts. Text lines stay short for phone cards.
+// The Expedition upgrade pool: 25 data-only definitions (20 from World 1, 5 around ice
+// and freezing gates from World 2). Ids are save keys, so never rename one. What each
+// upgrade does to a battle lives in modifiers.ts; run-level effects (Sturdy Fort) live in
+// run.ts. Text lines stay short for phone cards. A World 2 upgrade sets `icon` to its
+// nearest World 1 icon and `iconW2` to its own sticker, which the UI draws instead.
 import type { UpgradeDef, UpgradeRarity } from '../contracts.ts';
 
 export const UPGRADES: readonly UpgradeDef[] = Object.freeze([
@@ -190,6 +192,58 @@ export const UPGRADES: readonly UpgradeDef[] = Object.freeze([
     rarity: 'common',
     category: 'relic',
     icon: 'relic-fort',
+    maxStacks: 2,
+  },
+  // World 2: ice and freezing gates
+  {
+    id: 'frost-gate',
+    name: 'Frost Gate',
+    text: 'An x3 gate that ices up for 3 s after 40 cross.',
+    rarity: 'rare',
+    category: 'gate',
+    icon: 'gate-x3',
+    iconW2: 'gate-frost',
+    maxStacks: 1,
+  },
+  {
+    id: 'rink',
+    name: 'Ice Rink',
+    text: 'Ice by your cannon: soldiers slide out wide.',
+    rarity: 'common',
+    category: 'gate',
+    icon: 'gate-fork',
+    iconW2: 'gate-rink',
+    maxStacks: 1,
+  },
+  {
+    id: 'skates',
+    name: 'Ice Skates',
+    text: 'Soldiers keep 45% (90%) of steering on ice.',
+    rarity: 'common',
+    category: 'mob',
+    icon: 'mob-sharp',
+    iconW2: 'mob-skates',
+    maxStacks: 2,
+  },
+  {
+    id: 'cocoa',
+    name: 'Hot Cocoa',
+    text: 'Gates thaw 2x faster and ice up 50% later.',
+    drawback: 'Enemy waves +10%, more snowmen and penguins.',
+    rarity: 'rare',
+    category: 'relic',
+    icon: 'relic-overcharge',
+    iconW2: 'relic-cocoa',
+    maxStacks: 1,
+  },
+  {
+    id: 'avalanche',
+    name: 'Avalanche',
+    text: 'Champion landings freeze foes 2 s (3 s).',
+    rarity: 'rare',
+    category: 'champion',
+    icon: 'champ-big',
+    iconW2: 'champ-avalanche',
     maxStacks: 2,
   },
 ] satisfies UpgradeDef[]);

@@ -122,6 +122,39 @@ test('garbage input never throws; a bad run is dropped but bests survive', () =>
   assert.deepEqual(kept.run!.upgrades, { tough: 2 });
 });
 
+test('a run holding World 2 upgrades (owned, offered, on a shop shelf) survives a round trip', () => {
+  const store = memStore();
+  const pick: RunState = {
+    ...midRun(),
+    upgrades: { skates: 2, cocoa: 1, tough: 1 },
+    offer: ['frost-gate', 'rink', 'avalanche'],
+  };
+  saveExpedition({ ...emptyExpedition(), run: pick }, store);
+  assert.deepEqual(loadExpedition(store).run, pick);
+
+  const items = ['frost-gate', 'avalanche', 'rapid'].map((upgradeId, i) => ({
+    upgradeId,
+    price: 40 + i * 10,
+    sold: i === 1,
+  }));
+  const shop: RunState = {
+    ...pick,
+    phase: 'shop',
+    at: pick.at ?? pick.map.nodes[0].id,
+    shop: { items, healPrice: 30, healAmount: 20, healed: false },
+  };
+  delete shop.offer;
+  saveExpedition({ ...emptyExpedition(), run: shop }, store);
+  assert.deepEqual(loadExpedition(store).run, shop);
+});
+
+test('a run saved before World 2 (World 1 upgrades only) still loads as it was', () => {
+  // The exact stored text of a mid-run save, with no World 2 ids anywhere.
+  const old = { ...midRun(), upgrades: { doubler: 2, rapid: 1, knights: 1 } };
+  const raw = JSON.stringify({ version: 1, run: old, best: emptyExpedition().best });
+  assert.deepEqual(loadExpedition(memStore({ [EXPEDITION_KEY]: raw })).run, old);
+});
+
 test('recordRunEnd updates bests, the daily best only for daily runs, and clears the run', () => {
   const won: RunState = { ...newRun(1), phase: 'over', outcome: 'won', stats: { ...newRun(1).stats, battlesWon: 5 } };
   const score = runScore(won);

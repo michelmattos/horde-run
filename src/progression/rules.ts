@@ -21,7 +21,7 @@ import type {
 export const MIX_EVERY = 10;
 
 // Boss levels get a named hint instead of "Clear level x-y".
-const BOSS_NAMES: Record<string, string> = { '1-10': 'the Tin General' };
+const BOSS_NAMES: Record<string, string> = { '1-10': 'the Tin General', '2-10': 'the Snow Globe Giant' };
 
 function cleared(facts: ProgressFacts, levelId: string): boolean {
   return facts.levels[levelId]?.stars[0] === true;
@@ -188,6 +188,7 @@ export function itemStats(id: string, tier: number): { label: string; value: str
         { label: 'Troops per shot', value: `x${fmt(s.unitsPerShot)}` },
       ];
       if (s.shotSpread !== undefined) lines.push({ label: 'Spread', value: 'Wide' });
+      if (s.shot) lines.push({ label: 'Snowball', value: `Bursts at ${fmt(s.shot.burstWeight)} troops` });
       return lines;
     }
     case 'mob': {
@@ -199,6 +200,7 @@ export function itemStats(id: string, tier: number): { label: string; value: str
         { label: 'Per shot', value: s.perShot === null ? 'Full shot' : fmt(s.perShot) },
       ];
       if (s.deathBlast) lines.push({ label: 'Blast damage', value: fmt(s.deathBlast.damage) });
+      if (s.riders) lines.push({ label: 'Riders', value: `${fmt(s.riders)} troops` });
       return lines;
     }
     case 'champion': {
@@ -216,7 +218,9 @@ export function itemStats(id: string, tier: number): { label: string; value: str
       const s = it.tiers[t];
       return [
         { label: 'Charge', value: `${fmt(s.chargeNeeded)} troops` },
-        { label: 'Power', value: fmt(s.power) },
+        it.id === 'blizzard'
+          ? { label: 'Freeze', value: `${fmt(s.power)} s` }
+          : { label: 'Power', value: fmt(s.power) },
       ];
     }
   }
@@ -267,6 +271,7 @@ function mobSpec(id: string, tier: number): MobSpec {
     speed: s.speed,
   };
   if (s.deathBlast) spec.deathBlast = { ...s.deathBlast };
+  if (s.riders) spec.riders = s.riders;
   return spec;
 }
 
@@ -320,13 +325,12 @@ export function resolveLoadout(
     }
   }
 
-  return {
-    level: out,
-    battle: {
-      mobs: [scaled(mobSpec(lo.mobs[0], tierOf(lo.mobs[0]))), scaled(mobSpec(lo.mobs[1], tierOf(lo.mobs[1])))],
-      mixEvery: MIX_EVERY,
-      champion: championSpec(lo.champion, tierOf(lo.champion)),
-      ultimate: ultimateSpec(lo.ultimate, tierOf(lo.ultimate)),
-    },
+  const battle: BattleLoadout = {
+    mobs: [scaled(mobSpec(lo.mobs[0], tierOf(lo.mobs[0]))), scaled(mobSpec(lo.mobs[1], tierOf(lo.mobs[1])))],
+    mixEvery: MIX_EVERY,
+    champion: championSpec(lo.champion, tierOf(lo.champion)),
+    ultimate: ultimateSpec(lo.ultimate, tierOf(lo.ultimate)),
   };
+  if (c.shot) battle.shot = { ...c.shot };
+  return { level: out, battle };
 }

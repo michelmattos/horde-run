@@ -3,8 +3,10 @@
 // default or one with SMOKE=campaign|boss|expedition|meta (CI runs them as parallel jobs):
 // - campaign: title card, world map, level card and loadout (taps through the menus and
 //   Fight into 1-1, which must show the ultimate button), ~3 s
-//   of held touch drag, and a crowd pushed past 1000 units (camera must zoom out).
-// - boss: level 1-10 played briefly, then its base dropped to reach the victory result card.
+//   of held touch drag, and a crowd pushed past 1000 units (camera must zoom out); then
+//   World 2's 2-1 (freezer room) played briefly.
+// - boss: level 1-10 played briefly, then its base dropped to reach the victory result card;
+//   then 2-10 (the Snow Globe Giant) played briefly.
 // - expedition: a seeded run map, the first node tapped into a generated battle that
 //   __horde.win() ends, and the upgrade pick; taking a card must land back on the run map
 //   with the upgrade owned.
@@ -199,6 +201,31 @@ try {
     summary.screenshots.push(path);
   };
   const sceneShots = [];
+  // Jumps to a level (debug goto, skipping menus) and holds a sweeping drag until its battle
+  // clock passes 1 s (software GL compiles a new room's shaders slowly), within a minute.
+  const playBriefly = async (levelId, path) => {
+    await page.evaluate((id) => window.__horde.goto(id), levelId);
+    await page.waitForFunction((id) => window.__horde.level() === id, levelId, { timeout: 10000 });
+    await touch('touchStart', W / 2, y);
+    const start = Date.now();
+    while (Date.now() - start < 60000) {
+      if ((await page.evaluate(() => window.__horde.state().time)) > 1) break;
+      const t = (Date.now() - start) / 1000;
+      await touch('touchMove', Math.round(W / 2 + Math.sin(t * 1.1) * W * 0.2), y);
+      await sleep(50);
+    }
+    await shot(path);
+    sceneShots.push(path);
+    await touch('touchEnd', 0, 0);
+    const r = await page.evaluate(() => ({
+      level: window.__horde.level(),
+      time: window.__horde.state().time,
+      render: window.__horde.render(),
+    }));
+    if (r.level !== levelId || !(r.time > 1)) errors.push(`${levelId} did not run (${r.level} at ${r.time}s)`);
+    if (r.render.drawCalls < MIN_DRAW_CALLS) errors.push(`${levelId} frame drew only ${r.render.drawCalls} calls`);
+    return { level: r.level, time: +r.time.toFixed(2), drawCalls: r.render.drawCalls };
+  };
 
   if (CAMPAIGN) {
     // Menu flow: the app boots to the world map behind its title card; tap the card away,
@@ -298,6 +325,8 @@ try {
     if (!(final.zoom >= 0.08 && final.zoom > afterPlay.zoom))
       errors.push(`camera did not zoom out with the crowd (${afterPlay.zoom} -> ${final.zoom})`);
     if (final.render.drawCalls < MIN_DRAW_CALLS) errors.push(`crowd frame drew only ${final.render.drawCalls} calls`);
+
+    summary.world2 = await playBriefly('2-1', 'smoke-world2.png');
   }
 
   if (BOSS) {
@@ -347,6 +376,8 @@ try {
     if (boss.level !== '1-10' || !(boss.state.time > 1)) errors.push('boss level did not run');
     if (boss.render.drawCalls < MIN_DRAW_CALLS) errors.push(`boss frame drew only ${boss.render.drawCalls} calls`);
     if (result !== 'victory') errors.push(`expected a victory result screen, got ${result}`);
+
+    summary.boss2 = await playBriefly('2-10', 'smoke-boss2.png');
   }
 
   if (EXPEDITION) {

@@ -786,3 +786,215 @@ export function parachuteAt(k: number, startY: number, phase: number, crumpleSha
   out.tilt = Math.cos(phase + f * 7) * 0.22 * (1 - f);
   out.crumple = k <= 1 || !(crumpleShare > 0) ? 0 : Math.min(1, (k - 1) / crumpleShare);
 }
+
+// ---------- Milestone 5: World 2 (Freezer / Snow Globe) bookkeeping ----------
+
+// The room a level is played in (contracts LevelDef.theme; absent = the bedroom).
+export type RoomTheme = 'bedroom' | 'freezer';
+export function roomThemeOf(level: { theme?: RoomTheme }): RoomTheme {
+  return level.theme === 'freezer' ? 'freezer' : 'bedroom';
+}
+
+// Holds the assets of exactly one room theme. use(theme) keeps the current assets when
+// the theme is unchanged, else disposes them first and builds the new theme's, so only
+// the current room ever sits in GPU memory. build / release are the caller's.
+export class RoomSlot<T> {
+  private current: RoomTheme | null = null;
+  private assets: T | null = null;
+  private readonly build: (theme: RoomTheme) => T;
+  private readonly release: (theme: RoomTheme, assets: T) => void;
+
+  constructor(build: (theme: RoomTheme) => T, release: (theme: RoomTheme, assets: T) => void) {
+    this.build = build;
+    this.release = release;
+  }
+
+  get theme(): RoomTheme | null {
+    return this.current;
+  }
+
+  use(theme: RoomTheme): T {
+    if (this.current === theme && this.assets !== null) return this.assets;
+    this.clear();
+    this.assets = this.build(theme);
+    this.current = theme;
+    return this.assets;
+  }
+
+  clear(): void {
+    if (this.current !== null && this.assets !== null) this.release(this.current, this.assets);
+    this.current = null;
+    this.assets = null;
+  }
+}
+
+// A frozen gate's ice cracks in stages as units chip it: 0 clear ice, 1-3 more and more
+// cracked. Never decreases as hp falls (ice does not heal while it is chipped).
+export function iceCrackStage(hp: number, maxHp: number): 0 | 1 | 2 | 3 {
+  if (!(maxHp > 0)) return 0;
+  const f = hp >= maxHp ? 1 : hp > 0 ? hp / maxHp : 0;
+  if (f > 0.75) return 0;
+  if (f > 0.5) return 1;
+  if (f > 0.25) return 2;
+  return 3;
+}
+
+// How a frozen gate lets go: units broke it open (shatter into ice chips) or its time ran
+// out (it melts away in drips).
+export function thawStyle(chipped: boolean): 'shatter' | 'melt' {
+  return chipped ? 'shatter' : 'melt';
+}
+
+export const ICE_GROW_TIME = 0.35; // seconds for the ice sheet to grow over a gate
+export const ICE_MELT_TIME = 0.8; // seconds for it to melt away
+
+// Ice sheet growing up over a gate (0 → 1, eased, with a small overshoot at the end).
+export function iceGrowAt(t: number): number {
+  const u = t <= 0 ? 0 : t >= ICE_GROW_TIME ? 1 : t / ICE_GROW_TIME;
+  const e = 1 - (1 - u) * (1 - u);
+  return e + Math.sin(u * Math.PI) * 0.06;
+}
+
+// Gust strength 0..1 for swaying scenery and snow: a gentle ramp during the telegraph
+// (warn 0 → 1), full while the push is active.
+export function gustStrength(warn: number, active: boolean): number {
+  if (active) return 1;
+  const w = warn > 0 ? (warn > 1 ? 1 : warn) : 0;
+  return 0.35 * w * w;
+}
+
+// A lobbed snowball's height along its arc: straight from y0 to y1 plus a parabolic lift.
+export function lobHeight(k: number, y0: number, y1: number, peak: number): number {
+  const c = k < 0 ? 0 : k > 1 ? 1 : k;
+  return y0 + (y1 - y0) * c + 4 * peak * c * (1 - c);
+}
+
+// Fork gates (same GateDef.fork id) get one signpost between each left / right pair.
+export interface ForkSign {
+  fork: string;
+  x: number; // between the two gates' facing edges
+  z: number; // the gates' line
+  span: number; // free space between the two gates (signpost arms fit in it)
+}
+export function forkSigns(gates: readonly { fork?: string; x: number; z: number; width: number }[]): ForkSign[] {
+  const groups = new Map<string, { x: number; z: number; width: number }[]>();
+  for (const g of gates) {
+    if (!g.fork) continue;
+    let list = groups.get(g.fork);
+    if (!list) groups.set(g.fork, (list = []));
+    list.push(g);
+  }
+  const out: ForkSign[] = [];
+  for (const [fork, list] of groups) {
+    if (list.length < 2) continue;
+    const sorted = [...list].sort((a, b) => a.x - b.x);
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const a = sorted[i];
+      const b = sorted[i + 1];
+      const left = a.x + a.width / 2;
+      const right = b.x - b.width / 2;
+      out.push({ fork, x: (left + right) / 2, z: (a.z + b.z) / 2, span: Math.max(0, right - left) });
+    }
+  }
+  return out;
+}
+
+// Freezer props: the same scatter rules as the bedroom (outside the lane plus clearance,
+// never overlapping), with their own kinds, radii and weights, and never touching an ice
+// wall that pokes past the lane edge.
+export type FreezerPropKind = 'cube' | 'peas' | 'popsicle' | 'fishbox' | 'tub' | 'flake';
+export const FREEZER_KINDS: readonly FreezerPropKind[] = ['cube', 'peas', 'popsicle', 'fishbox', 'tub', 'flake'];
+export const FREEZER_RADIUS: Record<FreezerPropKind, number> = {
+  cube: 1.0,
+  peas: 1.45,
+  popsicle: 1.3,
+  fishbox: 1.6,
+  tub: 1.05,
+  flake: 0.75,
+};
+export const FREEZER_WEIGHTS: Record<FreezerPropKind, number> = {
+  cube: 0.26,
+  peas: 0.16,
+  popsicle: 0.16,
+  fishbox: 0.08,
+  tub: 0.14,
+  flake: 0.2,
+};
+export const FREEZER_VARIANTS: Record<FreezerPropKind, number> = {
+  cube: 3,
+  peas: 2,
+  popsicle: 3,
+  fishbox: 2,
+  tub: 3,
+  flake: 3,
+};
+
+export interface FreezerProp {
+  kind: FreezerPropKind;
+  x: number;
+  z: number;
+  scale: number;
+  yaw: number;
+  color: number; // palette index
+  variant: number;
+}
+
+export interface Rect {
+  x: number; // centre
+  z: number;
+  width: number;
+  depth: number;
+}
+
+export function scatterFreezerScenery(
+  seed: number,
+  laneWidth: number,
+  zMin: number,
+  zMax: number,
+  count: number,
+  reach: number,
+  keepOut: readonly Rect[] = [],
+): FreezerProp[] {
+  const rand = mulberry32(seed);
+  const props: FreezerProp[] = [];
+  const edge = laneWidth / 2 + SCENERY_CLEARANCE;
+  const pick = (r: number): FreezerPropKind => {
+    let acc = 0;
+    for (const k of FREEZER_KINDS) {
+      acc += FREEZER_WEIGHTS[k];
+      if (r < acc) return k;
+    }
+    return 'cube';
+  };
+  for (let i = 0; i < count; i++) {
+    const side = i % 2 === 0 ? -1 : 1;
+    const kind = pick(rand());
+    const scale = 0.85 + rand() * 0.3;
+    const yaw = rand() * Math.PI * 2;
+    const color = Math.floor(rand() * 6);
+    const variant = Math.floor(rand() * FREEZER_VARIANTS[kind]);
+    const r = FREEZER_RADIUS[kind] * scale;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const x = side * (edge + r + Math.pow(rand(), 1.6) * reach);
+      const z = zMin + rand() * (zMax - zMin);
+      let clear = true;
+      for (const o of props) {
+        const d = FREEZER_RADIUS[o.kind] * o.scale + r;
+        if ((o.x - x) * (o.x - x) + (o.z - z) * (o.z - z) < d * d) {
+          clear = false;
+          break;
+        }
+      }
+      for (const w of keepOut) {
+        if (!clear) break;
+        const dx = Math.max(0, Math.abs(x - w.x) - w.width / 2);
+        const dz = Math.max(0, Math.abs(z - w.z) - w.depth / 2);
+        if (dx * dx + dz * dz < (r + SCENERY_CLEARANCE) * (r + SCENERY_CLEARANCE)) clear = false;
+      }
+      if (!clear) continue;
+      props.push({ kind, x, z, scale, yaw, color, variant });
+      break;
+    }
+  }
+  return props;
+}

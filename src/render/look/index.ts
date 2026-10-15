@@ -28,8 +28,9 @@ import { Matrix, Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Color4 } from '@babylonjs/core/Maths/math.color';
 import type { DefaultRenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline';
 import { HEX, lin, srgb } from './palette.ts';
-import { loadEnvironment } from './environment.ts';
-import { applyGrade, createPipeline, gradesInPost } from './post.ts';
+import { ENV_INTENSITY, loadEnvironment } from './environment.ts';
+import { applyGrade, applyGradeTheme, createPipeline, gradesInPost } from './post.ts';
+import { isSharedTexture } from './textures.ts';
 import {
   QUALITY_SETTINGS,
   QualityGovernor,
@@ -46,7 +47,7 @@ export * from './palette.ts';
 export * from './materials.ts';
 export * from './geometry.ts';
 export { createBlobShadowMesh, BLOB_Y } from './blobShadow.ts';
-export { surfaceTextures, radialTexture } from './textures.ts';
+export { surfaceTextures, radialTexture, isSharedTexture } from './textures.ts';
 export type { SurfaceKind, SurfaceTextures } from './textures.ts';
 export { QUALITY_SETTINGS, QualityGovernor, parseQuality, readSavedRender, writeSavedRender } from './quality.ts';
 export type { PostFallback, QualityLevel, QualitySettings } from './quality.ts';
@@ -65,6 +66,43 @@ export const LIGHT = {
 };
 
 export type CasterKind = 'static' | 'crowd';
+
+// Room themes (contracts WorldTheme): the bedroom's warm window sun, or the freezer's
+// cold white key, icy sky fill and snow bounce with a cooler grade. Only light colours,
+// intensities, the HDRI strength and the colour curves change: no new render targets,
+// no shader recompiles.
+export type LookTheme = 'bedroom' | 'freezer';
+interface ThemeLight {
+  key: string; // key light tint (sRGB)
+  keyIntensity: number;
+  sky: string; // hemispheric fill from above
+  ground: string; // hemispheric bounce from below
+  groundScale: number;
+  fillIntensity: number;
+  envIntensity: number; // HDRI reflections / ambient strength
+}
+export const THEME_LIGHT: Record<LookTheme, ThemeLight> = {
+  bedroom: {
+    key: HEX.sun,
+    keyIntensity: LIGHT.keyIntensity,
+    sky: HEX.sky,
+    ground: HEX.bounce,
+    groundScale: 0.6,
+    fillIntensity: LIGHT.fillIntensity,
+    envIntensity: ENV_INTENSITY,
+  },
+  // Cold, clean freezer light: a white-blue key a touch softer than the sun, a stronger
+  // icy fill, and a pale snow bounce from the floor so shadows stay blue, never black.
+  freezer: {
+    key: '#e9f2ff',
+    keyIntensity: 2.35,
+    sky: '#b7d4f4',
+    ground: '#dfe9f1',
+    groundScale: 0.75,
+    fillIntensity: 0.62,
+    envIntensity: 0.62,
+  },
+};
 
 export interface ShadowBounds {
   minX: number;
@@ -112,6 +150,13 @@ export interface Look {
   readonly postFallback: PostFallback | null;
   readonly locked: boolean; // the tier was forced from the URL
   material<T extends Material>(key: string, make: () => T): T; // shared per-look material cache
+  // Disposes every cached material whose key starts with `prefix`, with the textures only
+  // it used (the shared procedural surfaces stay). Used when the room theme changes, so
+  // only the current room's materials and textures stay in GPU memory.
+  releaseMaterials(prefix: string): number;
+  // Light colours, fill, HDRI strength and grade for a room theme (no recompiles).
+  setTheme(theme: LookTheme): void;
+  readonly theme: LookTheme;
   dispose(): void;
 }
 
@@ -165,6 +210,7 @@ class LookImpl implements Look {
   private appliedFilter: QualitySettings['shadowFilter'];
   private appliedPost: boolean;
   private disposed = false;
+  theme: LookTheme = 'bedroom';
 
   constructor(scene: Scene, opts: LookOptions) {
     this.scene = scene;
@@ -215,6 +261,7 @@ class LookImpl implements Look {
               return;
             }
             this.environment = tex;
+            this.scene.environmentIntensity = THEME_LIGHT[this.theme].envIntensity;
           });
   }
 
@@ -432,6 +479,45 @@ class LookImpl implements Look {
       this.cache.set(key, m);
     }
     return m;
+  }
+
+  releaseMaterials(prefix: string): number {
+    const gone: Material[] = [];
+    for (const [k, m] of this.cache) {
+      if (!k.startsWith(prefix)) continue;
+      this.cache.delete(k);
+      gone.push(m);
+    }
+    if (gone.length === 0) return 0;
+    const textures = new Set<BaseTexture>();
+    for (const m of gone) {
+      for (const t of m.getActiveTextures()) textures.add(t);
+      m.dispose(false, false);
+    }
+    // A texture still used by any live material (or a shared procedural one) stays.
+    const kept = new Set<BaseTexture>();
+    for (const m of this.scene.materials) for (const t of m.getActiveTextures()) kept.add(t);
+    for (const t of textures) {
+      if (kept.has(t) || t === this.environment || isSharedTexture(this.scene, t)) continue;
+      t.dispose();
+    }
+    return gone.length;
+  }
+
+  setTheme(theme: LookTheme): void {
+    this.theme = theme;
+    const L = THEME_LIGHT[theme];
+    const key = lin(L.key);
+    this.key.diffuse = key.scale(1 / Math.max(key.r, key.g, key.b, 1e-3));
+    this.key.specular = this.key.diffuse.clone();
+    this.key.intensity = L.keyIntensity;
+    const sky = lin(L.sky);
+    this.fill.diffuse = sky.scale(1 / Math.max(sky.r, sky.g, sky.b, 1e-3));
+    const ground = lin(L.ground);
+    this.fill.groundColor = ground.scale(L.groundScale / Math.max(ground.r, ground.g, ground.b, 1e-3));
+    this.fill.intensity = L.fillIntensity;
+    if (this.environment) this.scene.environmentIntensity = L.envIntensity;
+    applyGradeTheme(this.scene, theme);
   }
 
   dispose(): void {

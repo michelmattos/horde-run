@@ -11,10 +11,10 @@
     "aimLimit": 4
   },
   "playerBase": {
-    "hp": 280
+    "hp": 160
   },
   "enemyBase": {
-    "hp": 1540,
+    "hp": 1300,
     "x": 0,
     "width": 6
   },
@@ -89,97 +89,97 @@
   "enemyWaves": [
     {
       "at": 11,
-      "count": 127,
+      "count": 146,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 16,
-      "count": 148,
+      "count": 170,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 25,
-      "count": 184,
+      "count": 212,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 34,
-      "count": 222,
+      "count": 255,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 43,
-      "count": 261,
+      "count": 300,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 52,
-      "count": 295,
+      "count": 339,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 61,
-      "count": 304,
+      "count": 350,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 70,
-      "count": 312,
+      "count": 359,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 79,
-      "count": 320,
+      "count": 368,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 88,
-      "count": 328,
+      "count": 377,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 97,
-      "count": 336,
+      "count": 386,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 106,
-      "count": 344,
+      "count": 396,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 115,
-      "count": 352,
+      "count": 405,
       "x": 0,
       "spread": 3.5
     },
     {
       "at": 124,
-      "count": 361,
+      "count": 415,
       "x": -1.5,
       "spread": 3.5
     },
     {
       "at": 133,
-      "count": 369,
+      "count": 424,
       "x": 1.5,
       "spread": 3.5
     },
     {
       "at": 142,
-      "count": 765,
+      "count": 880,
       "x": 0,
       "spread": 4.5,
       "interval": 0.03

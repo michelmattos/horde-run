@@ -1,18 +1,20 @@
 // Every tier-0 alternative to the starter loadout (another mob type, champion, ultimate
-// or cannon, swapped in on its own) still wins the first five World 1 levels with the
+// or cannon, swapped in on its own) still wins the four easy World 1 levels with the
 // human profile, and plays in the same ballpark as the starter: never a must-have, never
-// a trap. Prints one line per item for tuning. All ten levels: game-balance-items-late.
+// a trap. (Since the Milestone 5 rebalance 1-5 already takes a retry now and then, so it
+// is no longer part of this always-win set.) Prints one line per item for tuning. All
+// ten levels: game-balance-items-late.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { LEVELS } from '../src/game/levels.ts';
 import type { ItemCase, PlayResult } from './balance-play.ts';
-import { ITEM_CASES, STARTER_CASE, median, play, resolveCase } from './balance-play.ts';
+import { EASY, ITEM_CASES, STARTER_CASE, median, play, resolveCase } from './balance-play.ts';
 
-const FIRST_FIVE = LEVELS.slice(0, 5);
+const OPENING = LEVELS.filter((l) => EASY.includes(l.id));
 const ATTEMPTS = 2;
 
 function runs(c: ItemCase) {
-  return FIRST_FIVE.map((l) => {
+  return OPENING.map((l) => {
     const r = resolveCase(l, c);
     return { id: l.id, runs: Array.from({ length: ATTEMPTS }, (_, a) => play(r.level, 'human', a, r.loadout)) };
   });
@@ -23,7 +25,7 @@ const winTimes = (rs: { runs: PlayResult[] }[]) =>
 const starter = median(winTimes(runs(STARTER_CASE)));
 
 for (const c of ITEM_CASES) {
-  test(`item balance: ${c.name} wins the first five levels, in the starter's ballpark`, () => {
+  test(`item balance: ${c.name} wins the easy levels, in the starter's ballpark`, () => {
     const rs = runs(c);
     const t = median(winTimes(rs));
     console.log(

@@ -3,10 +3,10 @@
 // onto them, so the screens stay independent of how progress is stored.
 //
 // Fixed shared ids (identical in every module):
-//   cannons    popgun, repeater, blunderbuss
-//   mobs       rifleman, knight, sprinter, bomber
+//   cannons    popgun, repeater, blunderbuss, snowball-launcher (World 2)
+//   mobs       rifleman, knight, sprinter, bomber, giant (World 2)
 //   champions  sarge, tank, drummer
-//   ultimates  barrage, paratroopers, marble
+//   ultimates  barrage, paratroopers, marble, blizzard (World 2)
 //   buildings  barracks, walls, workshop, garden, flagpole
 
 export type ItemSlot = 'cannon' | 'mob' | 'champion' | 'ultimate';

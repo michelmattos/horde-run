@@ -25,7 +25,8 @@ export type {
   ShopOptions,
   StartOptions,
 } from './types.ts';
-export { RARITY_COLORS, nodeIconSvg, upgradeIconSvg } from './icons.ts';
+export { RARITY_COLORS, nodeIconSvg, upgradeIconOf, upgradeIconSvg } from './icons.ts';
+export type { UpgradeArt } from './icons.ts';
 export { runMapLayout } from './layout.ts';
 
 const COUNT_UP_MS = 150;

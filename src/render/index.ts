@@ -10,25 +10,36 @@
 // shadows vs blob shadows, post-processing) and the render resolution. They take turns:
 // whenever one steps, the other ignores frame times for a moment, so a slow stretch
 // costs one notch, not two.
+//
+// World 2: loadLevel picks the room by LevelDef.theme (absent = the bedroom). Only the
+// current theme's room assets live on the GPU: a theme change disposes the old prop kit
+// and releases the old room's cached materials and their textures (RoomSlot), then the
+// look switches its lights and grade (look.setTheme). Gusts, boss snowball lobs, frozen
+// gates, ice walls and igloos come in through handleEvents / cue like every other effect.
 import type { Engine } from '@babylonjs/core/Engines/engine';
 import { Scene } from '@babylonjs/core/scene';
 import type { BattleState, DefenderView, LevelDef, SimEvent, SimView } from '../contracts.ts';
-import { DEFENDER_DEFAULTS, LAYOUT } from '../contracts.ts';
+import { DEFENDER_DEFAULTS, LAYOUT, Team } from '../contracts.ts';
 import { BlankWatch, createLook, isBlankSample, readSavedRender, writeSavedRender } from './look/index.ts';
 import type { Look } from './look/index.ts';
 import { LevelVisuals } from './level.ts';
+import type { RoomKit } from './level.ts';
 import { CrowdRenderer } from './crowd.ts';
 import { Effects } from './effects.ts';
 import { DefenderVisuals } from './defenders.ts';
 import { Cannon } from './cannon.ts';
 import { HpBars } from './hpBars.ts';
 import { createPropKit } from './models/props.ts';
+import { createFreezerPropKit } from './models/freezerProps.ts';
 import { CameraRig } from './cameraRig.ts';
 import { ResolutionScaler } from './resolution.ts';
 import { screenRows } from './framing.ts';
 import { UltimateVisuals } from './ultimates.ts';
-import { parseCannon, parseChampion } from './crowdLogic.ts';
-import type { CannonId, ChampionId } from './crowdLogic.ts';
+import type { UltimateCue } from './ultimates.ts';
+import { parseCannon, parseChampion, teamBounds } from './crowdLogic.ts';
+import { RoomSlot, gustStrength, roomThemeOf } from './fxLogic.ts';
+import type { RoomTheme } from './fxLogic.ts';
+import type { CannonId, ChampionId, CrowdBounds } from './crowdLogic.ts';
 import type { VariantView } from './crowd.ts';
 
 export type { VariantView } from './crowd.ts';
@@ -38,14 +49,20 @@ export type { CannonId, ChampionId } from './crowdLogic.ts';
 export type FxCue =
   | {
       type: 'ultimate';
-      id: 'barrage' | 'paratroopers' | 'marble';
+      id: 'barrage' | 'paratroopers' | 'marble' | 'blizzard';
       x: number;
       z: number;
       radius: number;
       duration: number;
     }
   | { type: 'blast'; x: number; z: number; radius: number }
-  | { type: 'shot'; x: number; count: number };
+  | { type: 'shot'; x: number; count: number }
+  // Milestone 5 (World 2)
+  | { type: 'lob'; x: number; z: number; radius: number; flight: number }
+  | { type: 'lobHit'; x: number; z: number; radius: number }
+  | { type: 'gustWarn'; dir: -1 | 1; seconds: number }
+  | { type: 'gust'; dir: -1 | 1; duration: number }
+  | { type: 'iglooRelease'; id: string; x: number; z: number; count: number };
 
 // The battle visuals a loadout picks (default: popgun and sarge).
 export interface RenderLoadout {
@@ -116,6 +133,15 @@ const RATIO_FLOOR = { high: 1.25, medium: 1, low: 0.75 } as const;
 
 // Shadow frustum margin beside the rug: the props the portrait camera can see there.
 const SHADOW_SIDE_MARGIN = 7;
+// Where a boss snowball leaves from: above the enemy base, a little in front of it.
+const LOB_FROM_Y = 4.2;
+const LOB_FROM_DZ = -1.2;
+
+// Cached material keys (look.material) each room owns; released when the room goes.
+const ROOM_MATERIALS: Record<RoomTheme, readonly string[]> = {
+  bedroom: ['env-', 'props-'],
+  freezer: ['freezer-', 'ice-', 'igloo-'],
+};
 
 export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: RendererOptions = {}): GameRenderer {
   const scene = new Scene(engine);
@@ -132,9 +158,26 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
   const effects = new Effects(scene, look);
   const defenders = new DefenderVisuals(scene, look);
   const cannon = new Cannon(scene, look);
-  const props = createPropKit(scene, look);
   const bars = new HpBars(scene);
   const ultimates = new UltimateVisuals(scene, look, effects);
+  // The Blizzard's frost sheet covers the enemy crowd's footprint, which only frame()
+  // can read (the view is never retained), so its cue waits there for one frame.
+  const enemyArea: CrowdBounds = { count: 0, minX: 0, maxX: 0, minZ: 0, maxZ: 0 };
+  let blizzard: UltimateCue | null = null;
+  // The current room's prop kit; built on the first loadLevel of a theme.
+  const rooms = new RoomSlot<RoomKit>(
+    (theme) => {
+      look.setTheme(theme);
+      return theme === 'freezer'
+        ? { theme, props: createFreezerPropKit(scene, look) }
+        : { theme, props: createPropKit(scene, look) };
+    },
+    (theme, kit) => {
+      kit.props.dispose();
+      for (const prefix of ROOM_MATERIALS[theme]) look.releaseMaterials(prefix);
+    },
+  );
+  let room: RoomKit | null = null;
   defenders.onBlocksFell = (points) => {
     for (const p of points) effects.dust(p.x, p.z);
   };
@@ -233,10 +276,37 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
           break;
         case 'defenderDestroyed':
           defenders.destroyed(e.id);
-          effects.debris(e.x, e.z, e.kind === 'wall', defenderWidth(level.level, e.id));
+          if (e.kind === 'igloo') effects.snowDebris(e.x, e.z, defenderWidth(level.level, e.id));
+          else effects.debris(e.x, e.z, e.kind === 'wall', defenderWidth(level.level, e.id));
+          break;
+        // ---- World 2 ----
+        case 'gateFrozen':
+          level.freezeGate(e.gateId);
+          effects.gateFrozen(e.x, e.z, level.gateWidth(e.gateId));
+          break;
+        case 'gateChipped':
+          level.chipGate(e.gateId, e.hp, e.maxHp);
+          effects.iceWallHit(e.gateId, e.x, e.z); // a few chips, throttled per gate
+          break;
+        case 'gateThawed':
+          level.thawGate(e.gateId, e.chipped);
+          if (e.chipped) effects.iceShatter(e.x, e.z, level.gateWidth(e.gateId));
+          else effects.meltDrips(e.x, e.z, level.gateWidth(e.gateId));
+          break;
+        case 'iceWallHit':
+          effects.iceWallHit(e.id, e.x, e.z);
+          break;
+        case 'giantFell':
+          effects.giantFell(e.x, e.z);
+          break;
+        case 'snowballBurst':
+          effects.snowballBurst(e.x, e.z, e.count);
+          break;
+        case 'unitsFrozen':
+          effects.frostRing(e.x, e.z, e.radius);
           break;
         case 'bossPhase':
-          level.bossPhase();
+          level.bossPhase(e.phase);
           effects.phaseRing(e.x, e.z + 1.5, level.level.enemyBase.width);
           break;
         default:
@@ -256,8 +326,32 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
       case 'ultimate':
         if (c.id === 'barrage') effects.barrage(cannon.muzzleX(), cannon.muzzleY(), cannon.muzzleZ(), c.z, c.radius);
         else if (c.id === 'paratroopers') ultimates.paratroopers(c.x, c.z, c.radius, c.duration);
-        else ultimates.marbleRoll(c.x, c.z, c.duration);
+        else if (c.id === 'marble') ultimates.marbleRoll(c.x, c.z, c.duration);
+        else if (c.id === 'blizzard') blizzard = c;
+        else ultimates.cue(c);
         break;
+      case 'lob':
+        if (level) {
+          effects.lob(c.x, c.z, c.radius, c.flight, level.enemyBaseX, LOB_FROM_Y, level.enemyCenterZ + LOB_FROM_DZ);
+          level.bossLob();
+        }
+        break;
+      case 'lobHit':
+        effects.lobHit(c.x, c.z, c.radius);
+        break;
+      case 'gustWarn':
+        effects.gustWarn(c.dir, c.seconds);
+        level?.bossGustWarn(c.dir, c.seconds);
+        break;
+      case 'gust':
+        effects.gust(c.dir, c.duration);
+        level?.bossGust(c.dir, c.duration);
+        break;
+      case 'iglooRelease': {
+        const door = defenders.iglooRelease(c.id);
+        effects.iglooRelease(door ? door.x : c.x, door ? door.z : c.z);
+        break;
+      }
       default:
         break;
     }
@@ -271,11 +365,18 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
 
     loadLevel(def: LevelDef): void {
       level?.dispose();
-      level = new LevelVisuals(scene, look, def, props);
+      level = null;
+      const theme = roomThemeOf(def);
+      // Drop the old room's defender kits before its materials go (igloos are freezer-only).
+      if (rooms.theme !== theme) defenders.load(undefined);
+      room = rooms.use(theme);
+      level = new LevelVisuals(scene, look, def, room);
       defenders.load(def.defenders);
+      effects.setGustArea(def.lane.width / 2);
       cannon.setFireRate(def.cannon.fireRate);
       effects.clear();
       ultimates.clear();
+      blizzard = null;
       rig.resetZoom();
       // Sun shadows cover the lane, both bases, the flag and the props beside the rug.
       const half = def.lane.width / 2 + SHADOW_SIDE_MARGIN;
@@ -298,10 +399,18 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
     frame(f: RenderFrame): void {
       const dt = Math.min(Math.max(f.dt, 0), 0.1);
       handleEvents(f.events);
+      const gust = f.battle.gust;
+      if (gust) effects.setGust(gust.dir, gust.warn, gust.active);
+      if (room?.theme === 'freezer')
+        room.props.setGust(gust ? gustStrength(gust.warn, gust.active) : 0, gust?.dir ?? 0, f.time);
       level?.update(f.time, dt, f.battle);
       defenders.update(f.defenders, dt);
       cannon.update(f.cannonX, f.time, f.battle.outcome === 'playing', dt);
-      crowd.update(f.view, f.time);
+      if (blizzard) {
+        ultimates.cue(blizzard, teamBounds(f.view, Team.Enemy, enemyArea));
+        blizzard = null;
+      }
+      crowd.update(f.view, f.time, f.battle.enemyFrozen ?? 0);
       ultimates.update(dt);
       effects.update(dt);
       bars.begin();
@@ -380,7 +489,8 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
       effects.dispose();
       defenders.dispose();
       cannon.dispose();
-      props.dispose();
+      rooms.clear();
+      room = null;
       bars.dispose();
       look.dispose();
       if (activeScaler === scaler) activeScaler = null;
@@ -408,5 +518,12 @@ function canvasBlank(engine: Engine, out: Uint8Array): boolean {
 function defenderWidth(level: LevelDef, id: string): number {
   const d = level.defenders?.find((x) => x.id === id);
   if (!d) return DEFENDER_DEFAULTS.towerWidth;
-  return d.width ?? (d.kind === 'wall' ? DEFENDER_DEFAULTS.wallWidth : DEFENDER_DEFAULTS.towerWidth);
+  return (
+    d.width ??
+    (d.kind === 'wall'
+      ? DEFENDER_DEFAULTS.wallWidth
+      : d.kind === 'igloo'
+        ? DEFENDER_DEFAULTS.wallWidth * 0.75
+        : DEFENDER_DEFAULTS.towerWidth)
+  );
 }

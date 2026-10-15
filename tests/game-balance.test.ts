@@ -10,11 +10,11 @@ import { LEVELS } from '../src/game/levels.ts';
 import { createAutoplay } from '../src/game/autoplay.ts';
 import { SIM_DT, SIM_HZ } from '../src/contracts.ts';
 import type { InputState, SimView } from '../src/contracts.ts';
-import { EASY, humanRuns, median, play, runLine, starText } from './balance-play.ts';
+import { EASY, humanRuns, median, playStarter, runLine, starText } from './balance-play.ts';
 
 for (const level of LEVELS) {
   test(`balance: ${level.id} "${level.name}" precise play takes all three stars`, () => {
-    const r = play(level, 1);
+    const r = playStarter(level, 1);
     console.log(
       `  ${level.id.padEnd(5)} ${level.name.padEnd(16)} skill 1: ${r.outcome} in ${r.seconds.toFixed(1)} s (target ${level.targetTime} s), ` +
         `peak ${r.peak}, base ${(r.playerBase * 100).toFixed(0)}%, stars ${starText(r.stars)}, defenders broken ${r.destroyed}, misses ${r.missed}`,
@@ -46,9 +46,9 @@ test('balance: the opening levels are easy for a phone player', () => {
 
 test('balance: the human profile is deterministic and clearly weaker than the precise bot', () => {
   const level = LEVELS.find((l) => l.id === '1-5')!;
-  assert.deepEqual(play(level, 'human', 3), play(level, 'human', 3), 'deterministic');
+  assert.deepEqual(playStarter(level, 'human', 3), playStarter(level, 'human', 3), 'deterministic');
   const human = humanRuns(level, 4);
-  const precise = play(level, 1);
+  const precise = playStarter(level, 1);
   assert.ok(
     median(human.map((r) => r.seconds)) > precise.seconds + 15,
     'the human is clearly slower than the precise bot',
