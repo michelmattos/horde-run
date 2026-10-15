@@ -1,16 +1,22 @@
 // Vibration API feedback. Silently does nothing where vibrate is missing (iOS)
-// or when the player turned haptics off; reads settings live.
+// or when the player turned haptics off; reads settings live. A light tick on gate
+// multiply, a bump on champion launch and a double bump when an ultimate fires.
 import type { SimEvent } from '../contracts.ts';
 import type { Settings } from './settings.ts';
 
 export interface Haptics {
   onEvents(events: readonly SimEvent[]): void;
+  /** Battle cues of the step: a double bump when an ultimate fires. */
+  onCues(cues: readonly { type: string }[]): void;
+  /** A double bump for the ultimate (onCues calls this). */
+  ultimate(): void;
   result(win: boolean): void;
 }
 
 const TICK_MS = 8;
 const TICK_MIN_GAP_MS = 90;
 const BUMP_MS = 30;
+const ULTIMATE_PATTERN = [30, 50, 45];
 const WIN_PATTERN = [40, 60, 40, 60, 120];
 const LOSE_PATTERN = [200, 80, 200];
 
@@ -24,7 +30,21 @@ export function createHaptics(settings: Settings): Haptics {
       // Some browsers throw without a user gesture; haptics are optional.
     }
   };
+  const ultimate = (): void => {
+    vibrate(ULTIMATE_PATTERN);
+    lastTick = performance.now();
+  };
   return {
+    ultimate,
+    onCues(cues) {
+      if (!settings.haptics) return;
+      for (let i = 0; i < cues.length; i++) {
+        if (cues[i].type === 'ultimate') {
+          ultimate();
+          return;
+        }
+      }
+    },
     onEvents(events) {
       if (!settings.haptics) return;
       let bump = false;

@@ -64,6 +64,13 @@ const CSS = `
 .hx-tag-yellow{background:linear-gradient(#ffd862,${UI.yellow});color:${UI.ink};text-shadow:none}
 .hx-tag-cream{background:${UI.cream};color:${UI.ink};text-shadow:none;transform:none;letter-spacing:.02em}
 
+/* Campaign coins row (run result, lost battle). */
+.hx-coins{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:16px;background:rgba(255,197,49,.16);
+  border:2.5px dashed rgba(178,122,0,.45);font-size:17px;font-weight:700}
+.hx-coins>span:first-child{display:flex}
+.hx-coins b{font-size:24px;color:#a86b00}
+.hx-coins .hx-coins-total{margin-left:auto;min-height:32px;padding:2px 10px;font-size:15px}
+
 /* Chips: heart + HP bar, coin + gold. */
 .hx-chip{display:inline-flex;align-items:center;gap:6px;box-sizing:border-box;min-height:40px;padding:3px 12px 3px 5px;border-radius:999px;
   border:3px solid ${UI.ink};background:${UI.cream};color:${UI.ink};box-shadow:0 3px 0 ${UI.ink};font-size:17px;font-weight:700;white-space:nowrap}

@@ -25,18 +25,17 @@
 // all), lifts its thumb now and then (short pauses in firing) and launches the
 // champion 1.5-2.5 s after the meter fills. `skill` is ignored by the human profile;
 // `attempt` still shifts its noise in time.
+//
+// Milestone 4: given a loadout (opts.loadout), it leads moving gates with the main mob's speed (firingOrder)
+// and the boss with the champion's, and presses the ultimate when its meter is full (the
+// battle's ultimateCharge is passed as the fifth argument): at once for the precise
+// profile, after the same 1.5-2.5 s delay as the champion for the human one.
 
-import type {
-  BattleState,
-  DefenderDef,
-  DefenderView,
-  GateDef,
-  InputState,
-  LevelDef,
-  SimEvent,
-  SimView,
-} from '../contracts.ts';
+import type { BattleState, DefenderDef, DefenderView, GateDef, LevelDef, SimEvent, SimView } from '../contracts.ts';
 import { DEFENDER_DEFAULTS, LAYOUT, Team, gateX } from '../contracts.ts';
+import type { BattleInput } from './battle.ts';
+import type { BattleLoadout } from './loadout.ts';
+import { firingOrder } from './loadout.ts';
 
 const MOB_SPEED = 7; // matches the sim's player mob speed; used to lead moving gates and the boss
 const CHAMPION_SPEED = 4.5; // matches the sim's champion speed
@@ -58,6 +57,7 @@ export interface AutoplayOptions {
   skill?: number; // precise profile only: 0 sloppy .. 1 exact (default 0.7)
   attempt?: number; // shifts the noise in time: a separate try by the same player
   profile?: AutoplayProfile; // default 'precise'
+  loadout?: BattleLoadout; // battle loadout: unit speeds, and the bot uses the ultimate
 }
 
 // The human profile's limits (see the header).
@@ -77,7 +77,13 @@ const HUMAN = {
 };
 
 export type AutoplaySim = { readonly view: SimView; readonly defenders?: readonly DefenderView[] };
-export type Autoplay = (state: BattleState, sim: AutoplaySim, time: number, events?: readonly SimEvent[]) => InputState;
+export type Autoplay = (
+  state: BattleState,
+  sim: AutoplaySim,
+  time: number,
+  events?: readonly SimEvent[],
+  ultimateCharge?: number, // Battle.ultimateCharge; with opts.loadout the bot presses the ultimate when full
+) => BattleInput;
 
 // Smooth pseudo-noise in about [-1, 1]: a fixed function of time, no Math.random.
 function wobble(t: number): number {
@@ -121,8 +127,10 @@ export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autopla
   const standing = new Uint8Array(obstacles.length); // refreshed every call
   const broken = new Set<string>(); // one-use gates seen breaking, and destroyed defenders
   const phases = level.boss ? level.boss.phases.slice().sort((a, b) => b.belowHp - a.belowHp) : [];
-  const mobTravel = (level.lane.length - LAYOUT.cannonZ) / MOB_SPEED;
-  const champTravel = (level.lane.length - LAYOUT.cannonZ) / CHAMPION_SPEED;
+  const mobSpeed = opts?.loadout ? firingOrder(opts.loadout.mobs)[0].speed : MOB_SPEED;
+  const mobTravel = (level.lane.length - LAYOUT.cannonZ) / mobSpeed;
+  const champTravel = (level.lane.length - LAYOUT.cannonZ) / (opts?.loadout?.champion.speed ?? CHAMPION_SPEED);
+  const useUltimate = opts?.loadout !== undefined;
 
   let aim = 0;
   let lastTime = 0;
@@ -131,6 +139,8 @@ export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autopla
   let readySince = -1;
   let intent = 0; // human: where it means to aim, before its aim error
   let championWait = 0; // human: seconds to wait after the meter fills
+  let ultReadySince = -1;
+  let ultWait = 0;
   const alive = (o: Obstacle): boolean => standing[o.slot] === 1;
   // Human reaction delay: recent desired targets, acted on `reaction` seconds late.
   const seenT: number[] = [];
@@ -141,7 +151,7 @@ export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autopla
   // of the sweep, misplaced, for a far gate).
   const gateSeenX = (g: GateDef, i: number, time: number): number => {
     if (g.z > farZ) return g.x + farOffset(time + noiseShift, i);
-    const exact = gateX(g, time + (g.z - LAYOUT.cannonZ) / MOB_SPEED);
+    const exact = gateX(g, time + (g.z - LAYOUT.cannonZ) / mobSpeed);
     return lead === 1 ? exact : g.x + lead * (exact - g.x);
   };
   const obstacleX = (o: Obstacle, time: number): number =>
@@ -256,7 +266,7 @@ export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autopla
     return best;
   }
 
-  return (state, sim, time, events) => {
+  return (state, sim, time, events, ultimateCharge) => {
     if (events) {
       for (const e of events) {
         if (e.type === 'gateBroken') broken.add(e.gateId);
@@ -340,6 +350,22 @@ export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autopla
     const championPressed =
       ready && time - readySince >= championWait && (onTarget || time - readySince >= championPatience);
 
-    return { aimX: aim, firing, championPressed, paused: false };
+    let ultimatePressed = false;
+    if (useUltimate) {
+      const full = state.outcome === 'playing' && (ultimateCharge ?? 0) >= 1;
+      if (full && ultReadySince < 0) {
+        ultReadySince = time;
+        ultWait = human
+          ? HUMAN.championDelayMin +
+            (HUMAN.championDelayMax - HUMAN.championDelayMin) * (0.5 + 0.5 * wobble(time + noiseShift + 8.3))
+          : 0;
+      }
+      if (!full) ultReadySince = -1;
+      ultimatePressed = full && time - ultReadySince >= ultWait;
+    }
+
+    return useUltimate
+      ? { aimX: aim, firing, championPressed, ultimatePressed, paused: false }
+      : { aimX: aim, firing, championPressed, paused: false };
   };
 }

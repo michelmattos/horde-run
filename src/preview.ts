@@ -1,4 +1,7 @@
 // Model preview harness (dev only; preview.html is not part of the production build).
+// Every module in src/render/models/ is listed automatically (import.meta.glob), the
+// Milestone 4 ones included: soldierVariants, championTank, championDrummer,
+// cannonVariants and ultimates (their ?variant= values appear as links).
 // Renders one model module from src/render/models/<key>.ts under the shared look, standing
 // on a strip of play rug over varnished floorboards, so its materials, shadows and
 // readability can be judged on their own.
@@ -51,7 +54,12 @@ declare global {
   }
 }
 
-const modules = import.meta.glob<ModelModule>('./render/models/*.ts');
+// The home base's village and confetti follow the same model contract.
+const modules = import.meta.glob<ModelModule>([
+  './render/models/*.ts',
+  './home/models/village.ts',
+  './home/models/confetti.ts',
+]);
 const keyOf = (path: string): string => path.replace(/^.*\/(.+)\.ts$/, '$1');
 const keys = Object.keys(modules).map(keyOf).sort();
 
@@ -206,6 +214,10 @@ function stats(): PreviewStats {
   return s;
 }
 
+// Named variants of the loaded model (e.g. soldierVariants: knight / sprinter / bomber,
+// cannonVariants: repeater / blunderbuss), shown as links once the module has loaded.
+let variantKeys: readonly string[] = [];
+
 function drawUi(): void {
   const ui = document.getElementById('ui');
   if (!ui) return;
@@ -219,6 +231,9 @@ function drawUi(): void {
     `<div class="row">${link({ team: 'player' }, 'player', team === 'player')}${link({ team: 'enemy' }, 'enemy', team === 'enemy')} | ` +
     `${VIEWS.map((v) => link({ view: v }, v, v === view)).join('')} | ` +
     `${['high', 'medium', 'low'].map((q) => link({ quality: q }, q, q === look.quality)).join('')}</div>` +
+    (variantKeys.length
+      ? `<div class="row">${variantKeys.map((v, i) => link({ variant: v }, v, v === (variant ?? (i === 0 ? v : '')))).join('')}</div>`
+      : '') +
     `<div id="stats"></div>`;
 }
 
@@ -228,6 +243,8 @@ async function boot(): Promise<void> {
   if (!path) throw new Error(`no model module src/render/models/${key}.ts (have: ${keys.join(', ')})`);
   const mod = await modules[path]();
   if (!mod.info || typeof mod.preview !== 'function') throw new Error(`${key}.ts does not export info and preview()`);
+  variantKeys = mod.info.variants ?? [];
+  if (variantKeys.length) drawUi();
   const side = mod.info.side;
   gameYaw = side === 'enemy' || side === 'neutral' || (side === 'team' && team === 'enemy') ? Math.PI : 0;
   gameZ = mod.info.gameZ ?? 20;

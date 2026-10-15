@@ -74,7 +74,12 @@ export const HUD_METRICS = {
   bottomPad: 10, // gap above the bottom safe-area inset
   champFace: 80, // the CHAMP button itself (>= 76)
   champRing: 98, // outer diameter of the charge ring
-  champTagOver: 12, // the CHAMP tag hangs this far below the ring
+  champTagOver: 12, // the CHAMP tag hangs this far below the ring (the ultimate's tag too)
+  ultFace: 70, // the ultimate button itself (>= 56)
+  ultRing: 88, // outer diameter of the ultimate's charge ring
+  cornerGap: 8, // gap between a corner button and the army block
+  armyMax: 200, // widest the army block (badge, count, base bar) gets
+  armyMin: 118, // the army badge plus a 4-digit count must fit
   armyBadge: 50, // green army badge row
   baseBarH: 24, // player base HP bar
   armyGap: 6,
@@ -95,7 +100,46 @@ export function hudTopHeight(run = false): number {
 
 export function hudBottomHeight(): number {
   const m = HUD_METRICS;
-  return Math.max(m.champRing + m.champTagOver, m.armyBadge + m.armyGap + m.baseBarH);
+  return Math.max(m.champRing + m.champTagOver, m.ultRing + m.champTagOver, m.armyBadge + m.armyGap + m.baseBarH);
+}
+
+// ---------- Bottom row: ultimate (left corner), army block, CHAMP (right corner) ----------
+// Horizontal spans in CSS px inside the bottom row, whose width is the viewport minus
+// the side safe areas and both edge margins. The HUD's CSS uses the same numbers:
+// the army block starts after the ultimate button (when there is one) and stops a gap
+// short of the CHAMP ring, capped at armyMax.
+export interface Span {
+  left: number;
+  right: number;
+}
+
+export function hudBottomSpans(rowWidth: number, hasUltimate: boolean): { ult: Span | null; army: Span; champ: Span } {
+  const m = HUD_METRICS;
+  const champ = { left: rowWidth - m.champRing, right: rowWidth };
+  const ult = hasUltimate ? { left: 0, right: m.ultRing } : null;
+  const left = hasUltimate ? m.ultRing + m.cornerGap : 0;
+  const width = Math.min(m.armyMax, champ.left - m.cornerGap - left);
+  return { ult, army: { left, right: left + width }, champ };
+}
+
+// Bottom row width for a viewport width (CSS px) and the side safe-area insets.
+export function hudRowWidth(viewportWidth: number, insetLeft = 0, insetRight = 0): number {
+  return viewportWidth - insetLeft - insetRight - 2 * HUD_METRICS.edge;
+}
+
+// Short tag under the ultimate button: the caller's label when it fits in 7 letters,
+// otherwise a short name per ultimate, so the tag stays inside its corner.
+export const ULT_TAG_MAX = 7;
+const ULT_SHORT: Readonly<Record<string, string>> = { barrage: 'BARRAGE', paratroopers: 'PARAS', marble: 'MARBLE' };
+export function ultimateTagText(id: string, label: string): string {
+  const l = label.trim().toUpperCase();
+  if (l.length > 0 && l.length <= ULT_TAG_MAX) return l;
+  return ULT_SHORT[id] ?? l.slice(0, ULT_TAG_MAX);
+}
+
+// Rough rendered width of a HUD tag (13px heavy rounded caps plus padding and border).
+export function tagWidthEstimate(text: string): number {
+  return Math.ceil(text.length * 8.6 + 26);
 }
 
 // CSS px covered at the top and bottom (safe-area insets included) plus the clear gap.
@@ -191,4 +235,49 @@ export function runUpgradesLabel(upgrades: readonly { label: string; stacks: num
 export function runStatusLabel(hp: number, maxHp: number, gold: number, kind: RunNodeTag): string {
   const tag = runTagText(kind);
   return `Run health ${formatRunHp(hp)} of ${formatRunHp(maxHp)}, ${formatCount(gold)} gold${tag ? `, ${tag.toLowerCase()} battle` : ''}`;
+}
+
+// ---------- Settings sliders ----------
+// Value under a finger at clientX on a range input of `width` px starting at `left`, whose
+// thumb is `thumb` px wide (the thumb's centre travels from left + thumb/2 to the right
+// end minus thumb/2), snapped to `step` and clamped to [min, max].
+export function rangeValueAt(
+  clientX: number,
+  left: number,
+  width: number,
+  thumb: number,
+  min: number,
+  max: number,
+  step: number,
+): number {
+  const travel = width - thumb;
+  const t = travel > 0 ? Math.min(1, Math.max(0, (clientX - left - thumb / 2) / travel)) : 0;
+  const raw = min + t * (max - min);
+  const snapped = step > 0 ? min + Math.round((raw - min) / step) * step : raw;
+  return Math.min(max, Math.max(min, Math.round(snapped * 1e6) / 1e6));
+}
+
+// ---------- Result coin tally ----------
+// The tally counts up with an ease-out over `durMs`: earned from 0, the total from
+// (total - earned), both reaching their exact values at the end.
+export const COIN_TALLY = { delayMs: 650, durationMs: 700 } as const;
+export function coinTallyAt(
+  earned: number,
+  total: number,
+  elapsedMs: number,
+  durMs: number = COIN_TALLY.durationMs,
+): { earned: number; total: number } {
+  const e = Math.max(0, Math.round(Number.isFinite(earned) ? earned : 0));
+  const tot = Math.max(0, Math.round(Number.isFinite(total) ? total : 0));
+  if (!(durMs > 0) || elapsedMs >= durMs) return { earned: e, total: tot };
+  const t = Math.max(0, elapsedMs) / durMs;
+  const k = 1 - (1 - t) * (1 - t);
+  const shown = Math.round(e * k);
+  return { earned: shown, total: Math.max(0, tot - e) + shown };
+}
+
+// Signed coin amount for a tally line: '+50', '-10', '0'.
+export function formatCoinDelta(n: number): string {
+  const v = Math.round(Number.isFinite(n) ? n : 0);
+  return v > 0 ? `+${formatCount(v)}` : v < 0 ? `-${formatCount(-v)}` : '0';
 }

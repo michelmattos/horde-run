@@ -16,17 +16,29 @@
 // (concept §8 "Heat and battery"); wake() restarts it. Drawing is capped at 60 fps even
 // on a 120 Hz screen (iPhone 17 Pro Max): rAF callbacks that come too soon are skipped.
 // The camera only zooms out gently as the crowd grows; it never shakes.
+// Milestone 4 (progression): the save holds a profile next to the stars (coins, owned
+// items, upgrade tiers, the loadout, the village). Campaign flow is map → level card →
+// loadout → battle → result with coins and unlocks. The map's dock opens the Collection
+// (upgrades, coin items) and the Home base, a separate 3D village scene on the same
+// engine that the render loop draws instead of the battlefield while it is up. Campaign
+// battles get the profile's BattleLoadout (resolveLoadout also reshapes the level for the
+// cannon and the village perks); Expedition battles stay loadout-free but pay coins.
+// Battle cues (shots, blasts, ultimates) go to the renderer, the audio and the haptics.
+// `?screen=loadout|collection|home` opens a meta screen straight away (smoke test).
 import { Engine } from '@babylonjs/core/Engines/engine';
 import { LAYOUT, Team, UnitKind, starGoalLabels } from './contracts.ts';
 import type { BattleState, LevelDef, RunBattleSpec, RunState, SaveData, SimEvent, WorldDef } from './contracts.ts';
+import type { BattleLoadout } from './game/loadout.ts';
 import { createSim } from './sim/index.ts';
 import type { Sim } from './sim/index.ts';
 import { createBattle } from './game/battle.ts';
-import type { Battle } from './game/battle.ts';
+import type { Battle, BattleCue } from './game/battle.ts';
 import { getLevel, getLevelById, getWorld } from './game/levels.ts';
 import { evaluateStars, goalStatus } from './game/stars.ts';
 import { createRenderer } from './render/index.ts';
 import type { RenderStats } from './render/index.ts';
+import { parseCannon, parseChampion } from './render/crowdLogic.ts';
+import { createAudio } from './audio/index.ts';
 import { createRng } from './core/rng.ts';
 import { createFixedStep, createFrameCap } from './core/loop.ts';
 import { loadSettings } from './core/settings.ts';
@@ -35,8 +47,30 @@ import { isLandscapeTouch, watchInterruptions } from './core/lifecycle.ts';
 import type { InterruptReason } from './core/lifecycle.ts';
 import { createHaptics } from './core/haptics.ts';
 import { registerServiceWorker } from './core/pwa.ts';
-import { loadSave, recordResult, writeSave } from './core/save.ts';
+import { loadGame, recordResult, writeGame } from './core/save.ts';
+import type { GameData } from './core/save.ts';
 import { createWorldMap } from './meta/worldMap.ts';
+import { createLoadoutScreen } from './meta/loadout.ts';
+import { createCollectionScreen } from './meta/collection.ts';
+import { itemIcon } from './meta/itemIcons.ts';
+import { collectionView, homeView, loadoutView } from './meta/views.ts';
+import type { HomeBase } from './home/homeBase.ts';
+import {
+  addCoins,
+  applyCampaignResult,
+  build,
+  buyItem as buyCollectionItem,
+  getItem,
+  markSeen,
+  newlyUnlocked,
+  recordExpeditionBattle,
+  recordExpeditionRun,
+  resolveLoadout,
+  setLoadout,
+  unannouncedUnlocks,
+  upgradeItem,
+} from './progression/index.ts';
+import type { Profile, ProgressFacts } from './progression/index.ts';
 import { createHud, hudReserve } from './ui/hud.ts';
 import { createOverlays } from './ui/overlays.ts';
 import {
@@ -83,6 +117,11 @@ declare global {
       expedition(): RunState | null; // the current Expedition run, null when none is active
       expeditionChoose(nodeId: string): boolean; // enter that run map node, as a tap would
       win(): void; // debug: drains the enemy base so the battle ends in victory
+      profile(): Profile; // the player's coins, items, tiers, loadout and village
+      coins(n: number): number; // debug: adds n coins (saved); returns the new balance
+      // Opens a meta screen ('map' | 'loadout' | 'collection' | 'home'); without an id it
+      // only reports the screen showing ('battle', 'expedition' and 'settings' as well).
+      screen(id?: string): string;
     };
   }
 }
@@ -111,12 +150,26 @@ const settings = loadSettings();
 const renderer = createRenderer(engine, canvas, { hudReserve });
 const input = createInput(canvas, settings);
 const haptics = createHaptics(settings);
-const overlays = createOverlays(app, settings);
+// No AudioContext until the first gesture; the master gain follows settings live.
+const audio = createAudio(settings);
+const overlays = createOverlays(app, settings, { onSound: (id) => audio.play(id) });
 const loop = createFixedStep();
 const frameCap = createFrameCap();
 const hud = createHud(renderer.scene, input, { onPause: () => pause('user') });
 
-let save: SaveData = loadSave();
+// ---------- Progress: stars + profile, saved together (save v2) ----------
+
+const boot = loadGame();
+let save: SaveData = boot.save;
+let profile: Profile = boot.profile;
+if (boot.migrated) writeGame(save, profile); // a v1 save gets its retroactive coins once
+
+const facts = (): ProgressFacts => ({ levels: save.levels, profile });
+function commitProfile(p: Profile): void {
+  profile = p;
+  writeGame(save, profile);
+}
+
 const map = createWorldMap(app, {
   world,
   levels: world.levels.map((id) => ({ id, name: levelDef(id).name, boss: !!levelDef(id).boss })),
@@ -125,8 +178,57 @@ const map = createWorldMap(app, {
     save = s;
   },
   onExpedition: () => openExpeditionStart(),
+  onHome: () => openHome(),
+  onCollection: () => openCollection(() => showMap()),
+  onSettings: () => openSettings(),
+  getGame: (): GameData => ({ save, profile }),
+  onGameReplaced: (g) => {
+    save = g.save;
+    profile = g.profile;
+  },
 });
 const screens = createExpeditionScreens(app);
+
+// Meta screens. Where Back goes from the loadout and the collection depends on how they
+// were opened, so the openers keep the way back.
+let loadoutLevel = '';
+let collectionBack: () => void = () => showMap();
+const loadoutScreen = createLoadoutScreen(app, {
+  onStart: (sel) => {
+    commitProfile(setLoadout(profile, sel, facts()));
+    startLevel(loadoutLevel);
+  },
+  onBack: () => {
+    loadoutScreen.hide();
+    openLevelCard(loadoutLevel);
+  },
+  onCollection: () => openCollection(() => openLoadout(loadoutLevel)),
+});
+const collection = createCollectionScreen(app, {
+  onUpgrade: (id) => {
+    const p = upgradeItem(profile, id, facts());
+    if (!p) return;
+    commitProfile(p);
+    audio.play('upgrade');
+    collection.show(collectionView(facts()));
+  },
+  onBuy: (id) => {
+    const p = buyCollectionItem(profile, id, facts());
+    if (!p) return;
+    commitProfile(markSeen(p, [id]));
+    audio.play('unlock');
+    collection.show(collectionView(facts()));
+  },
+  onBack: () => {
+    collection.hide();
+    collectionBack();
+  },
+});
+
+// The home base village is its own Babylon scene, built (and its code loaded) the first
+// time it opens, so it never costs the battle anything.
+let home: HomeBase | undefined;
+let homeLoading = false;
 
 // Optional ?seed=N makes a session reproducible; otherwise every battle differs.
 const params = new URLSearchParams(location.search);
@@ -144,6 +246,9 @@ let resultShown = false;
 let mode: 'campaign' | 'expedition' = 'campaign';
 let runMapShown = false; // the run map is the Expedition screen up (for __horde.level())
 const events: SimEvent[] = []; // sim and battle events since the last rendered frame
+const cues: BattleCue[] = []; // battle cues (shots, blasts, ultimates) since the last rendered frame
+// The campaign battle's loadout (undefined in the Expedition: no ultimate button there).
+let battleLoadout: BattleLoadout | undefined;
 
 function nextLevelId(id: string): string | undefined {
   const i = world.levels.indexOf(id);
@@ -160,9 +265,71 @@ function openLevelCard(id: string): void {
     goals: starGoalLabels(l),
     earned: save.levels[l.id]?.stars ?? [false, false, false],
     boss: l.boss?.name,
-    onPlay: () => startLevel(l.id),
+    onPlay: () => openLoadout(l.id),
     onMap: () => showMap(),
   });
+}
+
+// ---------- Meta screens: loadout, collection, home base, settings ----------
+
+function hideMeta(): void {
+  loadoutScreen.hide();
+  collection.hide();
+  homeWanted = false;
+  if (home?.visible) home.hide();
+}
+
+// The loadout before a campaign level; Fight saves the pick and starts the battle.
+function openLoadout(id: string): void {
+  hideMeta();
+  overlays.hide();
+  loadoutLevel = id;
+  loadoutScreen.show(loadoutView(levelDef(id), facts()));
+}
+
+// The collection marks every unlock as seen once it has shown their New stickers.
+function openCollection(back: () => void): void {
+  hideMeta();
+  overlays.hide();
+  collectionBack = back;
+  const f = facts();
+  collection.show(collectionView(f));
+  const fresh = unannouncedUnlocks(f);
+  if (fresh.length > 0) commitProfile(markSeen(profile, fresh));
+}
+
+let homeWanted = false; // the home base should be up (it may still be loading)
+function openHome(): void {
+  map.hide();
+  screens.hide();
+  leaveBattlefield();
+  hideMeta();
+  homeWanted = true;
+  if (home) return showHome(home);
+  if (homeLoading) return;
+  homeLoading = true;
+  void import('./home/homeBase.ts').then(({ createHomeBase }) => {
+    homeLoading = false;
+    home = createHomeBase(engine, app, { onBuild: (id) => buildHome(id), onBack: () => showMap() });
+    if (homeWanted) showHome(home);
+  });
+}
+
+function showHome(h: HomeBase): void {
+  h.show(homeView(facts()));
+  wake();
+}
+
+function buildHome(id: string): void {
+  const p = build(profile, id, facts());
+  if (!p || !home) return;
+  commitProfile(p);
+  audio.play('build');
+  showHome(home);
+}
+
+function openSettings(): void {
+  overlays.showSettings({ onClose: () => overlays.hide() });
 }
 
 // Leaves the battlefield (if any) for a full-screen menu: nothing steps or draws under it.
@@ -175,37 +342,48 @@ function leaveBattlefield(): void {
 
 function showMap(): void {
   screens.hide();
+  hideMeta();
   leaveBattlefield();
   map.show(save, {
     expedition: {
       active: !!run && run.outcome === 'active',
       dailyDone: exp.best.daily[dailySeed(new Date()).daily] !== undefined,
     },
+    coins: profile.coins,
+    newItems: unannouncedUnlocks(facts()).length,
   });
 }
 
+// A campaign battle with the profile's loadout: the cannon and the village reshape the
+// level, the rest goes to the battle as a BattleLoadout.
 function startLevel(id: string): void {
   mode = 'campaign';
   hud.setRun(null);
-  beginBattle(levelDef(id), seedCounter++);
+  const r = resolveLoadout(levelDef(id), profile);
+  battleLoadout = r.battle;
+  renderer.setLoadout({ cannon: parseCannon(profile.loadout.cannon), champion: parseChampion(r.battle.champion.id) });
+  audio.setChampion(parseChampion(r.battle.champion.id));
+  beginBattle(r.level, seedCounter++, r.battle);
 }
 
 // Fresh RNG, sim and battle on `def`. hud.setRun must already be set for this battle:
 // the renderer frames the lane from hudReserve() when the level loads.
-function beginBattle(def: LevelDef, seed: number): void {
+function beginBattle(def: LevelDef, seed: number, loadout?: BattleLoadout): void {
   map.hide();
   overlays.hide();
   screens.hide();
+  hideMeta();
   level = def;
   const rng = createRng(seed);
   const rand = (): number => rng.next();
   const s = createSim(level, rand);
   sim = s;
-  battle = createBattle(level, s, rand);
+  battle = createBattle(level, s, rand, loadout);
   inBattle = true;
   outcomeAt = -1;
   resultShown = false;
   events.length = 0;
+  cues.length = 0;
   renderer.loadLevel(level);
   input.configure({ laneWidth: level.lane.width, aimLimit: level.cannon.aimLimit });
   input.setPaused(false);
@@ -240,6 +418,7 @@ function commitRun(r: RunState): RunState {
 
 function openExpeditionStart(): void {
   map.hide();
+  hideMeta();
   leaveBattlefield();
   runMapShown = false;
   const today = dailySeed(new Date());
@@ -303,7 +482,7 @@ function showRunMap(r: RunState): void {
     upgrades: ownedUpgrades(r),
     onChoose: (id) => enterNode(r, id),
     onBack: () => showMap(),
-    onAbandon: () => endRun(abandonRun(r)),
+    onAbandon: () => endRun(abandonRun(r), true),
   });
   runMapShown = true;
 }
@@ -312,6 +491,10 @@ function startRunBattle(r: RunState): void {
   const spec: RunBattleSpec = battleSpec(r);
   const def = applyUpgrades(generateRunBattle(spec), r.upgrades);
   mode = 'expedition';
+  // Expedition battles are a level playing field: the basic cannon and Sarge, no loadout.
+  battleLoadout = undefined;
+  renderer.setLoadout({ cannon: 'popgun', champion: 'sarge' });
+  audio.setChampion('sarge');
   hud.setRun({
     hp: r.hp,
     maxHp: r.maxHp,
@@ -336,6 +519,9 @@ function finishRunBattle(b: Battle): void {
   hud.setVisible(false);
   const victory = b.state.outcome === 'victory';
   const kind = battleSpec(r).kind;
+  // Every Expedition battle pays campaign coins too (wins also count toward unlocks).
+  const paid = recordExpeditionBattle(profile, kind, victory);
+  commitProfile(paid.profile);
   const next = commitRun(
     finishBattle(r, {
       victory,
@@ -352,6 +538,7 @@ function finishRunBattle(b: Battle): void {
       hp: next.hp,
       maxHp: next.maxHp,
       boss: kind === 'boss',
+      coins: { earned: paid.coins, total: profile.coins },
       onContinue: () => showRunStep(),
     });
     return;
@@ -416,9 +603,12 @@ function showRunRest(r: RunState): void {
   });
 }
 
-// Records a finished run (won, lost or abandoned) and shows its result.
-function endRun(r: RunState): void {
+// Records a finished run (won, lost or abandoned) and shows its result. A run that was
+// played out pays its coins; an abandoned one pays nothing (no free coins for quitting).
+function endRun(r: RunState, abandoned = false): void {
   const score = runScore(r);
+  const paid = abandoned ? { profile, coins: 0 } : recordExpeditionRun(profile, r);
+  commitProfile(paid.profile);
   const prev = r.daily !== undefined ? exp.best.daily[r.daily] : exp.best.bestScore;
   exp = recordRunEnd(exp, r);
   saveExpedition(exp);
@@ -435,6 +625,7 @@ function endRun(r: RunState): void {
     hp: r.hp,
     maxHp: r.maxHp,
     upgrades: ownedUpgrades(r),
+    coins: { earned: paid.coins, total: profile.coins },
     onNewRun: () => openExpeditionStart(),
     onMap: () => showMap(),
   });
@@ -481,9 +672,17 @@ function showResult(b: Battle): void {
   const victory = b.state.outcome === 'victory';
   const stars = evaluateStars(level, b.state, b.stats);
   const time = b.stats.endTime ?? outcomeAt;
+  const prev = save.levels[level.id];
+  const before = facts();
   const r = recordResult(save, level.id, { victory, stars, time });
+  const paid = applyCampaignResult(profile, level.id, prev, { victory, stars });
   save = r.save;
-  writeSave(save);
+  profile = paid.profile;
+  writeGame(save, profile);
+  const unlocked = newlyUnlocked(before, facts()).flatMap((id) => {
+    const it = getItem(id);
+    return it ? [{ name: it.name, icon: itemIcon(id, 64) }] : [];
+  });
   const next = nextLevelId(level.id);
   const id = level.id;
   overlays.showResult(victory ? 'victory' : 'defeat', {
@@ -493,6 +692,8 @@ function showResult(b: Battle): void {
     stars: victory ? stars : [false, false, false],
     goals: starGoalLabels(level),
     newBest: r.newBest,
+    coins: { earned: paid.coins, total: profile.coins, lines: paid.lines },
+    unlocked,
     onRetry: () => startLevel(id),
     onNext: () => (next ? openLevelCard(next) : showMap()),
     onMap: () => showMap(),
@@ -503,8 +704,10 @@ function showResult(b: Battle): void {
 function simStep(): void {
   if (!battle) return;
   const before = events.length;
-  battle.step(input.sample(), events);
+  const cuesBefore = cues.length;
+  battle.step(input.sample(), events, cues);
   if (events.length > before) haptics.onEvents(events.slice(before));
+  if (cues.length > cuesBefore) haptics.onCues(cues.slice(cuesBefore));
   if (outcomeAt < 0 && battle.state.outcome !== 'playing') {
     outcomeAt = battle.state.time;
     haptics.result(battle.state.outcome === 'victory');
@@ -516,9 +719,10 @@ let contextLost = false; // the WebGL context is gone: draw nothing until it is 
 let woke = false; // the next frame is the first after a restart; its delta spans the menu time
 let drawnFps = 0; // smoothed rate of frames actually drawn (rAF may tick faster than the cap)
 
-// (Re)starts the render loop; a no-op while running or while no battlefield is on screen.
+// (Re)starts the render loop; a no-op while running or while neither a battlefield nor
+// the home base is on screen.
 function wake(): void {
-  if (looping || !inBattle || contextLost) return;
+  if (looping || !(inBattle || home?.visible) || contextLost) return;
   looping = true;
   woke = true;
   loop.reset();
@@ -531,7 +735,21 @@ function stopLoop(): void {
   engine.stopRenderLoop(renderFrame);
 }
 
+// The home base draws only while something in it moves or loads. The loop keeps ticking
+// while it is up (an empty rAF callback costs nothing) so a tap on a building redraws.
+function homeFrame(h: HomeBase): void {
+  const gap = frameCap.tick(performance.now());
+  if (gap < 0) return;
+  const dt = woke ? 0 : gap;
+  woke = false;
+  if (!h.needsFrame()) return;
+  if (gap > 0) drawnFps = drawnFps > 0 ? drawnFps + (1 / gap - drawnFps) * 0.1 : 1 / gap;
+  h.frame(dt);
+  h.scene.render();
+}
+
 function renderFrame(): void {
+  if (home?.visible) return homeFrame(home);
   if (!battle || !sim || !inBattle) {
     stopLoop();
     return;
@@ -549,6 +767,8 @@ function renderFrame(): void {
     if (mode === 'expedition') finishRunBattle(battle);
     else showResult(battle);
   }
+  for (const c of cues) renderer.cue(c);
+  audio.battleFrame(events, cues);
   renderer.frame({
     view: sim.view,
     battle: battle.state,
@@ -563,8 +783,18 @@ function renderFrame(): void {
     bossPhases: level.boss?.phases.length,
     // Stars are a campaign goal; an Expedition battle shows the run strip instead.
     goals: mode === 'campaign' ? goalStatus(level, battle.state, battle.stats) : undefined,
+    ultimate:
+      battleLoadout && battle.hasUltimate
+        ? {
+            charge: battle.ultimateCharge,
+            id: battleLoadout.ultimate.id,
+            label: getItem(battleLoadout.ultimate.id)?.name ?? battleLoadout.ultimate.id,
+          }
+        : undefined,
+    champion: { id: battleLoadout ? parseChampion(battleLoadout.champion.id) : 'sarge' },
   });
   events.length = 0;
+  cues.length = 0;
   // Static menu up and this frame drawn under it: stop until resume, retry or next.
   if (input.paused || resultShown) stopLoop();
 }
@@ -575,6 +805,8 @@ input.onPauseKey(() => {
   pause('user');
 });
 watchInterruptions((r) => pause(r));
+// Nothing plays while the tab is hidden (menus included, e.g. a coin tally).
+document.addEventListener('visibilitychange', () => (document.hidden ? audio.suspend() : audio.resume()));
 
 // A resize clears the canvas; redraw once even when the loop is stopped behind a menu.
 engine.onResizeObservable.add(() => wake());
@@ -595,12 +827,46 @@ engine.onContextRestoredObservable.add(() => {
   wake();
 });
 
+// The level the player is up to: the first one not yet won (the boss once all are).
+function currentLevelId(): string {
+  return world.levels.find((id) => !save.levels[id]?.stars[0]) ?? world.levels[world.levels.length - 1];
+}
+
+// Opens a meta screen by name; false for an unknown name.
+function openScreen(id: string): boolean {
+  if (id === 'map') showMap();
+  else if (id === 'loadout') openLoadout(currentLevelId());
+  else if (id === 'collection') openCollection(() => showMap());
+  else if (id === 'home') openHome();
+  else return false;
+  return true;
+}
+
+function currentScreen(): string {
+  if (homeWanted) return 'home';
+  if (collection.visible) return 'collection';
+  if (loadoutScreen.visible) return 'loadout';
+  if (inBattle) return 'battle';
+  if (screens.visible) return 'expedition';
+  if (map.visible) return 'map';
+  return overlays.visible ? 'overlay' : 'none';
+}
+
+// Redraws whichever meta screen is up with fresh numbers (after a debug coin grant).
+function refreshScreen(): void {
+  if (home && homeWanted) showHome(home);
+  else if (collection.visible) collection.show(collectionView(facts()));
+  else if (loadoutScreen.visible) openLoadout(loadoutLevel);
+  else if (map.visible && !inBattle) showMap();
+}
+
 // Boot: ?level=<id> goes straight into that battle, ?expedition=<seed>|daily onto the
-// run, otherwise the world map.
+// run, ?screen=loadout|collection|home onto that screen, otherwise the world map.
 const startId = params.get('level');
 const expParam = params.get('expedition');
+const screenParam = params.get('screen');
 if (startId && getLevelById(startId)) startLevel(startId);
-else if (!(expParam && bootExpedition(expParam))) showMap();
+else if (!(expParam && bootExpedition(expParam)) && !(screenParam && openScreen(screenParam))) showMap();
 
 window.__horde = {
   state: () => (battle ? battle.state : ({} as BattleState)),
@@ -648,6 +914,19 @@ window.__horde = {
   },
   win: () => {
     if (battle && battle.state.outcome === 'playing') battle.state.enemyBaseHp = 0;
+  },
+  profile: () => structuredClone(profile),
+  coins: (n: number) => {
+    const add = Math.floor(n);
+    if (Number.isFinite(add) && add > 0) {
+      commitProfile(addCoins(profile, add));
+      refreshScreen();
+    }
+    return profile.coins;
+  },
+  screen: (id?: string) => {
+    if (id !== undefined) openScreen(id);
+    return currentScreen();
   },
 };
 

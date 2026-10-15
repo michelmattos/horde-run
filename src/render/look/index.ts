@@ -391,3 +391,4 @@ class LookImpl implements Look {
     this.listeners.clear();
   }
 }
+export { aoChecksum, encodeAO, decodeAO, bakeAOFactors, applyAO, cloneVD, bakedParts } from './aoTable.ts';

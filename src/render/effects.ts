@@ -2,12 +2,19 @@
 // blue suction cups, paper confetti from good gates and torn paper from trap gates,
 // chunky tan plastic shards and whole mini-blocks from destroyed defenders, carpet-fluff
 // dust puffs, plastic chips at base hits and a brass ring of sparks at a boss phase.
+// Milestone 4 adds: cannon muzzle puffs (throttled), a launch ring and puff burst for the
+// champion, plastic-chip pops at unit clashes (throttled), paper-firecracker bomber
+// blasts with a soft flash ring, the barrage's paper muzzle flare and confetti line, a
+// victory shower of confetti and curly paper streamers over the enemy base and a subdued
+// dust collapse on the player fort (both timed emitters), and puffs for the marble's
+// dust trail and the paratroopers' landings.
 //
-// Cost: every effect lives in fixed typed-array pools (396 slots in all) drawn as seven
-// thin-instance batches, so the whole system is at most 7 draw calls (a batch with
-// nothing live is hidden and costs none). Spawning never allocates, update() never
-// allocates, and nothing here reads input or moves a camera: the active camera's view
-// matrix is only READ to turn puffs and sparks towards it.
+// Cost: every effect lives in fixed typed-array pools (560 slots in all) drawn as nine
+// thin-instance batches, so the whole system is at most 9 draw calls, and usually far
+// fewer (a batch with nothing live is hidden and costs none). Spawning never allocates,
+// update() never allocates, and nothing here reads input or moves a camera: the active
+// camera's view matrix is only READ to turn puffs, sparks and flares towards it.
+// On the 'low' tier bursts and emitters spawn ~60% of the bits.
 //
 //   batch      mesh (tris)                      material
 //   darts      foam dart + suction cup (160)    PBR foam plastic, vertex colours
@@ -17,17 +24,20 @@
 //   puffs      soft fluff sprite (2)            unlit alpha, generated fluff texture
 //   sparks     streak sprite (2)                unlit additive, radial texture
 //   rings      floor ring (2)                   unlit alpha, generated ring texture
+//   streamers  curled paper ribbon (~48)        PBR paper (shares confetti's material)
+//   flares     paper starburst (56)             unlit alpha, vertex colours
 //
 // API (index.ts): new Effects(scene, look?) then gateBurst / dust / dart / debris /
-// gateShards / missPuff / phaseRing / baseHit, update(dt) once per frame, clear() on a
-// level reload, dispose() with the scene. `root` holds every mesh (leave it at the origin
+// gateShards / missPuff / phaseRing / baseHit, and (Milestone 4) muzzlePuff /
+// championLaunched / clash / blast / barrage / victory / defeat / trailPuff, update(dt)
+// once per frame, clear() on a level reload, dispose() with the scene. `root` holds every mesh (leave it at the origin
 // in the game). No shadows are cast: the bits are small and short-lived.
 import '@babylonjs/core/Meshes/thinInstanceMesh';
 import type { Scene } from '@babylonjs/core/scene';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
-import type { Material } from '@babylonjs/core/Materials/material';
+import { Material } from '@babylonjs/core/Materials/material';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { RawTexture } from '@babylonjs/core/Materials/Textures/rawTexture';
 import { Texture } from '@babylonjs/core/Materials/Textures/texture';
@@ -37,10 +47,14 @@ import type { Look } from './look/index.ts';
 import { HEX, lin, srgb } from './look/palette.ts';
 import { plasticMaterial } from './look/materials.ts';
 import { lathe, place, roundedBox } from './look/geometry.ts';
+import { flareGeometry } from './models/ultimates.ts';
 import { radialTexture } from './look/textures.ts';
 import {
+  Cooldown,
   KeyedThrottle,
   ParticlePool,
+  TimedEmitters,
+  emitCount,
   TracerPool,
   dartHeight,
   dartPitch,
@@ -54,12 +68,15 @@ import {
 // ---------- tuning ----------
 const TRACERS = 24; // darts in flight
 const FALLEN = 24; // darts bouncing off after impact
-const SOLIDS = 110; // plastic shards, chips and mini-blocks
-const CONFETTI = 150; // paper confetti and torn paper
-const PUFFS = 48; // fluff / dust / squash puffs
-const SPARKS = 32; // boss-phase sparks
-const RINGS = 8; // floor rings
-export const FX_POOL_TOTAL = TRACERS + FALLEN + SOLIDS + CONFETTI + PUFFS + SPARKS + RINGS; // 396
+const SOLIDS = 140; // plastic shards, chips and mini-blocks
+const CONFETTI = 220; // paper confetti and torn paper
+const PUFFS = 64; // fluff / dust / squash / muzzle puffs
+const SPARKS = 32; // boss-phase, launch and blast sparks
+const RINGS = 12; // floor rings
+const STREAMERS = 40; // victory paper streamers
+const FLARES = 4; // barrage muzzle flares
+const EMITTERS = 4; // victory / defeat emitters (not drawn themselves)
+export const FX_POOL_TOTAL = TRACERS + FALLEN + SOLIDS + CONFETTI + PUFFS + SPARKS + RINGS + STREAMERS + FLARES; // 560
 
 const DART_TIME = 0.2;
 const DART_FROM_Y = 2.6; // the tan dart shooter on top of a block tower
@@ -68,6 +85,13 @@ const DART_LIFT = 0.35; // extra height at mid-flight (a slight lob)
 const DART_SPIN = 22; // rad/s roll in flight
 const DART_SCALE = 1.25; // a touch over toy scale so darts read on a phone
 const DUST_INTERVAL = 0.07; // clash events arrive by the dozen; throttle the puffs
+const CLASH_INTERVAL = 0.05; // chip pops at clashes
+const MUZZLE_INTERVAL = 0.12; // cannon shots arrive at up to ~10 a second
+const FLARE_TIME = 0.42;
+const VICTORY_TIME = 2.6;
+const DEFEAT_TIME = 1.6;
+const VICTORY = 0;
+const DEFEAT = 1;
 const GRAVITY = 16;
 
 // Solid shapes (one pool, two meshes).
@@ -156,6 +180,8 @@ export class Effects {
   private readonly confetti = new ParticlePool(CONFETTI, { drag: 2.4, groundY: 0.03 });
   private readonly puffs = new ParticlePool(PUFFS, { drag: 2.5, groundY: 0.12 });
   private readonly sparks = new ParticlePool(SPARKS, { drag: 1.1, bounce: 0.35, groundY: 0.05 });
+  private readonly streamers = new ParticlePool(STREAMERS, { drag: 1.6, groundY: 0.03 });
+  private readonly emitters = new TimedEmitters(EMITTERS);
 
   // Per-slot extras: rotation (yaw, pitch, roll), spin rates, shape aspect, alpha peak.
   private readonly fallenRot = new Float32Array(FALLEN * 3);
@@ -169,6 +195,17 @@ export class Effects {
   private readonly puffGrow = new Float32Array(PUFFS);
   private readonly puffAlpha = new Float32Array(PUFFS);
   private readonly puffSpin = new Float32Array(PUFFS);
+  private readonly streamRot = new Float32Array(STREAMERS * 3);
+  private readonly streamSpin = new Float32Array(STREAMERS * 3);
+
+  // Flares: fixed slots (billboarded starbursts).
+  private readonly flareX = new Float32Array(FLARES);
+  private readonly flareY = new Float32Array(FLARES);
+  private readonly flareZ = new Float32Array(FLARES);
+  private readonly flareLife = new Float32Array(FLARES);
+  private readonly flareSize = new Float32Array(FLARES);
+  private readonly flareSpin = new Float32Array(FLARES);
+  private nextFlare = 0;
 
   // Rings: fixed slots.
   private readonly ringX = new Float32Array(RINGS);
@@ -186,6 +223,8 @@ export class Effects {
   private readonly gateBig = new KeyedThrottle(8, 0.4);
   private readonly gateTrickle = new KeyedThrottle(8, 0.09);
   private readonly baseChips = new KeyedThrottle(2, 0.12);
+  private readonly muzzleCd = new Cooldown(MUZZLE_INTERVAL);
+  private readonly clashCd = new Cooldown(CLASH_INTERVAL);
 
   // Camera axes for sprites (world space), refreshed each update from the active camera.
   private rX = 1;
@@ -206,6 +245,8 @@ export class Effects {
   private readonly puffBatch: FxBatch;
   private readonly sparkBatch: FxBatch;
   private readonly ringBatch: FxBatch;
+  private readonly streamerBatch: FxBatch;
+  private readonly flareBatch: FxBatch;
   private readonly materials: Material[] = [];
   private readonly textures: Texture[] = [];
 
@@ -225,6 +266,12 @@ export class Effects {
     trapDark: rgb(HEX.gateTrapDark),
     paper: rgb(HEX.paper),
     tinRed: rgb(HEX.tinRed),
+    red: rgb(HEX.toyRed),
+    redDark: rgb('#a8261e'),
+    blue: rgb(HEX.toyBlue),
+    purple: rgb(HEX.toyPurple),
+    teal: rgb(HEX.toyTeal),
+    orange: rgb(HEX.toyOrange),
   };
 
   // Sprite colours (sRGB): puffs, rings, sparks.
@@ -239,6 +286,10 @@ export class Effects {
     gold: srgbRgb('#fff0b8'),
     sparkBrass: srgbRgb(HEX.brass),
     tinRed: srgbRgb('#ff6a4a'),
+    cream: srgbRgb('#fff1d6'),
+    flash: srgbRgb('#ffe2a8'),
+    dustGrey: srgbRgb('#bdb6ad'),
+    smoke: srgbRgb('#e9e2d6'),
   };
 
   constructor(scene: Scene, look?: Look) {
@@ -271,6 +322,14 @@ export class Effects {
     this.puffBatch = new FxBatch(meshFrom(scene, 'fxPuffs', spriteGeometry(true)), puffMat, PUFFS, this.root);
     this.sparkBatch = new FxBatch(meshFrom(scene, 'fxSparks', spriteGeometry(false)), sparkMat, SPARKS, this.root);
     this.ringBatch = new FxBatch(meshFrom(scene, 'fxRings', ringGeometry()), ringMat, RINGS, this.root);
+    this.streamerBatch = new FxBatch(
+      meshFrom(scene, 'fxStreamers', streamerGeometry()),
+      paperMat,
+      STREAMERS,
+      this.root,
+    );
+    const flareMat = this.own(flareMaterial(scene));
+    this.flareBatch = new FxBatch(meshFrom(scene, 'fxFlares', flareGeometry()), flareMat, FLARES, this.root);
   }
 
   private own<T extends Material>(m: T): T {
@@ -559,6 +618,480 @@ export class Effects {
     this.puff(x, 0.7, z, 0, 0.6, 0, 0.45, 1.4, 0.6, f.r, f.g, f.b, 0.6);
   }
 
+  // ---------- Milestone 4 spawners ----------
+
+  // A cannon shot: a small cream puff out of the muzzle at world (x, y, z), throttled.
+  muzzlePuff(x: number, y: number, z: number): void {
+    if (!this.muzzleCd.ready()) return;
+    const c = this.S.cream;
+    for (let i = 0; i < 2; i++)
+      this.puff(
+        x + this.r(-0.12, 0.12),
+        y + this.r(-0.05, 0.08),
+        z + 0.1,
+        this.r(-0.4, 0.4),
+        this.r(0.2, 0.6),
+        this.r(2.2, 3.2),
+        0.32,
+        2.1,
+        this.r(0.32, 0.42),
+        c.r,
+        c.g,
+        c.b,
+        0.75,
+      );
+  }
+
+  // The champion leaves the cannon at (x, z): a cream-and-gold ring rolls out over the
+  // rug, a burst of fluff puffs and a few brass sparks.
+  championLaunched(x: number, z: number): void {
+    this.ring(x, z, 0.6, 3.4, 1, 0.55, this.S.gold, 1.25, 0.95);
+    this.ring(x, z, 0.4, 2.2, 1, 0.75, this.S.cream, 1, 0.7);
+    const f = this.S.fluff;
+    const n = this.count(10);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + this.r(-0.2, 0.2);
+      const sp = this.r(2.2, 3.4);
+      this.puff(
+        x + Math.cos(a) * 0.5,
+        this.r(0.25, 0.5),
+        z + Math.sin(a) * 0.5,
+        Math.cos(a) * sp,
+        this.r(0.3, 0.8),
+        Math.sin(a) * sp,
+        0.6,
+        2,
+        this.r(0.55, 0.75),
+        f.r,
+        f.g,
+        f.b,
+        0.85,
+      );
+    }
+    const sb = this.S.sparkBrass;
+    for (let i = 0; i < this.count(8); i++) {
+      const a = this.rand() * Math.PI * 2;
+      this.sparks.spawn(
+        x,
+        this.r(0.6, 1.1),
+        z,
+        Math.cos(a) * this.r(3, 5),
+        this.r(2.5, 4.5),
+        Math.sin(a) * this.r(3, 5),
+        this.r(0.4, 0.6),
+        this.r(0.1, 0.14),
+        sb.r * 2.2,
+        sb.g * 2.2,
+        sb.b * 2.2,
+        9,
+      );
+    }
+  }
+
+  // Units clashed (and some died) at (x, z): a pop of tiny green and tan plastic chips with
+  // a wisp of fluff, throttled so a melee reads without flooding the pools. Also keeps
+  // the soft dust puff of dust().
+  clash(x: number, z: number): void {
+    this.dust(x, z);
+    if (!this.clashCd.ready()) return;
+    const C = this.C;
+    const n = this.look?.quality === 'low' ? 2 : 3;
+    for (let i = 0; i < n; i++) {
+      const a = this.rand() * Math.PI * 2;
+      const sp = this.r(1, 2.2);
+      const c = i % 2 === 0 ? (this.rand() < 0.5 ? C.green : C.greenLight) : this.rand() < 0.5 ? C.tan : C.tanLight;
+      this.solid(
+        SHARD,
+        x + this.r(-0.2, 0.2),
+        this.r(0.35, 0.6),
+        z + this.r(-0.2, 0.2),
+        Math.cos(a) * sp,
+        this.r(2.6, 4),
+        Math.sin(a) * sp,
+        this.r(0.55, 0.8),
+        this.r(0.07, 0.11),
+        c,
+      );
+    }
+  }
+
+  // A bomber's death blast at (x, z) of the given radius: a soft warm flash ring, a burst
+  // of red paper-firecracker scraps and cream paper, plastic chips, sparks and a puff.
+  blast(x: number, z: number, radius: number): void {
+    const R = Math.max(0.5, radius);
+    const C = this.C;
+    this.ring(x, z, R * 0.3, R * 2.1, 1, 0.38, this.S.flash, 1.7, 0.95);
+    this.ring(x, z, R * 0.2, R * 1.4, 1, 0.6, this.S.trap, 1.1, 0.55);
+    const n = this.count(16);
+    for (let i = 0; i < n; i++) {
+      const a = this.rand() * Math.PI * 2;
+      const sp = this.r(2, 4.5) * Math.min(1.6, R);
+      const pick = this.rand();
+      const c = pick < 0.45 ? C.red : pick < 0.7 ? C.redDark : pick < 0.9 ? C.paper : C.gold;
+      const sz = this.r(0.16, 0.28);
+      this.confettiPiece(
+        x + Math.cos(a) * 0.2,
+        this.r(0.4, 0.9),
+        z + Math.sin(a) * 0.2,
+        Math.cos(a) * sp,
+        this.r(4, 7),
+        Math.sin(a) * sp,
+        this.r(1, 1.5),
+        sz,
+        this.r(0.5, 1),
+        this.r(0.5, 1.2),
+        c,
+        1,
+      );
+    }
+    for (let i = 0; i < this.count(6); i++) {
+      const a = this.rand() * Math.PI * 2;
+      const sp = this.r(1.5, 3.2);
+      this.solid(
+        SHARD,
+        x,
+        this.r(0.4, 0.8),
+        z,
+        Math.cos(a) * sp,
+        this.r(3, 5.5),
+        Math.sin(a) * sp,
+        this.r(0.8, 1.2),
+        this.r(0.1, 0.16),
+        i % 2 ? C.green : C.greenDark,
+      );
+    }
+    const y = this.S.flash;
+    for (let i = 0; i < this.count(8); i++) {
+      const a = this.rand() * Math.PI * 2;
+      const sp = this.r(4, 7);
+      this.sparks.spawn(
+        x,
+        this.r(0.4, 0.8),
+        z,
+        Math.cos(a) * sp,
+        this.r(2, 4),
+        Math.sin(a) * sp,
+        this.r(0.3, 0.5),
+        this.r(0.1, 0.15),
+        y.r * 2,
+        y.g * 2,
+        y.b * 2,
+        9,
+      );
+    }
+    const sm = this.S.smoke;
+    for (let i = 0; i < 2; i++)
+      this.puff(
+        x + this.r(-0.3, 0.3),
+        this.r(0.4, 0.7),
+        z + this.r(-0.3, 0.3),
+        this.r(-0.5, 0.5),
+        0.8,
+        this.r(-0.5, 0.5),
+        0.7,
+        2.2,
+        R * 0.7,
+        sm.r,
+        sm.g,
+        sm.b,
+        0.8,
+      );
+  }
+
+  // The barrage ultimate: the paper muzzle flare at the cannon's muzzle (mx, my, mz) and a
+  // line of confetti and puffs across the lane where the volley lands (z, half-width w).
+  barrage(mx: number, my: number, mz: number, z: number, w: number): void {
+    this.flare(mx, my + 0.2, mz + 0.5, 2.1);
+    const sm = this.S.cream;
+    for (let i = 0; i < this.count(5); i++)
+      this.puff(
+        mx + this.r(-0.3, 0.3),
+        my,
+        mz + 0.3,
+        this.r(-1.5, 1.5),
+        this.r(0.5, 1.2),
+        this.r(3, 5),
+        0.5,
+        2.4,
+        this.r(0.5, 0.75),
+        sm.r,
+        sm.g,
+        sm.b,
+        0.85,
+      );
+    const C = this.C;
+    const width = Math.max(1, w);
+    const n = this.count(36);
+    for (let i = 0; i < n; i++) {
+      const pick = this.rand();
+      const c = pick < 0.35 ? C.gold : pick < 0.55 ? C.red : pick < 0.75 ? C.blue : C.paper;
+      const px = this.r(-1, 1) * width;
+      const strip = this.rand() < 0.3;
+      this.confettiPiece(
+        px,
+        this.r(0.8, 1.6),
+        z + this.r(-0.6, 0.6),
+        this.r(-1, 1),
+        this.r(4, 7.5),
+        this.r(-1, 1.5),
+        this.r(1.4, 2),
+        this.r(0.2, 0.28),
+        strip ? 0.38 : 1,
+        strip ? 1.5 : 1,
+        c,
+        pick < 0.35 ? 1.15 : 1,
+      );
+    }
+    this.ring(0, z, width * 0.4, width * 2.2, 0.45, 0.6, this.S.gold, 1.2, 0.8);
+  }
+
+  // Victory over the enemy base at (x, z), `width` wide: rings and sparks now, then a
+  // couple of seconds of confetti raining down and paper streamers popping up.
+  victory(x: number, z: number, width: number): void {
+    const w = Math.max(2, width);
+    this.ring(x, z, w * 0.2, w * 1.2, 1, 0.9, this.S.gold, 1.3, 1);
+    this.ring(x, z, w * 0.1, w * 0.8, 1, 1.2, this.S.cream, 1.1, 0.8);
+    const sb = this.S.sparkBrass;
+    for (let i = 0; i < this.count(16); i++) {
+      const a = (i / 16) * Math.PI * 2;
+      const sp = this.r(4, 7);
+      this.sparks.spawn(
+        x,
+        this.r(2, 3),
+        z,
+        Math.cos(a) * sp,
+        this.r(3, 6),
+        Math.sin(a) * sp * 0.7,
+        this.r(0.6, 0.9),
+        this.r(0.12, 0.18),
+        sb.r * 2.3,
+        sb.g * 2.3,
+        sb.b * 2.3,
+        9,
+      );
+    }
+    this.emitters.start(VICTORY, x, z, w, VICTORY_TIME);
+  }
+
+  // Defeat at the player fort (x, z), `width` wide: a subdued grey ring and a short,
+  // low collapse of dust rolling out from the walls, with a few green chips.
+  defeat(x: number, z: number, width: number): void {
+    const w = Math.max(2, width);
+    this.ring(x, z, w * 0.3, w * 1.1, 0.8, 1.1, this.S.dustGrey, 0.9, 0.5);
+    const C = this.C;
+    for (let i = 0; i < this.count(8); i++) {
+      const a = this.rand() * Math.PI * 2;
+      this.solid(
+        SHARD,
+        x + this.r(-0.5, 0.5) * w,
+        this.r(1, 2),
+        z + this.r(-1, 1),
+        Math.cos(a) * 1.5,
+        this.r(1, 3),
+        Math.sin(a) * 1.5,
+        this.r(1.4, 1.9),
+        this.r(0.14, 0.24),
+        i % 2 ? C.green : C.greenDark,
+      );
+    }
+    this.emitters.start(DEFEAT, x, z, w, DEFEAT_TIME);
+  }
+
+  // One soft dust puff on the rug (the marble's trail, a paratrooper landing).
+  trailPuff(x: number, z: number, size: number): void {
+    const f = this.S.fluff;
+    const a = this.rand() * Math.PI * 2;
+    this.puff(
+      x + Math.cos(a) * 0.2,
+      0.2,
+      z + Math.sin(a) * 0.2,
+      Math.cos(a) * 0.6,
+      this.r(0.2, 0.5),
+      Math.sin(a) * 0.6,
+      0.6,
+      2,
+      size * this.r(0.8, 1.1),
+      f.r,
+      f.g,
+      f.b,
+      0.75,
+    );
+  }
+
+  private flare(x: number, y: number, z: number, size: number): void {
+    const i = this.nextFlare;
+    this.nextFlare = (i + 1) % FLARES;
+    this.flareX[i] = x;
+    this.flareY[i] = y;
+    this.flareZ[i] = z;
+    this.flareLife[i] = FLARE_TIME;
+    this.flareSize[i] = size;
+    this.flareSpin[i] = this.rand() * Math.PI;
+  }
+
+  private streamer(x: number, y: number, z: number, vx: number, vy: number, vz: number, c: Rgb): void {
+    const s = this.streamers.spawn(x, y, z, vx, vy, vz, this.r(1.8, 2.4), this.r(0.75, 1.05), c.r, c.g, c.b, 7);
+    const o = s * 3;
+    this.streamRot[o] = this.rand() * Math.PI * 2;
+    this.streamRot[o + 1] = this.r(-0.5, 0.5);
+    this.streamRot[o + 2] = this.r(-0.5, 0.5);
+    this.streamSpin[o] = this.r(-6, 6);
+    this.streamSpin[o + 1] = this.r(-2, 2);
+    this.streamSpin[o + 2] = this.r(-3, 3);
+  }
+
+  // Party colours for the victory shower: never the armies' green or tan.
+  private partyColor(): Rgb {
+    const C = this.C;
+    const p = this.rand();
+    return p < 0.3
+      ? C.gold
+      : p < 0.45
+        ? C.red
+        : p < 0.6
+          ? C.blue
+          : p < 0.72
+            ? C.purple
+            : p < 0.84
+              ? C.teal
+              : p < 0.92
+                ? C.orange
+                : C.paper;
+  }
+
+  private stepEmitters(dt: number): void {
+    const e = this.emitters;
+    e.step(dt);
+    const low = this.look?.quality === 'low' ? 0.6 : 1;
+    for (let i = 0; i < e.capacity; i++) {
+      if (!e.isLive(i)) continue;
+      const k = e.progress(i);
+      const x = e.x[i],
+        z = e.z[i],
+        w = e.width[i];
+      if (e.kind[i] === VICTORY) {
+        const n = emitCount(e.acc, i, 70 * low * (1 - k * 0.6), dt);
+        for (let j = 0; j < n; j++) {
+          if (j % 5 === 4) {
+            // A streamer pops up from a corner of the base and floats down.
+            const side = this.rand() < 0.5 ? -1 : 1;
+            this.streamer(
+              x + side * w * this.r(0.3, 0.55),
+              this.r(1.5, 2.5),
+              z + this.r(-1, 1),
+              side * this.r(0.5, 2),
+              this.r(6, 9),
+              this.r(-2, -0.5),
+              this.partyColor(),
+            );
+          } else {
+            const strip = this.rand() < 0.3;
+            this.confettiPiece(
+              x + this.r(-0.65, 0.65) * w,
+              this.r(5.5, 8),
+              z + this.r(-2, 2),
+              this.r(-1, 1),
+              this.r(-1, 0.5),
+              this.r(-1, 1),
+              this.r(2, 2.8),
+              this.r(0.22, 0.3),
+              strip ? 0.38 : 1,
+              strip ? 1.5 : 1,
+              this.partyColor(),
+              1.1,
+            );
+          }
+        }
+      } else {
+        const n = emitCount(e.acc, i, 16 * low * (1 - k), dt);
+        const c = this.S.dustGrey;
+        for (let j = 0; j < n; j++) {
+          const a = this.rand() * Math.PI * 2;
+          const px = x + this.r(-0.5, 0.5) * w;
+          this.puff(
+            px,
+            this.r(0.3, 1.4) * (1 - k * 0.5),
+            z + this.r(-1.2, 1.2),
+            Math.cos(a) * this.r(0.8, 1.8),
+            this.r(-0.4, 0.2),
+            Math.sin(a) * this.r(0.4, 1),
+            1.1,
+            2.4,
+            this.r(0.8, 1.3),
+            c.r,
+            c.g,
+            c.b,
+            0.6,
+          );
+        }
+      }
+    }
+  }
+
+  private stepStreamers(dt: number): void {
+    const p = this.streamers;
+    p.step(dt);
+    const b = this.streamerBatch;
+    b.count = 0;
+    const rot = this.streamRot;
+    const spin = this.streamSpin;
+    for (let i = 0; i < p.capacity; i++) {
+      if (!p.isLive(i)) continue;
+      const o = i * 3;
+      if (p.grounded(i)) {
+        rot[o + 1] += (Math.PI / 2 - rot[o + 1]) * Math.min(1, dt * 10); // lie down on the rug
+        rot[o + 2] += (0 - rot[o + 2]) * Math.min(1, dt * 10);
+      } else {
+        rot[o] += spin[o] * dt;
+        rot[o + 1] += spin[o + 1] * dt;
+        rot[o + 2] += spin[o + 2] * dt;
+        p.vx[i] += Math.sin(rot[o] * 0.8) * 1.6 * dt;
+      }
+      const k = p.remaining(i);
+      const s = p.size[i] * (k < 0.15 ? k / 0.15 : 1);
+      const j = b.next();
+      if (j < 0) break;
+      writeTRS(b.m, j * 16, p.px[i], p.py[i], p.pz[i], s, s, s, rot[o], rot[o + 1], rot[o + 2]);
+      b.color(j, p.r[i], p.g[i], p.b[i], 1);
+    }
+    b.commit();
+  }
+
+  private stepFlares(dt: number): void {
+    const b = this.flareBatch;
+    b.count = 0;
+    for (let i = 0; i < FLARES; i++) {
+      if (this.flareLife[i] <= 0) continue;
+      this.flareLife[i] -= dt;
+      if (this.flareLife[i] <= 0) continue;
+      const k = this.flareLife[i] / FLARE_TIME; // 1 → 0
+      const age = 1 - k;
+      // Pops out fast with a little overshoot, then shrinks and fades.
+      const pop = age < 0.25 ? 0.45 + (age / 0.25) * 0.75 : 1.2 - (age - 0.25) * 0.5;
+      const s = this.flareSize[i] * pop;
+      const j = b.next();
+      if (j < 0) break;
+      writeBillboard(
+        b.m,
+        j * 16,
+        this.flareX[i],
+        this.flareY[i],
+        this.flareZ[i],
+        s,
+        s,
+        this.flareSpin[i] + age * 0.8,
+        this.rX,
+        this.rY,
+        this.rZ,
+        this.uX,
+        this.uY,
+        this.uZ,
+      );
+      b.color(j, 1.15, 1.1, 1.05, fxEnvelope(k, 0.05, 0.55));
+    }
+    b.commit();
+  }
+
   // ---------- spawn helpers ----------
 
   private ring(
@@ -714,7 +1247,10 @@ export class Effects {
     this.gateBig.tick(dt);
     this.gateTrickle.tick(dt);
     this.baseChips.tick(dt);
+    this.muzzleCd.tick(dt);
+    this.clashCd.tick(dt);
     this.readCamera();
+    this.stepEmitters(dt);
 
     this.stepDarts(dt);
     this.stepSolids(dt);
@@ -722,6 +1258,8 @@ export class Effects {
     this.stepPuffs(dt);
     this.stepSparks(dt);
     this.stepRings(dt);
+    this.stepStreamers(dt);
+    this.stepFlares(dt);
   }
 
   private readCamera(): void {
@@ -1011,6 +1549,11 @@ export class Effects {
     this.confetti.clear();
     this.puffs.clear();
     this.sparks.clear();
+    this.streamers.clear();
+    this.emitters.clear();
+    this.flareLife.fill(0);
+    this.muzzleCd.clear();
+    this.clashCd.clear();
     this.ringLife.fill(0);
     this.gateBig.clear();
     this.gateTrickle.clear();
@@ -1024,6 +1567,8 @@ export class Effects {
       this.puffBatch,
       this.sparkBatch,
       this.ringBatch,
+      this.streamerBatch,
+      this.flareBatch,
     ]) {
       b.count = 0;
       b.commit();
@@ -1034,6 +1579,7 @@ export class Effects {
   liveCount(): number {
     let rings = 0;
     for (let i = 0; i < RINGS; i++) if (this.ringLife[i] > 0) rings++;
+    for (let i = 0; i < FLARES; i++) if (this.flareLife[i] > 0) rings++;
     let darts = 0;
     for (let i = 0; i < TRACERS; i++) if (this.tracers.isLive(i)) darts++;
     return (
@@ -1043,7 +1589,8 @@ export class Effects {
       this.solids.liveCount() +
       this.confetti.liveCount() +
       this.puffs.liveCount() +
-      this.sparks.liveCount()
+      this.sparks.liveCount() +
+      this.streamers.liveCount()
     );
   }
 
@@ -1066,6 +1613,21 @@ function spriteMaterial(scene: Scene, name: string, tex: Texture, additive: bool
   m.backFaceCulling = false;
   m.disableDepthWrite = true;
   if (additive) m.alphaMode = Constants.ALPHA_ADD;
+  m.freeze();
+  return m;
+}
+
+// The barrage flare: unlit paper starburst, vertex colours times the instance colour,
+// alpha from the instance colour (alpha-blended, no depth write).
+function flareMaterial(scene: Scene): StandardMaterial {
+  const m = new StandardMaterial('fxFlareMat', scene);
+  m.disableLighting = true;
+  m.diffuseColor = Color3.Black();
+  m.specularColor = Color3.Black();
+  m.emissiveColor = Color3.White();
+  m.backFaceCulling = false;
+  m.disableDepthWrite = true;
+  m.transparencyMode = Material.MATERIAL_ALPHABLEND;
   m.freeze();
   return m;
 }
@@ -1177,6 +1739,40 @@ function confettiGeometry(): VertexData {
   vd.indices = indices;
   vd.normals = normals;
   vd.uvs = [0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1];
+  return vd;
+}
+
+// A curly paper streamer, ~1 long along +Y: a thin strip twisting along a loose helix
+// (both sides lit, so it flickers as it tumbles).
+function streamerGeometry(): VertexData {
+  const N = 12;
+  const positions: number[] = [];
+  const indices: number[] = [];
+  for (let i = 0; i <= N; i++) {
+    const t = i / N;
+    const a = t * Math.PI * 3;
+    const cx = Math.cos(a) * 0.12;
+    const cz = Math.sin(a) * 0.12;
+    const w = 0.05;
+    positions.push(
+      cx - Math.sin(a) * w,
+      t - 0.5,
+      cz + Math.cos(a) * w,
+      cx + Math.sin(a) * w,
+      t - 0.5,
+      cz - Math.cos(a) * w,
+    );
+    if (i < N) {
+      const b = i * 2;
+      indices.push(b, b + 1, b + 3, b, b + 3, b + 2);
+    }
+  }
+  const normals: number[] = [];
+  VertexData.ComputeNormals(positions, indices, normals);
+  const vd = new VertexData();
+  vd.positions = positions;
+  vd.indices = indices;
+  vd.normals = normals;
   return vd;
 }
 

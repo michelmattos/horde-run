@@ -80,15 +80,15 @@ export interface ChampionMeshes {
   trim: Mesh | null;
 }
 
-// ---------- small geometry helpers ----------
-type V3 = readonly [number, number, number];
-type Prof = [number, number][];
-interface Lod {
+// ---------- small geometry helpers (exported for championTank / championDrummer) ----------
+export type V3 = readonly [number, number, number];
+export type Prof = [number, number][];
+export interface Lod {
   hi: boolean; // full detail (false = the sync fallback)
 }
 
 // Non-uniform scale with correct normals (n / s, renormalised).
-function scale3(vd: VertexData, sx: number, sy: number, sz: number): VertexData {
+export function scale3(vd: VertexData, sx: number, sy: number, sz: number): VertexData {
   const p = vd.positions!;
   const n = vd.normals!;
   for (let i = 0; i < p.length; i += 3) {
@@ -108,7 +108,7 @@ function scale3(vd: VertexData, sx: number, sy: number, sz: number): VertexData 
 
 // Rotation+translation that maps local +Y onto the direction a->b, origin onto a, and
 // local +X as close as possible to `out` (used to aim sleeve chevrons outward).
-function frame(a: V3, b: V3, out: V3 = [1, 0, 0]): Matrix {
+export function frame(a: V3, b: V3, out: V3 = [1, 0, 0]): Matrix {
   let dx = b[0] - a[0],
     dy = b[1] - a[1],
     dz = b[2] - a[2];
@@ -137,16 +137,16 @@ function frame(a: V3, b: V3, out: V3 = [1, 0, 0]): Matrix {
   return Matrix.FromValues(ux, uy, uz, 0, dx, dy, dz, 0, wx, wy, wz, 0, a[0], a[1], a[2], 1);
 }
 
-function dist(a: V3, b: V3): number {
+export function dist(a: V3, b: V3): number {
   return Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
 }
 
-function lerp3(a: V3, b: V3, t: number): V3 {
+export function lerp3(a: V3, b: V3, t: number): V3 {
   return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 }
 
 // A tapered capsule from a (radius ra) to b (radius rb).
-function limb(a: V3, b: V3, ra: number, rb: number, tess: number, lod: Lod): VertexData {
+export function limb(a: V3, b: V3, ra: number, rb: number, tess: number, lod: Lod): VertexData {
   const L = dist(a, b);
   // The ends are rounded cones: the joints are capped by knee/elbow/shoulder spheres,
   // the torso, boots and hands.
@@ -171,7 +171,7 @@ function limb(a: V3, b: V3, ra: number, rb: number, tess: number, lod: Lod): Ver
   return vd;
 }
 
-function sphereVD(r: number, tess: number, rings: number): VertexData {
+export function sphereVD(r: number, tess: number, rings: number): VertexData {
   const prof: Prof = [];
   for (let i = 0; i <= rings; i++) {
     const t = -Math.PI / 2 + (i / rings) * Math.PI;
@@ -182,18 +182,32 @@ function sphereVD(r: number, tess: number, rings: number): VertexData {
   return lathe(prof, tess);
 }
 
-function sphere(c: V3, r: number, tess: number, rings: number, s: V3 = [1, 1, 1]): VertexData {
+export function sphere(c: V3, r: number, tess: number, rings: number, s: V3 = [1, 1, 1]): VertexData {
   const vd = scale3(sphereVD(r, tess, rings), s[0], s[1], s[2]);
   return place(vd, { x: c[0], y: c[1], z: c[2] });
 }
 
-function box(w: number, h: number, d: number, r: number, seg: number, t: Parameters<typeof place>[1]): VertexData {
+export function box(
+  w: number,
+  h: number,
+  d: number,
+  r: number,
+  seg: number,
+  t: Parameters<typeof place>[1],
+): VertexData {
   return place(roundedBox(w, h, d, r, seg), t);
 }
 
 // A soft "pillow" box (n-sided lathe, flat faces on the axes): w x h x d, centred,
 // bevelled top and bottom, smooth corners. 4 sides = 32 triangles, 8 sides = 64.
-function pillow(w: number, h: number, d: number, t: Parameters<typeof place>[1], bevel = 0.25, sides = 4): VertexData {
+export function pillow(
+  w: number,
+  h: number,
+  d: number,
+  t: Parameters<typeof place>[1],
+  bevel = 0.25,
+  sides = 4,
+): VertexData {
   const hh = h / 2;
   const b = Math.min(hh * 0.9, bevel * Math.min(w, d));
   const vd = lathe(
@@ -230,12 +244,12 @@ const SHADE = {
   rocket: 0.8,
 } as const;
 
-function grey(vd: VertexData, g: number): VertexData {
+export function grey(vd: VertexData, g: number): VertexData {
   return paint(vd, [g, g, g]);
 }
 
 // Paints a lathe by profile index (the lathe keeps every profile vertex per segment).
-function greyByProfile(vd: VertexData, shades: readonly number[]): VertexData {
+export function greyByProfile(vd: VertexData, shades: readonly number[]): VertexData {
   const n = shades.length;
   const nv = vd.positions!.length / 3;
   const colors = new Float32Array(nv * 4);

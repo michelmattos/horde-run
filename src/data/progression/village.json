@@ -1,0 +1,39 @@
+{
+  "buildings": [
+    {
+      "id": "barracks",
+      "name": "Barracks",
+      "text": "Bunks for reserve troops who join the start of every battle.",
+      "perk": { "type": "startCrowd", "perTier": 4 },
+      "tiers": [{ "cost": 60 }, { "cost": 150, "after": "1-5" }, { "cost": 300, "after": "1-10" }]
+    },
+    {
+      "id": "walls",
+      "name": "Block Walls",
+      "text": "Building-block ramparts that toughen your base.",
+      "perk": { "type": "baseHp", "perTier": 0.05 },
+      "tiers": [{ "cost": 60 }, { "cost": 150, "after": "1-5" }, { "cost": 300, "after": "1-10" }]
+    },
+    {
+      "id": "workshop",
+      "name": "Workshop",
+      "text": "Tinkerers wind up your champion a little faster.",
+      "perk": { "type": "championCharge", "perTier": 0.95 },
+      "tiers": [{ "cost": 60 }, { "cost": 150, "after": "1-5" }, { "cost": 300, "after": "1-10" }]
+    },
+    {
+      "id": "garden",
+      "name": "Garden",
+      "text": "Paper flowers and a sandbox. Pure decoration.",
+      "perk": { "type": "decor" },
+      "tiers": [{ "cost": 40 }, { "cost": 100, "after": "1-5" }, { "cost": 200, "after": "1-10" }]
+    },
+    {
+      "id": "flagpole",
+      "name": "Flagpole",
+      "text": "Raise your colours higher with every tier. Pure decoration.",
+      "perk": { "type": "decor" },
+      "tiers": [{ "cost": 30 }, { "cost": 80, "after": "1-5" }, { "cost": 160, "after": "1-10" }]
+    }
+  ]
+}

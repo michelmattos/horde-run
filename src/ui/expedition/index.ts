@@ -7,7 +7,7 @@
 import type { UpgradeDef } from '../../contracts.ts';
 import { mapIcon, nextIcon, playIcon, retryIcon, tickIcon } from '../icons.ts';
 import { formatTime } from '../uiLogic.ts';
-import { button, button2, el, goldChip, hpBar, hpChip, iconSpan, ownedIcon, upgradeCard } from './dom.ts';
+import { button, button2, coinsRow, el, goldChip, hpBar, hpChip, iconSpan, ownedIcon, upgradeCard } from './dom.ts';
 import { backSvg, coinSvg, heartSvg, nodeIconSvg } from './icons.ts';
 import { countUp, formatDailyDate, formatGold, formatHp, healPreview, priceState } from './layout.ts';
 import { createMapScreen } from './mapScreen.ts';
@@ -332,6 +332,7 @@ export function createExpeditionScreens(root: HTMLElement): ExpeditionScreens {
         ),
         lostLine,
         paper,
+        ...(o.coins ? [coinsRow(o.coins.earned, o.coins.total)] : []),
         el('p', 'hx-sub', o.boss ? 'Regroup and storm him again.' : 'The run goes on. Pick your next stop on the map.'),
         cont,
       );
@@ -378,7 +379,8 @@ export function createExpeditionScreens(root: HTMLElement): ExpeditionScreens {
       toMap.addEventListener('click', () => done(() => o.onMap()));
       const stack = el('div', 'hx-stack');
       stack.append(again, toMap);
-      card.replaceChildren(head, score, stats, el('p', 'hx-lead', 'Upgrades taken'), icons, stack);
+      const coins = o.coins ? [coinsRow(o.coins.earned, o.coins.total)] : [];
+      card.replaceChildren(head, score, ...coins, stats, el('p', 'hx-lead', 'Upgrades taken'), icons, stack);
       show(result.root);
     },
 

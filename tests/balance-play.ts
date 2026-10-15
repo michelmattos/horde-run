@@ -1,12 +1,17 @@
 // Shared by the balance tests: plays one World 1 level headless with the real sim and
 // the autoplay bot. `attempt` shifts the bot's aim noise in time (a separate try by the
 // same player); the sim seed is attempt + 1 so every attempt also sees different spawns.
+// An optional BattleLoadout (Milestone 4) is handed to the battle and the bot, which then
+// also uses the ultimate.
 import { createSim } from '../src/sim/index.ts';
 import { createBattle } from '../src/game/battle.ts';
 import { createAutoplay } from '../src/game/autoplay.ts';
 import { evaluateStars } from '../src/game/stars.ts';
 import { SIM_HZ } from '../src/contracts.ts';
 import type { LevelDef, SimEvent } from '../src/contracts.ts';
+import type { BattleLoadout, ChampionSpec, MobSpec, UltimateSpec } from '../src/game/loadout.ts';
+import { STARTER_LOADOUT, emptyProfile, resolveLoadout } from '../src/progression/index.ts';
+import type { Loadout } from '../src/progression/index.ts';
 
 export const MAX_SECONDS = 180;
 
@@ -31,21 +36,25 @@ export interface PlayResult {
   stars: [boolean, boolean, boolean];
   destroyed: number;
   missed: number;
+  ultimates: number; // ultimates fired (loadout battles)
 }
 
 // `who` is a precise-bot skill (0..1) or 'human', the phone-player stand-in the
 // campaign is tuned against.
-export function play(level: LevelDef, who: number | 'human', attempt = 0): PlayResult {
+export function play(level: LevelDef, who: number | 'human', attempt = 0, loadout?: BattleLoadout): PlayResult {
   const rand = mulberry32(attempt + 1);
   const sim = createSim(level, rand);
-  const battle = createBattle(level, sim, rand);
-  const bot = createAutoplay(level, who === 'human' ? { profile: 'human', attempt } : { skill: who, attempt });
+  const battle = createBattle(level, sim, rand, loadout);
+  const bot = createAutoplay(
+    level,
+    who === 'human' ? { profile: 'human', attempt, loadout } : { skill: who, attempt, loadout },
+  );
   const events: SimEvent[] = [];
   let peak = 0;
   let destroyed = 0;
   let missed = 0;
   for (let s = 0; s < MAX_SECONDS * SIM_HZ && battle.state.outcome === 'playing'; s++) {
-    const input = bot(battle.state, sim, sim.time, events); // the bot sees last step's events
+    const input = bot(battle.state, sim, sim.time, events, battle.ultimateCharge); // the bot sees last step's events
     events.length = 0;
     battle.step(input, events);
     for (const e of events) {
@@ -65,6 +74,7 @@ export function play(level: LevelDef, who: number | 'human', attempt = 0): PlayR
     stars: evaluateStars(level, st, battle.stats),
     destroyed,
     missed,
+    ultimates: battle.stats.ultimatesFired ?? 0,
   };
 }
 
@@ -84,8 +94,8 @@ export const BOSS = ['1-10'];
 // win rates: easy 100%, 1-5..1-7 81-88%, 1-8 and 1-9 63%, the boss 56%.
 export const HUMAN_ATTEMPTS = 8;
 
-export function humanRuns(level: LevelDef, n = HUMAN_ATTEMPTS): PlayResult[] {
-  return Array.from({ length: n }, (_, a) => play(level, 'human', a));
+export function humanRuns(level: LevelDef, n = HUMAN_ATTEMPTS, loadout?: BattleLoadout): PlayResult[] {
+  return Array.from({ length: n }, (_, a) => play(level, 'human', a, loadout));
 }
 
 export function median(xs: readonly number[]): number {
@@ -103,3 +113,70 @@ export function runLine(id: string, runs: readonly PlayResult[]): string {
       .join(' | ')
   );
 }
+
+// ---------- Milestone 4: loadout fairness ----------
+// Tier-0 alternatives to the starter loadout (progression's catalog), each swapped into
+// DEFAULT_BATTLE_LOADOUT on its own. Values are the ones recommended to progression
+// after tuning against the human profile: the sprinter at hp 1 (at 0.7 a sprinter
+// trades worse than 1:1 because an enemy left with 0.3 hp still counts as a whole mob,
+// so it lost most of 1-5..1-10), the bomber at 1.5 per shot (one bomber in place of a
+// knight lost 1-5 now and then, two outplayed the knight on 1-6..1-10), and the paratrooper and marble meters scaled with the
+// starter's barrage (120 -> 360 mobs) so neither becomes a must-have.
+export const TIER0 = {
+  sprinter: { id: 'sprinter', variant: 2, kind: 'mob', perShot: null, hp: 1, damage: 0.8, radius: 0.24, speed: 10 },
+  bomber: {
+    id: 'bomber',
+    variant: 3,
+    kind: 'mob',
+    perShot: 1.5,
+    hp: 2,
+    damage: 1,
+    radius: 0.32,
+    speed: 6,
+    deathBlast: { radius: 1.4, damage: 4 },
+  },
+  tank: { id: 'tank', variant: 9, hpMul: 1.6, damageMul: 1.25, radius: 1.2, speed: 3.2, chargeMul: 1.3, echo: 0 },
+  drummer: {
+    id: 'drummer',
+    variant: 10,
+    hpMul: 0.75,
+    damageMul: 0.8,
+    radius: 0.9,
+    speed: 5,
+    chargeMul: 0.85,
+    echo: 24,
+  },
+  paratroopers: { id: 'paratroopers', chargeNeeded: 450, power: 27 },
+  marble: { id: 'marble', chargeNeeded: 420, power: 40 },
+} as const satisfies {
+  sprinter: MobSpec;
+  bomber: MobSpec;
+  tank: ChampionSpec;
+  drummer: ChampionSpec;
+  paratroopers: UltimateSpec;
+  marble: UltimateSpec;
+};
+
+// The starter with items swapped in, by catalog id, resolved through progression's real
+// resolveLoadout (cannon transform included), so slot order and the cannon's scaling of
+// fixed-count mobs are exercised exactly as in the game.
+export interface ItemCase {
+  name: string;
+  ids: Partial<Omit<Loadout, 'mobs'>> & { mobs?: [string, string] };
+}
+export function resolveCase(level: LevelDef, c: ItemCase): { level: LevelDef; loadout: BattleLoadout } {
+  const r = resolveLoadout(level, { ...emptyProfile(), loadout: { ...STARTER_LOADOUT, ...c.ids } });
+  return { level: r.level, loadout: r.battle };
+}
+export const STARTER_CASE: ItemCase = { name: 'starter', ids: {} };
+export const ITEM_CASES: ItemCase[] = [
+  { name: 'sprinter (slot 1)', ids: { mobs: ['sprinter', 'knight'] } },
+  { name: 'bomber (slot 2)', ids: { mobs: ['rifleman', 'bomber'] } },
+  { name: 'knight + bomber', ids: { mobs: ['knight', 'bomber'] } },
+  { name: 'tank', ids: { champion: 'tank' } },
+  { name: 'drummer', ids: { champion: 'drummer' } },
+  { name: 'paratroopers', ids: { ultimate: 'paratroopers' } },
+  { name: 'marble', ids: { ultimate: 'marble' } },
+  { name: 'repeater', ids: { cannon: 'repeater' } },
+  { name: 'blunderbuss', ids: { cannon: 'blunderbuss' } },
+];

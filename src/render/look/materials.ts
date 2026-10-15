@@ -10,7 +10,9 @@
 import type { Scene } from '@babylonjs/core/scene';
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
-import type { Texture } from '@babylonjs/core/Materials/Textures/texture';
+import { Texture } from '@babylonjs/core/Materials/Textures/texture';
+import { RawTexture } from '@babylonjs/core/Materials/Textures/rawTexture';
+import type { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData';
 import { lin } from './palette.ts';
 import { surfaceTextures } from './textures.ts';
 import type { SurfaceKind } from './textures.ts';
@@ -224,4 +226,65 @@ export function glassMaterial(scene: Scene, color: ColorInput | null, o: Materia
   );
   m.indexOfRefraction = 1.5;
   return m;
+}
+
+// Mixed toy parts in ONE draw call (a champion tank's rubber treads and brass key, a toy
+// drum's plastic shell, paper heads and brass hoops): albedo comes from linear vertex
+// colours, and each part picks its surface (roughness, metalness) from a 4-texel lookup
+// through its u coordinate. Tag every part with mixUv() before merging (a part with no
+// UVs would read texel 0, rubber). Share it per scene: look.material('toy-mix', ...).
+export const MIX = { rubber: 0, plastic: 1, brass: 2, paper: 3 } as const;
+export type MixSlot = (typeof MIX)[keyof typeof MIX];
+const MIX_SURFACE: readonly [number, number][] = [
+  [0.86, 0], // rubber: roughness, metalness
+  [0.4, 0], // moulded plastic
+  [0.28, 1], // brass
+  [0.82, 0], // paper / card
+];
+
+export function mixedToyMaterial(scene: Scene, name = 'toyMix'): PBRMaterial {
+  const data = new Uint8Array(MIX_SURFACE.length * 4);
+  MIX_SURFACE.forEach(([rough, metal], i) => {
+    data[i * 4] = 255;
+    data[i * 4 + 1] = Math.round(rough * 255);
+    data[i * 4 + 2] = Math.round(metal * 255);
+    data[i * 4 + 3] = 255;
+  });
+  const tex = RawTexture.CreateRGBATexture(
+    data,
+    MIX_SURFACE.length,
+    1,
+    scene,
+    false,
+    false,
+    Texture.NEAREST_SAMPLINGMODE,
+  );
+  tex.name = `${name}-surface`;
+  tex.wrapU = Texture.CLAMP_ADDRESSMODE;
+  tex.wrapV = Texture.CLAMP_ADDRESSMODE;
+  const m = new PBRMaterial(name, scene);
+  m.albedoColor = Color3.White();
+  m.metallic = 1; // multipliers on the lookup
+  m.roughness = 1;
+  m.metallicTexture = tex;
+  m.useRoughnessFromMetallicTextureAlpha = false;
+  m.useRoughnessFromMetallicTextureGreen = true;
+  m.useMetallnessFromMetallicTextureBlue = true;
+  m.useRadianceOverAlpha = true;
+  m.enableSpecularAntiAliasing = true;
+  m.onDisposeObservable.addOnce(() => tex.dispose());
+  return m;
+}
+
+// Points every vertex of a part at its surface texel (sets the part's UVs).
+export function mixUv(vd: VertexData, slot: MixSlot): VertexData {
+  const n = (vd.positions?.length ?? 0) / 3;
+  const uvs = new Float32Array(n * 2);
+  const u = (slot + 0.5) / MIX_SURFACE.length;
+  for (let i = 0; i < n; i++) {
+    uvs[i * 2] = u;
+    uvs[i * 2 + 1] = 0.5;
+  }
+  vd.uvs = uvs;
+  return vd;
 }

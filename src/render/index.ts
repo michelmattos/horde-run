@@ -1,6 +1,7 @@
 // Render entry point: owns the Babylon scene and draws a battle each frame from the
-// sim view and battle state. Integration calls createRenderer once, loadLevel per
-// battle (retry / next) and frame() every rendered frame.
+// sim view and battle state. Integration calls createRenderer once, setLoadout (optional)
+// and loadLevel per battle (retry / next), frame() every rendered frame and cue() for
+// each battle cue (shots, ultimates, bomber blasts).
 //
 // The picture comes from the shared look (look/index.ts: warm window sun with a fitted
 // PCF shadow map, cool sky / warm floor-bounce fill, HDRI reflections, ACES grade, MSAA or
@@ -25,9 +26,35 @@ import { createPropKit } from './models/props.ts';
 import { CameraRig } from './cameraRig.ts';
 import { ResolutionScaler } from './resolution.ts';
 import { screenRows } from './framing.ts';
+import { UltimateVisuals } from './ultimates.ts';
+import { parseCannon, parseChampion } from './crowdLogic.ts';
+import type { CannonId, ChampionId } from './crowdLogic.ts';
+import type { VariantView } from './crowd.ts';
+
+export type { VariantView } from './crowd.ts';
+export type { CannonId, ChampionId } from './crowdLogic.ts';
+
+// Battle cues the renderer draws (field for field the battle task's BattleCue).
+export type FxCue =
+  | {
+      type: 'ultimate';
+      id: 'barrage' | 'paratroopers' | 'marble';
+      x: number;
+      z: number;
+      radius: number;
+      duration: number;
+    }
+  | { type: 'blast'; x: number; z: number; radius: number }
+  | { type: 'shot'; x: number; count: number };
+
+// The battle visuals a loadout picks (default: popgun and sarge).
+export interface RenderLoadout {
+  cannon: CannonId;
+  champion: ChampionId;
+}
 
 export interface RenderFrame {
-  view: SimView; // read live this frame, never retained
+  view: SimView | VariantView; // read live this frame, never retained (variant: Milestone 4)
   battle: BattleState;
   cannonX: number; // world x of the cannon (already clamped by the game)
   time: number; // battle/sim time in seconds
@@ -66,6 +93,11 @@ export interface GameRenderer {
   readonly cameraZoom: number; // current crowd zoom-out (0 = framed view, up to ZOOM_MAX); for debugging
   stats(): RenderStats; // last rendered frame's cost; for debugging and the smoke test
   contextRestored(): void; // the WebGL context came back: resize, refit, re-warm before drawing
+  // Milestone 4. Call before loadLevel; swaps the cannon model and the champion meshes.
+  setLoadout(l: RenderLoadout): void;
+  // A battle cue (shot puffs, ultimates, bomber blasts); call as the battle produces them.
+  cue(c: FxCue): void;
+  crowdBatches(): number; // crowd thin-instance batches drawn last frame (main pass); for debugging
 }
 
 let activeScaler: ResolutionScaler | null = null;
@@ -98,6 +130,7 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
   const cannon = new Cannon(scene, look);
   const props = createPropKit(scene, look);
   const bars = new HpBars(scene);
+  const ultimates = new UltimateVisuals(scene, look, effects);
   defenders.onBlocksFell = (points) => {
     for (const p of points) effects.dust(p.x, p.z);
   };
@@ -162,7 +195,18 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
           effects.gateShards(e.x, e.z, level.gateWidth(e.gateId), level.breakGate(e.gateId));
           break;
         case 'unitsClash':
-          effects.dust(e.x, e.z);
+          effects.clash(e.x, e.z);
+          break;
+        case 'championLaunched':
+          effects.championLaunched(e.x, LAYOUT.cannonZ + 0.6);
+          break;
+        case 'victory': {
+          const d = level.level;
+          effects.victory(level.enemyBaseX, d.lane.length + LAYOUT.enemyBaseDepth / 2, d.enemyBase.width);
+          break;
+        }
+        case 'defeat':
+          effects.defeat(0, LAYOUT.playerBaseZ - LAYOUT.playerBaseDepth / 2, level.level.lane.width * 0.8);
           break;
         case 'baseHit':
           level.flashBaseAt(e.z);
@@ -194,6 +238,24 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
     }
   };
 
+  const cue = (c: FxCue): void => {
+    switch (c.type) {
+      case 'shot':
+        effects.muzzlePuff(cannon.muzzleX(), cannon.muzzleY(), cannon.muzzleZ());
+        break;
+      case 'blast':
+        effects.blast(c.x, c.z, c.radius);
+        break;
+      case 'ultimate':
+        if (c.id === 'barrage') effects.barrage(cannon.muzzleX(), cannon.muzzleY(), cannon.muzzleZ(), c.z, c.radius);
+        else if (c.id === 'paratroopers') ultimates.paratroopers(c.x, c.z, c.radius, c.duration);
+        else ultimates.marbleRoll(c.x, c.z, c.duration);
+        break;
+      default:
+        break;
+    }
+  };
+
   return {
     scene,
     get cameraZoom() {
@@ -206,6 +268,7 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
       defenders.load(def.defenders);
       cannon.setFireRate(def.cannon.fireRate);
       effects.clear();
+      ultimates.clear();
       rig.resetZoom();
       // Sun shadows cover the lane, both bases, the flag and the props beside the rug.
       const half = def.lane.width / 2 + SHADOW_SIDE_MARGIN;
@@ -229,8 +292,9 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
       handleEvents(f.events);
       level?.update(f.time, dt, f.battle);
       defenders.update(f.defenders, dt);
-      cannon.update(f.cannonX, f.time, f.battle.outcome === 'playing');
+      cannon.update(f.cannonX, f.time, f.battle.outcome === 'playing', dt);
       crowd.update(f.view, f.time);
+      ultimates.update(dt);
       effects.update(dt);
       bars.begin();
       level?.drawBars(bars);
@@ -264,6 +328,17 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
       return { ...lastStats };
     },
 
+    setLoadout(l: RenderLoadout): void {
+      cannon.setModel(parseCannon(l.cannon));
+      crowd.setChampion(parseChampion(l.champion));
+    },
+
+    cue,
+
+    crowdBatches(): number {
+      return crowd.drawBatches;
+    },
+
     contextRestored(): void {
       // Babylon has rebuilt the GPU resources by now; shaders recompile on the next
       // frames, so give both governors a warm-up and redraw the shadow map.
@@ -282,6 +357,7 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
       level?.dispose();
       level = null;
       crowd.dispose();
+      ultimates.dispose();
       effects.dispose();
       defenders.dispose();
       cannon.dispose();

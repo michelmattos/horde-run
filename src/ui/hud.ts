@@ -2,10 +2,12 @@
 //
 // It is DOM over the canvas (not Babylon GUI) so it gets the self-hosted rounded font,
 // real outlines and gradients, and costs no draw calls. The layer is
-// pointer-events:none, so drags reach the canvas; only the pause and CHAMP buttons
-// take touches. Both are also registered as blocked regions with the input, and the
-// CHAMP hit circle extends a little past its ring (as before), so a second finger can
-// press it while the first keeps aiming. Per frame, update() only writes what
+// pointer-events:none, so drags reach the canvas; only the pause, CHAMP and ultimate
+// buttons take touches. All are also registered as blocked regions with the input, and
+// the round buttons' hit circles extend a little past their rings, so a second finger
+// can press either while the first keeps aiming. The bottom row mirrors itself: the
+// ultimate button in the left corner (when the battle has one), the CHAMP button in the
+// right, and the army badge and base bar between them (hudBottomSpans in uiLogic.ts). Per frame, update() only writes what
 // changed; HP fills and the charge ring move with transforms / dash offsets.
 // Feedback is colour and small scale pops on HUD widgets only: nothing here moves the
 // camera or the screen. Sizes live in HUD_METRICS (uiLogic.ts), which hudReserve()
@@ -29,6 +31,7 @@ import {
   pipLit,
   ringDashOffset,
   runIconSlots,
+  ultimateTagText,
   runStatusLabel,
   runTagText,
   runUpgradesLabel,
@@ -37,7 +40,7 @@ import {
 import type { GoalState } from './uiLogic.ts';
 import { UI, WOOD_BG, injectUiTheme, outlineShadow } from './theme.ts';
 import {
-  championIcon,
+  championIconFor,
   coinIcon,
   crossIcon,
   fortIcon,
@@ -46,13 +49,19 @@ import {
   soldierIcon,
   starIcon,
   tickIcon,
+  ultimateIcon,
 } from './icons.ts';
+import type { ChampionIconId, UltimateIconId } from './icons.ts';
 
 // Optional per-level extras. goals: the three stars (win, base above half, target time).
 export interface HudInfo {
   bossName?: string;
   bossPhases?: number;
   goals?: readonly GoalState[];
+  // The loadout's ultimate: charge 0..1 fills its ring; the button is hidden when absent.
+  ultimate?: { charge: number; id: UltimateIconId; label: string };
+  // Which champion the CHAMP button shows (default Sarge).
+  champion?: { id: ChampionIconId };
 }
 
 // Expedition run status for the run strip. Run HP and gold change only between battles.
@@ -78,6 +87,8 @@ const HIT_SLOP = 8;
 const RING_STROKE = 8;
 const RING_R = (M.champRing - RING_STROKE) / 2;
 const RING_C = 2 * Math.PI * RING_R;
+const ULT_R = (M.ultRing - RING_STROKE) / 2;
+const ULT_C = 2 * Math.PI * ULT_R;
 const PRESS_MS = 120;
 const LEVEL_NAME_SECONDS = 3; // battle seconds the level name stays under the enemy bar
 const RUN_LEFT_GUESS = 190; // left chips' width before the strip has been laid out once
@@ -172,12 +183,14 @@ const CSS = `
 /* ----- Bottom ----- */
 .tb-bottom{position:absolute;left:calc(${SAL} + ${M.edge}px);right:calc(${SAR} + ${M.edge}px);bottom:calc(${SAB} + ${M.bottomPad}px);
   height:${Math.max(M.champRing + M.champTagOver, M.armyBadge + M.armyGap + M.baseBarH)}px}
-.tb-army{position:absolute;left:0;bottom:0;width:min(200px,calc(100% - ${M.champRing + 16}px));height:${M.armyBadge + M.armyGap + M.baseBarH}px}
+.tb-army{position:absolute;left:0;bottom:0;width:min(${M.armyMax}px,calc(100% - ${M.champRing + M.cornerGap}px));height:${M.armyBadge + M.armyGap + M.baseBarH}px}
+.tb-bottom.tb-has-ult .tb-army{left:${M.ultRing + M.cornerGap}px;width:min(${M.armyMax}px,calc(100% - ${M.ultRing + M.champRing + 2 * M.cornerGap}px))}
 .tb-abadge{left:0;top:0;width:${M.armyBadge}px;height:${M.armyBadge}px;z-index:1;
   background:radial-gradient(80% 70% at 35% 25%,#a5dc84,${UI.army} 55%,${UI.armyDark});
   box-shadow:inset 0 -3px 0 rgba(0,0,0,.2),0 4px 0 ${UI.ink},0 6px 8px rgba(20,10,2,.3)}
 .tb-abadge svg{width:40px;height:40px;margin-top:-2px}
 .tb-acount{position:absolute;left:${M.armyBadge - 16}px;top:6px;height:38px;min-width:84px;padding:0 14px 0 22px;border-radius:0 19px 19px 0;
+  max-width:calc(100% - ${M.armyBadge - 16}px);overflow:hidden;
   display:flex;align-items:center;font-size:25px;font-weight:700;line-height:1;box-sizing:border-box}
 .tb-acount.tb-plank{border-radius:0 19px 19px 0;border-left:0}
 .tb-pbar{position:absolute;left:0;right:0;bottom:0;height:${M.baseBarH}px}
@@ -186,33 +199,42 @@ const CSS = `
   background:radial-gradient(80% 70% at 35% 25%,#a5dc84,${UI.army} 55%,${UI.armyDark});box-shadow:0 3px 0 ${UI.ink}}
 .tb-fbadge svg{width:24px;height:24px}
 
-.tb-champ{position:absolute;right:0;bottom:${M.champTagOver}px;width:${M.champRing}px;height:${M.champRing}px;border:0;border-radius:50%;
-  background:none}
+.tb-cbtn{position:absolute;bottom:${M.champTagOver}px;border:0;border-radius:50%;background:none}
+.tb-champ{right:0;width:${M.champRing}px;height:${M.champRing}px}
+.tb-ult{left:0;width:${M.ultRing}px;height:${M.ultRing}px}
+.tb-ult[hidden]{display:none}
 .tb-champ-body{position:absolute;inset:0;transform-origin:50% 60%}
-.tb-champ.tb-ready .tb-champ-body{animation:tb-bounce 1100ms cubic-bezier(.3,1.5,.6,1) infinite}
+.tb-cbtn.tb-ready .tb-champ-body{animation:tb-bounce 1100ms cubic-bezier(.3,1.5,.6,1) infinite}
 @keyframes tb-bounce{0%{transform:scale(1)}9%{transform:scale(1.08)}17%{transform:scale(.985)}24%,100%{transform:scale(1)}}
 .tb-glow{position:absolute;inset:-20px;border-radius:50%;opacity:0;
   background:radial-gradient(closest-side,rgba(255,197,49,.85),rgba(255,197,49,.35) 60%,rgba(255,197,49,0))}
-.tb-champ.tb-ready .tb-glow{opacity:1;animation:tb-glow 1100ms ease-in-out infinite}
+.tb-cbtn.tb-ready .tb-glow{opacity:1;animation:tb-glow 1100ms ease-in-out infinite}
 @keyframes tb-glow{0%,100%{opacity:.65}10%{opacity:1}}
 .tb-ring{position:absolute;inset:0;transform:rotate(-90deg)}
 .tb-ring-track{fill:rgba(43,29,18,.55);stroke:rgba(43,29,18,.7)}
 .tb-ring-fill{fill:none;stroke:#9be27a;stroke-linecap:round;transition:stroke-dashoffset 120ms linear}
-.tb-champ.tb-ready .tb-ring-fill{stroke:${UI.yellow}}
+.tb-ult .tb-ring-fill{stroke:#ffb259}
+.tb-cbtn.tb-ready .tb-ring-fill{stroke:${UI.yellow}}
 .tb-ring-edge{fill:none;stroke:${UI.ink};stroke-width:2.5}
 .tb-face{position:absolute;left:${(M.champRing - M.champFace) / 2}px;top:${(M.champRing - M.champFace) / 2 - 3}px;width:${M.champFace}px;height:${M.champFace}px;
   box-sizing:border-box;border-radius:50%;border:3.5px solid ${UI.ink};display:flex;align-items:center;justify-content:center;
   background:radial-gradient(70% 60% at 34% 24%,#b6ea8f 0%,#7cbf5e 22%,${UI.army} 58%,${UI.armyDark} 100%);
   box-shadow:inset 0 -5px 0 rgba(0,0,0,.18),inset 0 3px 0 rgba(255,255,255,.35),0 5px 0 #23461d,0 5px 0 3px ${UI.ink};
   transition:transform 90ms cubic-bezier(.3,1.6,.6,1),filter 150ms}
-.tb-champ:not(.tb-ready) .tb-face{filter:saturate(.8) brightness(.92)}
+.tb-ult .tb-face{left:${(M.ultRing - M.ultFace) / 2}px;top:${(M.ultRing - M.ultFace) / 2 - 3}px;width:${M.ultFace}px;height:${M.ultFace}px;
+  background:radial-gradient(70% 60% at 34% 24%,#ffb3a6 0%,#f47d70 22%,${UI.red} 58%,#a8261d 100%);
+  box-shadow:inset 0 -5px 0 rgba(0,0,0,.18),inset 0 3px 0 rgba(255,255,255,.35),0 5px 0 #7a1d16,0 5px 0 3px ${UI.ink}}
+.tb-cbtn:not(.tb-ready) .tb-face{filter:saturate(.8) brightness(.92)}
 .tb-champ.tb-down .tb-face{transform:translateY(4px);box-shadow:inset 0 -5px 0 rgba(0,0,0,.18),0 1px 0 #23461d,0 1px 0 3px ${UI.ink}}
+.tb-ult.tb-down .tb-face{transform:translateY(4px);box-shadow:inset 0 -5px 0 rgba(0,0,0,.18),0 1px 0 #7a1d16,0 1px 0 3px ${UI.ink}}
 .tb-face svg{width:60px;height:60px;margin:-2px 0 0 2px}
-.tb-champ:not(.tb-ready) .tb-face svg{opacity:.8}
+.tb-ult .tb-face svg{width:52px;height:52px;margin:0}
+.tb-cbtn:not(.tb-ready) .tb-face svg{opacity:.8}
 .tb-tag{position:absolute;left:50%;bottom:-${M.champTagOver + 2}px;transform:translateX(-50%);height:24px;padding:0 10px;border-radius:12px;
   border:3px solid ${UI.ink};box-sizing:border-box;display:flex;align-items:center;font-size:14px;font-weight:700;letter-spacing:.06em;
   color:${UI.cream};text-shadow:${outlineShadow(1.5)};background:${WOOD_BG};box-shadow:0 3px 0 ${UI.ink};white-space:nowrap}
-.tb-champ.tb-ready .tb-tag{background:linear-gradient(#ffd862,${UI.yellow});color:${UI.ink};text-shadow:none}
+.tb-ult .tb-tag{font-size:13px;letter-spacing:.04em;padding:0 8px}
+.tb-cbtn.tb-ready .tb-tag{background:linear-gradient(#ffd862,${UI.yellow});color:${UI.ink};text-shadow:none}
 /* ----- Expedition run strip (static; under the top bar, no touches) ----- */
 .tb-run{position:absolute;top:calc(${SAT} + ${M.topPad + hudTopHeight() + M.runGap}px);left:calc(${SAL} + ${M.edge}px);
   right:calc(${SAR} + ${M.edge}px);height:${M.runH}px;display:flex;align-items:center;gap:6px;pointer-events:none}
@@ -244,7 +266,7 @@ const CSS = `
   background:${WOOD_BG};box-shadow:0 2px 0 ${UI.ink};display:flex;align-items:center;justify-content:center;
   color:${UI.cream};text-shadow:${outlineShadow(1.4)};font-size:14px;font-weight:700;line-height:1}
 
-@media (prefers-reduced-motion: reduce){.tb-champ.tb-ready .tb-champ-body,.tb-champ.tb-ready .tb-glow{animation:none}}
+@media (prefers-reduced-motion: reduce){.tb-cbtn.tb-ready .tb-champ-body,.tb-cbtn.tb-ready .tb-glow{animation:none}}
 `;
 
 let stylesInjected = false;
@@ -275,6 +297,19 @@ function hpBar(kind: 'enemy' | 'player'): { root: HTMLDivElement; fill: HTMLDivE
   const text = div('tb-bar-text');
   root.append(frame, text);
   return { root, fill, text };
+}
+
+// Round plastic button with a charge ring (CHAMP and the ultimate share it).
+function roundButtonMarkup(size: number, ringR: number, ringC: number, icon: string, tag: string): string {
+  const c = size / 2;
+  return (
+    `<div class="tb-champ-body"><div class="tb-glow"></div>` +
+    `<svg class="tb-ring" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" aria-hidden="true">` +
+    `<circle class="tb-ring-track" cx="${c}" cy="${c}" r="${c - 1.5}" stroke-width="3"/>` +
+    `<circle class="tb-ring-fill" cx="${c}" cy="${c}" r="${ringR}" stroke-width="${RING_STROKE}" stroke-dasharray="${ringC.toFixed(2)}" stroke-dashoffset="${ringC.toFixed(2)}"/>` +
+    `<circle class="tb-ring-edge" cx="${c}" cy="${c}" r="${c - 1.25}"/>` +
+    `</svg><div class="tb-face">${icon}</div><div class="tb-tag">${tag}</div></div>`
+  );
 }
 
 export function createHud(scene: Scene, input: Input, opts: { onPause: () => void }): Hud {
@@ -342,7 +377,7 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
   main.append(enemy.root, row2);
   top.append(pause, main);
 
-  // ----- Bottom: army badge + count, player base HP, CHAMP button -----
+  // ----- Bottom: ultimate button, army badge + count, player base HP, CHAMP button -----
   const bottom = div('tb-bottom');
   const army = div('tb-army');
   const aBadge = div('tb-badge tb-abadge', soldierIcon(40, UI.cream));
@@ -354,20 +389,26 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
 
   const champ = document.createElement('button');
   champ.type = 'button';
-  champ.className = 'tb-champ';
+  champ.className = 'tb-cbtn tb-champ';
   champ.setAttribute('aria-label', 'Champion');
   champ.tabIndex = -1;
-  const S = M.champRing;
-  champ.innerHTML =
-    `<div class="tb-champ-body"><div class="tb-glow"></div>` +
-    `<svg class="tb-ring" viewBox="0 0 ${S} ${S}" width="${S}" height="${S}" aria-hidden="true">` +
-    `<circle class="tb-ring-track" cx="${S / 2}" cy="${S / 2}" r="${S / 2 - 1.5}" stroke-width="3"/>` +
-    `<circle class="tb-ring-fill" cx="${S / 2}" cy="${S / 2}" r="${RING_R}" stroke-width="${RING_STROKE}" stroke-dasharray="${RING_C.toFixed(2)}" stroke-dashoffset="${RING_C.toFixed(2)}"/>` +
-    `<circle class="tb-ring-edge" cx="${S / 2}" cy="${S / 2}" r="${S / 2 - 1.25}"/>` +
-    `</svg><div class="tb-face">${championIcon(60, UI.cream)}</div><div class="tb-tag">CHAMP</div></div>`;
+  champ.innerHTML = roundButtonMarkup(M.champRing, RING_R, RING_C, championIconFor('sarge', 60, UI.cream), 'CHAMP');
   const ringFill = champ.querySelector('.tb-ring-fill') as SVGCircleElement;
   const champTag = champ.querySelector('.tb-tag') as HTMLDivElement;
-  bottom.append(army, champ);
+  const champFace = champ.querySelector('.tb-face') as HTMLDivElement;
+
+  // The ultimate mirrors CHAMP in the left corner; hidden until update() gets one.
+  const ult = document.createElement('button');
+  ult.type = 'button';
+  ult.className = 'tb-cbtn tb-ult';
+  ult.setAttribute('aria-label', 'Ultimate');
+  ult.tabIndex = -1;
+  ult.hidden = true;
+  ult.innerHTML = roundButtonMarkup(M.ultRing, ULT_R, ULT_C, '', '');
+  const ultFill = ult.querySelector('.tb-ring-fill') as SVGCircleElement;
+  const ultTag = ult.querySelector('.tb-tag') as HTMLDivElement;
+  const ultFace = ult.querySelector('.tb-face') as HTMLDivElement;
+  bottom.append(ult, army, champ);
 
   // ----- Expedition run strip: heart (run HP) + coin (gold) + tag on the left, upgrade icons on the right -----
   const run = div('tb-run');
@@ -394,15 +435,17 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
   // ----- Hits -----
   let visible = true;
   let disposed = false;
-  const inChampion = (x: number, y: number): boolean => {
-    if (!visible || disposed) return false;
-    const r = champ.getBoundingClientRect();
+  const inRound = (b: HTMLButtonElement, x: number, y: number): boolean => {
+    if (!visible || disposed || b.hidden) return false;
+    const r = b.getBoundingClientRect();
     if (r.width === 0) return false;
     const dx = x - (r.left + r.width / 2);
     const dy = y - (r.top + r.height / 2);
     const rad = r.width / 2 + HIT_SLOP;
     return dx * dx + dy * dy <= rad * rad;
   };
+  const inChampion = (x: number, y: number): boolean => inRound(champ, x, y);
+  const inUltimate = (x: number, y: number): boolean => inRound(ult, x, y);
   const inPause = (x: number, y: number): boolean => {
     if (!visible || disposed) return false;
     const r = pause.getBoundingClientRect();
@@ -410,15 +453,23 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
     return x >= r.left - HIT_SLOP && x <= r.right + HIT_SLOP && y >= r.top - HIT_SLOP && y <= r.bottom + HIT_SLOP;
   };
   input.addBlockedRegion(inChampion);
+  input.addBlockedRegion(inUltimate);
   input.addBlockedRegion(inPause);
 
   let champTimer = 0;
+  let ultTimer = 0;
   let pauseTimer = 0;
   const pressChampion = (): void => {
     input.pressChampion();
     champ.classList.add('tb-down');
     clearTimeout(champTimer);
     champTimer = window.setTimeout(() => champ.classList.remove('tb-down'), PRESS_MS);
+  };
+  const pressUltimate = (): void => {
+    input.pressUltimate();
+    ult.classList.add('tb-down');
+    clearTimeout(ultTimer);
+    ultTimer = window.setTimeout(() => ult.classList.remove('tb-down'), PRESS_MS);
   };
   const doPause = (): void => {
     pause.classList.add('tb-down');
@@ -431,6 +482,11 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
     e.preventDefault();
     pressChampion();
   };
+  const onUltDown = (e: PointerEvent): void => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    pressUltimate();
+  };
   const onPauseDown = (e: PointerEvent): void => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     e.preventDefault();
@@ -440,9 +496,11 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
   const onCanvasDown = (e: PointerEvent): void => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     if (inChampion(e.clientX, e.clientY)) pressChampion();
+    else if (inUltimate(e.clientX, e.clientY)) pressUltimate();
     else if (inPause(e.clientX, e.clientY)) doPause();
   };
   champ.addEventListener('pointerdown', onChampDown);
+  ult.addEventListener('pointerdown', onUltDown);
   pause.addEventListener('pointerdown', onPauseDown);
   canvas.addEventListener('pointerdown', onCanvasDown, { capture: true });
 
@@ -481,6 +539,11 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
   let lastPlayerFill = -1;
   let lastCharge = -1;
   let wasFull = false;
+  let lastChampion: ChampionIconId = 'sarge';
+  let lastUltId = '';
+  let lastUltLabel = '';
+  let lastUltCharge = -1;
+  let ultFull = false;
   let lastBoss: string | null = null;
   let lastPips = -1;
   let lastPhase = -1;
@@ -590,6 +653,39 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
         champ.classList.toggle('tb-ready', full);
         champTag.textContent = full ? 'CHAMP!' : 'CHAMP';
       }
+      const champId = info?.champion?.id ?? 'sarge';
+      if (champId !== lastChampion) {
+        lastChampion = champId;
+        champFace.innerHTML = championIconFor(champId, 60, UI.cream);
+      }
+
+      // ----- Ultimate: shown only when the battle has one -----
+      const u = info?.ultimate;
+      const uid = u ? u.id : '';
+      if (uid !== lastUltId || (u && u.label !== lastUltLabel)) {
+        lastUltId = uid;
+        lastUltLabel = u?.label ?? '';
+        ult.hidden = !u;
+        bottom.classList.toggle('tb-has-ult', !!u);
+        if (u) {
+          ultFace.innerHTML = ultimateIcon(u.id, 52);
+          ultTag.textContent = ultimateTagText(u.id, u.label);
+          ult.setAttribute('aria-label', `Ultimate: ${u.label}`);
+        }
+        lastUltCharge = -1;
+      }
+      if (u) {
+        const uc = Math.round(Math.min(1, Math.max(0, u.charge)) * 100) / 100;
+        if (uc !== lastUltCharge) {
+          lastUltCharge = uc;
+          ultFill.style.strokeDashoffset = ringDashOffset(uc, ULT_C).toFixed(2);
+        }
+        const uFull = uc >= 1;
+        if (uFull !== ultFull) {
+          ultFull = uFull;
+          ult.classList.toggle('tb-ready', uFull);
+        }
+      }
     },
     setRun(info) {
       if (disposed) return;
@@ -620,12 +716,14 @@ export function createHud(scene: Scene, input: Input, opts: { onPause: () => voi
     dispose() {
       disposed = true;
       clearTimeout(champTimer);
+      clearTimeout(ultTimer);
       clearTimeout(pauseTimer);
       clearTimeout(pulseTimer);
       for (const t of popTimers) clearTimeout(t);
       window.removeEventListener('resize', onResize);
       if (runStripOwner === hud) runStripOwner = null;
       champ.removeEventListener('pointerdown', onChampDown);
+      ult.removeEventListener('pointerdown', onUltDown);
       pause.removeEventListener('pointerdown', onPauseDown);
       canvas.removeEventListener('pointerdown', onCanvasDown, { capture: true });
       hud.remove();

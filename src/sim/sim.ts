@@ -7,6 +7,13 @@
 //
 // Milestone 2 adds enemy defenders (towers shoot, walls soak), one-use gates that break
 // after a crossing-weight budget, and a movable enemy base (boss levels strafe it).
+//
+// Milestone 4 adds mob types from the loadout: every unit carries its own speed (0 means
+// the SIM_TUNING default for its team and kind, so enemies and old callers move exactly
+// as before), a render variant byte and an optional death blast. A unit with a blast that
+// dies hurts nearby units of the other team once and records the blast for the battle
+// layer (takeBlasts). damageArea and damageDefender let ultimates hurt the lane from
+// outside step(); neither allocates.
 
 import type { DefenderKind, DefenderView, LevelDef, SimEvent, SimView } from '../contracts.ts';
 import { DEFENDER_DEFAULTS, LAYOUT, Team, UnitKind, gateX } from '../contracts.ts';
@@ -17,6 +24,19 @@ export interface SpawnOpts {
   damage?: number; // per weight for mobs (default 1, so damage == weight); absolute for champions
   radius?: number; // base radius; default LAYOUT.mobRadius / LAYOUT.championRadius by kind
   spread?: number; // half-width of random x jitter for count > 1 (default 0.35)
+  speed?: number; // world units / s; default SIM_TUNING by team and kind
+  variant?: number; // render variant byte (0 rifleman / enemy mob, 1 knight, ...); default 0
+  deathBlast?: { radius: number; damage: number }; // on death, hurts the other team nearby (damage per weight)
+}
+
+// The view with the per-unit render variant (Milestone 4).
+export type SimViewM4 = SimView & { readonly variant: Uint8Array };
+
+// A death blast recorded by the sim, handed out by takeBlasts().
+export interface SimBlast {
+  x: number;
+  z: number;
+  radius: number;
 }
 
 export interface SimOptions {
@@ -25,7 +45,7 @@ export interface SimOptions {
 }
 
 export interface Sim {
-  readonly view: SimView;
+  readonly view: SimViewM4;
   readonly time: number;
   readonly unitBudget: number;
   spawn(team: Team, kind: UnitKind, x: number, z: number, count: number, opts?: SpawnOpts): void;
@@ -35,6 +55,14 @@ export interface Sim {
   readonly defenders: readonly DefenderView[];
   // Moves the enemy base centre (boss strafing). Defaults to level.enemyBase.x.
   setEnemyBaseX(x: number): void;
+  // Moves the blasts recorded since the last call into `out` (pushed in order) and clears them.
+  takeBlasts(out: SimBlast[]): void;
+  // Kills or damages units of `team` whose disc overlaps the circle, nearest index first,
+  // until maxWeight is spent (a mob's weight is hp / hp-per-weight, a champion's is its hp).
+  // Returns the weight removed. Dead units are removed at once.
+  damageArea(team: Team, x: number, z: number, radius: number, maxWeight: number): number;
+  // Damages the defender at `index` (level order); reported as defenderHit next step.
+  damageDefender(index: number, amount: number): void;
 }
 
 // Mutable so tuning code can tweak it live; tests read it.
@@ -56,6 +84,7 @@ const MERGE_RADIUS = 1.5; // over budget, spawned weight joins a same-team mob w
 const MAX_CLASH_EVENTS = 6;
 const BURST_MAX_HALF = 1.2;
 const BURST_DEPTH = 0.8;
+const MAX_BLASTS = 64; // recorded blasts kept until takeBlasts(); later ones still hurt, unrecorded
 
 // Heavier stacked units are drawn (and collide) bigger, capped at 2.2x.
 function stackedRadius(base: number, w: number): number {
@@ -75,7 +104,7 @@ interface Defender {
 }
 
 class CrowdSim implements Sim {
-  readonly view: SimView;
+  readonly view: SimViewM4;
   readonly unitBudget: number;
   readonly defenders: readonly DefenderView[];
 
@@ -104,6 +133,15 @@ class CrowdSim implements Sim {
   private readonly pushZ: Float32Array;
   private readonly atkT: Float32Array; // champion: seconds until its next blow on a defender
   private readonly held: Uint8Array; // champion held by a defender this step (no forward push)
+  private readonly speed: Float32Array; // 0 = SIM_TUNING default for the unit's team and kind
+  private readonly variant: Uint8Array;
+  private readonly blastR: Float32Array; // death blast radius; 0 = none (also cleared once it fired)
+  private readonly blastD: Float32Array; // death blast damage per weight
+  private readonly blastX = new Float32Array(MAX_BLASTS);
+  private readonly blastZ = new Float32Array(MAX_BLASTS);
+  private readonly blastRad = new Float32Array(MAX_BLASTS);
+  private blastCount = 0;
+  private hasBlasts = false; // set once any unit with a death blast is spawned; skips detonate() until then
 
   private readonly grid: SpatialGrid;
   private readonly gateXs: Float64Array;
@@ -159,6 +197,10 @@ class CrowdSim implements Sim {
     this.pushZ = new Float32Array(cap);
     this.atkT = new Float32Array(cap);
     this.held = new Uint8Array(cap);
+    this.speed = new Float32Array(cap);
+    this.variant = new Uint8Array(cap);
+    this.blastR = new Float32Array(cap);
+    this.blastD = new Float32Array(cap);
 
     const hw = level.lane.width / 2;
     this.grid = new SpatialGrid(-hw, hw, LAYOUT.playerBaseZ - 2, level.lane.length + 2, 2 * LAYOUT.mobRadius, cap);
@@ -204,6 +246,7 @@ class CrowdSim implements Sim {
       weight: this.weight,
       radius: this.radius,
       hp: this.hp,
+      variant: this.variant,
     };
   }
 
@@ -236,13 +279,18 @@ class CrowdSim implements Sim {
     const dmgPer = opts?.damage ?? 1;
     const rad = opts?.radius ?? (isChamp ? LAYOUT.championRadius : LAYOUT.mobRadius);
     const spread = count > 1 ? (opts?.spread ?? 0.35) : 0;
+    const spd = opts?.speed ?? 0;
+    const variant = opts?.variant ?? 0;
+    const br = opts?.deathBlast?.radius ?? 0;
+    const bd = opts?.deathBlast?.damage ?? 0;
 
     if (isChamp) {
       // Champions are rare and never stacked; they only need array space.
       for (let k = 0; k < count; k++) {
         const jx = spread > 0 ? x + (this.rand() * 2 - 1) * spread : x;
-        if (this.n < this.capacity) this.addUnit(team, kind, jx, z, 1, hpPer, dmgPer, rad, 0);
-        else this.mergeIntoNearest(team, jx, z, Infinity, 1);
+        if (this.n < this.capacity)
+          this.traits(this.addUnit(team, kind, jx, z, 1, hpPer, dmgPer, rad, 0), spd, variant, br, bd);
+        else this.mergeIntoNearest(team, jx, z, Infinity, 1, -1);
       }
       return;
     }
@@ -251,19 +299,29 @@ class CrowdSim implements Sim {
     if (count <= free) {
       for (let k = 0; k < count; k++) {
         const jx = spread > 0 ? x + (this.rand() * 2 - 1) * spread : x;
-        this.addUnit(team, kind, jx, z, 1, hpPer, dmgPer, rad, 0);
+        this.traits(this.addUnit(team, kind, jx, z, 1, hpPer, dmgPer, rad, 0), spd, variant, br, bd);
       }
     } else if (free >= 1) {
       // Fill the budget with singles, the rest rides on one stacked unit.
       for (let k = 0; k < free - 1; k++) {
         const jx = x + (this.rand() * 2 - 1) * spread;
-        this.addUnit(team, kind, jx, z, 1, hpPer, dmgPer, rad, 0);
+        this.traits(this.addUnit(team, kind, jx, z, 1, hpPer, dmgPer, rad, 0), spd, variant, br, bd);
       }
-      this.addUnit(team, kind, x, z, count - (free - 1), hpPer, dmgPer, rad, 0);
-    } else if (!this.mergeIntoNearest(team, x, z, MERGE_RADIUS, count)) {
-      if (this.n < this.capacity) this.addUnit(team, kind, x, z, count, hpPer, dmgPer, rad, 0);
-      else this.mergeIntoNearest(team, x, z, Infinity, count);
+      this.traits(this.addUnit(team, kind, x, z, count - (free - 1), hpPer, dmgPer, rad, 0), spd, variant, br, bd);
+    } else if (!this.mergeIntoNearest(team, x, z, MERGE_RADIUS, count, variant)) {
+      if (this.n < this.capacity)
+        this.traits(this.addUnit(team, kind, x, z, count, hpPer, dmgPer, rad, 0), spd, variant, br, bd);
+      else this.mergeIntoNearest(team, x, z, Infinity, count, -1);
     }
+  }
+
+  // Milestone 4 per-unit traits; addUnit leaves them at the defaults (0).
+  private traits(i: number, spd: number, variant: number, br: number, bd: number): void {
+    this.speed[i] = spd;
+    this.variant[i] = variant;
+    this.blastR[i] = br;
+    this.blastD[i] = bd;
+    if (br > 0) this.hasBlasts = true;
   }
 
   private addUnit(
@@ -285,6 +343,10 @@ class CrowdSim implements Sim {
     this.dmgPer[i] = dmgPer;
     this.passed[i] = mask;
     this.atkT[i] = 0;
+    this.speed[i] = 0;
+    this.variant[i] = 0;
+    this.blastR[i] = 0;
+    this.blastD[i] = 0;
     if (kind === UnitKind.Champion) {
       this.w[i] = 1;
       this.weight[i] = 1;
@@ -300,12 +362,14 @@ class CrowdSim implements Sim {
     return i;
   }
 
-  // Adds weight to the nearest same-team mob within maxDist. Returns false if none found.
-  private mergeIntoNearest(team: Team, x: number, z: number, maxDist: number, w: number): boolean {
+  // Adds weight to the nearest same-team mob within maxDist, of the same variant unless
+  // variant is -1. The stack keeps its own stats and variant. Returns false if none found.
+  private mergeIntoNearest(team: Team, x: number, z: number, maxDist: number, w: number, variant: number): boolean {
     let best = -1;
     let bestD2 = maxDist * maxDist;
     for (let i = 0; i < this.n; i++) {
       if (this.team[i] !== team || this.kind[i] !== UnitKind.Mob || this.hp[i] <= DEAD_EPS) continue;
+      if (variant >= 0 && this.variant[i] !== variant) continue;
       const dx = this.posX[i] - x;
       const dz = this.posZ[i] - z;
       const d2 = dx * dx + dz * dz;
@@ -346,11 +410,12 @@ class CrowdSim implements Sim {
     this.towersFire(dt, events);
     this.defenderEvents(events);
     this.baseHits(events);
+    this.detonate();
     this.compact();
   }
 
   private move(dt: number): void {
-    const { posX, posZ, prevZ, team, kind, radius } = this;
+    const { posX, posZ, prevZ, team, kind, radius, speed: unitSpeed } = this;
     const len = this.level.lane.length;
     const halfW = this.level.enemyBase.width / 2;
     const bx = this.baseX;
@@ -360,7 +425,8 @@ class CrowdSim implements Sim {
       const z = posZ[i];
       prevZ[i] = z;
       if (team[i] === Team.Player) {
-        const speed = kind[i] === UnitKind.Champion ? SIM_TUNING.championSpeed : SIM_TUNING.mobSpeed;
+        const own = unitSpeed[i];
+        const speed = own > 0 ? own : kind[i] === UnitKind.Champion ? SIM_TUNING.championSpeed : SIM_TUNING.mobSpeed;
         posZ[i] = z + speed * dt;
         if (z > steerFrom) {
           // Funnel toward the enemy base so units near the end don't miss it.
@@ -374,7 +440,8 @@ class CrowdSim implements Sim {
           else if (x > hi) posX[i] = Math.max(hi, x - maxStep);
         }
       } else {
-        const speed = kind[i] === UnitKind.Champion ? SIM_TUNING.championSpeed : SIM_TUNING.enemySpeed;
+        const own = unitSpeed[i];
+        const speed = own > 0 ? own : kind[i] === UnitKind.Champion ? SIM_TUNING.championSpeed : SIM_TUNING.enemySpeed;
         posZ[i] = z - speed * dt;
       }
     }
@@ -399,7 +466,7 @@ class CrowdSim implements Sim {
     return ox * ox + oz * oz < r * r;
   }
 
-  private damageDefender(k: number, amount: number): void {
+  private applyDefenderDamage(k: number, amount: number): void {
     const d = this.defs[k];
     const dealt = amount < d.hp ? amount : d.hp;
     d.hp -= dealt;
@@ -413,7 +480,6 @@ class CrowdSim implements Sim {
   private defenderContacts(dt: number): void {
     const dc = this.defs.length;
     if (dc === 0) return;
-    this.defDmgStep.fill(0);
     this.held.fill(0);
     const { posZ, prevZ, team, kind, hp, radius, atkT } = this;
     const zLo = this.defMinZ - LAYOUT.championRadius * 2.2;
@@ -434,12 +500,12 @@ class CrowdSim implements Sim {
           atkT[i] -= dt;
           if (atkT[i] <= 0) {
             atkT[i] += CHAMPION_HIT_INTERVAL;
-            this.damageDefender(k, this.dmgPer[i]);
+            this.applyDefenderDamage(k, this.dmgPer[i]);
           }
           break;
         }
         const before = this.defs[k].hp;
-        this.damageDefender(k, hp[i]);
+        this.applyDefenderDamage(k, hp[i]);
         hp[i] -= before - this.defs[k].hp;
         if (hp[i] <= DEAD_EPS) break;
       }
@@ -506,6 +572,7 @@ class CrowdSim implements Sim {
       const d = this.defs[k];
       const dmg = this.defDmgStep[k];
       if (dmg > 0) events.push({ type: 'defenderHit', id: d.id, damage: dmg, x: d.x, z: d.z });
+      this.defDmgStep[k] = 0; // damage dealt outside step() (damageDefender) shows up next step
       if (d.hp <= 0 && !this.defDead[k]) {
         this.defDead[k] = 1;
         events.push({ type: 'defenderDestroyed', id: d.id, kind: d.kind, x: d.x, z: d.z });
@@ -721,7 +788,8 @@ class CrowdSim implements Sim {
     for (let k = 0; k < singles; k++) {
       const x = cx + (this.rand() * 2 - 1) * half;
       const z = gate.z + this.rand() * BURST_DEPTH;
-      this.addUnit(Team.Player, UnitKind.Mob, x, z, 1, this.hpPer[i], this.dmgPer[i], this.baseRad[i], mask);
+      const j = this.addUnit(Team.Player, UnitKind.Mob, x, z, 1, this.hpPer[i], this.dmgPer[i], this.baseRad[i], mask);
+      this.traits(j, this.speed[i], this.variant[i], this.blastR[i], this.blastD[i]);
     }
     const rest = added - singles;
     if (rest > 0) {
@@ -807,6 +875,82 @@ class CrowdSim implements Sim {
     this.baseRad[to] = this.baseRad[from];
     this.passed[to] = this.passed[from];
     this.atkT[to] = this.atkT[from];
+    this.speed[to] = this.speed[from];
+    this.variant[to] = this.variant[from];
+    this.blastR[to] = this.blastR[from];
+    this.blastD[to] = this.blastD[from];
+  }
+
+  // ---------- Blasts and area damage (Milestone 4) ----------
+
+  // Dead units carrying a death blast go off once: damage per weight times the weight
+  // they had, spent on the other team inside the radius. Repeats while a blast killed
+  // another blast unit, so chains resolve in the same step.
+  private detonate(): void {
+    if (!this.hasBlasts) return;
+    const { hp, blastR } = this;
+    let again = true;
+    while (again) {
+      again = false;
+      for (let i = 0; i < this.n; i++) {
+        const r = blastR[i];
+        if (r <= 0 || hp[i] > DEAD_EPS) continue;
+        blastR[i] = 0;
+        const other = this.team[i] === Team.Player ? Team.Enemy : Team.Player;
+        const x = this.posX[i];
+        const z = this.posZ[i];
+        this.hurt(other, x, z, r, this.blastD[i] * this.w[i]);
+        if (this.blastCount < MAX_BLASTS) {
+          const b = this.blastCount++;
+          this.blastX[b] = x;
+          this.blastZ[b] = z;
+          this.blastRad[b] = r;
+        }
+        again = true;
+      }
+    }
+  }
+
+  // Spends up to `budget` weight on live units of `team` overlapping the circle, in index
+  // order. Lowers hp only; compact() turns that into weight and removes the dead.
+  private hurt(team: Team, x: number, z: number, radius: number, budget: number): number {
+    const { posX, posZ, hp, kind } = this;
+    let left = budget;
+    for (let j = 0; j < this.n && left > DEAD_EPS; j++) {
+      if (this.team[j] !== team || hp[j] <= DEAD_EPS) continue;
+      const dx = posX[j] - x;
+      const dz = posZ[j] - z;
+      const rs = radius + this.radius[j];
+      if (dx * dx + dz * dz >= rs * rs) continue;
+      const per = kind[j] === UnitKind.Champion ? 1 : this.hpPer[j];
+      const has = hp[j] / per;
+      const take = has < left ? has : left;
+      hp[j] -= take * per;
+      left -= take;
+    }
+    return budget - left;
+  }
+
+  takeBlasts(out: SimBlast[]): void {
+    for (let b = 0; b < this.blastCount; b++) {
+      out.push({ x: this.blastX[b], z: this.blastZ[b], radius: this.blastRad[b] });
+    }
+    this.blastCount = 0;
+  }
+
+  damageArea(team: Team, x: number, z: number, radius: number, maxWeight: number): number {
+    if (!(maxWeight > 0)) return 0;
+    const removed = this.hurt(team, x, z, radius, maxWeight);
+    if (removed > 0) {
+      this.detonate();
+      this.compact();
+    }
+    return removed;
+  }
+
+  damageDefender(index: number, amount: number): void {
+    const d = this.defs[index];
+    if (d && d.hp > 0 && amount > 0) this.applyDefenderDamage(index, amount);
   }
 }
 

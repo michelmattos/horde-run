@@ -8,7 +8,11 @@
 // battle and saves the result card. Then an Expedition run (?expedition=<seed>): the run
 // map (smoke-expedition-map.png), the first node tapped into a generated battle that
 // __horde.win() ends, and the upgrade pick (smoke-expedition-pick.png); taking a card
-// must land back on the run map with the upgrade owned. Screenshots go to smoke-play.png, smoke-crowd.png,
+// must land back on the run map with the upgrade owned. Milestone 4: Play on the level card
+// opens the loadout (smoke-loadout.png) and Fight starts the battle; the battle must show
+// the ultimate button; ?screen=collection gets debug coins and buys an upgrade
+// (smoke-collection.png); ?screen=home builds a building in the 3D village (smoke-home.png).
+// Screenshots go to smoke-play.png, smoke-crowd.png,
 // smoke-boss.png and smoke-result.png; render stats (draw calls, indices) are reported; a JSON summary is printed. Any console error or
 // page error fails the run. Low fps is reported, never failed (software rendering);
 // fps above the 60 cap fails. The battle screenshots (play, crowd, boss) must show the 3D
@@ -198,6 +202,13 @@ try {
   await sleep(500); // let the card's pop-in settle
   await page.screenshot({ path: 'smoke-card.png' });
   await play.tap({ timeout: 5000 });
+  // The loadout comes between the card and the battle.
+  const fight = page.locator('[data-screen="loadout"] [data-action="fight"]');
+  await fight.waitFor({ state: 'visible', timeout: 5000 });
+  await sleep(500);
+  await page.screenshot({ path: 'smoke-loadout.png' });
+  const loadoutSlots = await page.locator('[data-screen="loadout"] [data-slot]').count();
+  await fight.tap({ timeout: 5000 });
   await page.waitForFunction(() => window.__horde.level() === '1-1' && window.__horde.state().time > 0.5, null, {
     timeout: 15000,
   });
@@ -223,6 +234,7 @@ try {
     await sleep(50);
   }
   await page.screenshot({ path: 'smoke-play.png' });
+  const ultButton = await page.locator('.tb-ult').isVisible();
   const afterPlay = await page.evaluate(() => ({
     state: { ...window.__horde.state() },
     units: window.__horde.units(),
@@ -321,6 +333,37 @@ try {
   await page.tap('[data-action="take"]');
   await page.waitForFunction(() => window.__horde.level() === 'expedition-map', null, { timeout: 10000 });
   const runAfter = await page.evaluate(() => window.__horde.expedition());
+  // Collection: a debug coin grant, then the first affordable upgrade.
+  await page.goto(`${ROOT}?screen=collection`, { waitUntil: 'load' });
+  await page.waitForFunction(() => window.__horde?.screen() === 'collection', null, { timeout: 15000 });
+  const coinsBefore = await page.evaluate(() => window.__horde.coins(600));
+  const upgrade = page.locator('[data-screen="collection"] [data-action="upgrade"]:not([disabled])').first();
+  await upgrade.waitFor({ state: 'visible', timeout: 5000 });
+  const upgradedId = await upgrade.evaluate((b) => b.closest('[data-item]')?.getAttribute('data-item'));
+  await upgrade.tap();
+  await sleep(700);
+  await page.screenshot({ path: 'smoke-collection.png' });
+  const afterUpgrade = await page.evaluate(() => window.__horde.profile());
+  const collection = {
+    coinsBefore,
+    upgraded: upgradedId,
+    tier: afterUpgrade.tiers[upgradedId] ?? 0,
+    coinsAfter: afterUpgrade.coins,
+  };
+
+  // Home base: the 3D village with one building put up.
+  await page.goto(`${ROOT}?screen=home`, { waitUntil: 'load' });
+  await page.waitForFunction(() => window.__horde?.screen() === 'home', null, { timeout: 15000 });
+  const buildBtn = page.locator('[data-screen="home"] [data-action="build"]:not([disabled])').first();
+  await buildBtn.waitFor({ state: 'visible', timeout: 15000 });
+  await sleep(1500); // loads and the first frames of the village
+  const builtId = await buildBtn.evaluate((b) => b.closest('[data-building]')?.getAttribute('data-building'));
+  await buildBtn.tap();
+  await sleep(3000); // the new pieces drop in, then confetti
+  await page.screenshot({ path: 'smoke-home.png' });
+  const afterBuild = await page.evaluate(() => window.__horde.profile());
+  const homeRender = { built: builtId, tier: afterBuild.village[builtId] ?? 0, coins: afterBuild.coins };
+
   const expedition = {
     node: firstNode,
     battle: expBattle.level,
@@ -335,7 +378,7 @@ try {
   const fpsMin = Math.min(...fpsSamples);
   const fpsAvg = fpsSamples.reduce((a, b) => a + b, 0) / fpsSamples.length;
   const content = {};
-  for (const shot of ['smoke-play.png', 'smoke-crowd.png', 'smoke-boss.png']) {
+  for (const shot of ['smoke-play.png', 'smoke-crowd.png', 'smoke-boss.png', 'smoke-home.png']) {
     const c = sceneContent(shot);
     content[shot] = c;
     if (c.lumaStd < MIN_LUMA_STD || c.colours < MIN_COLOURS)
@@ -377,16 +420,22 @@ try {
     render: { crowd: crowdRender, boss: boss.render },
     result,
     expedition,
+    loadout: { slots: loadoutSlots, ultButton },
+    collection,
+    home: homeRender,
     screenshots: [
       'smoke-title.png',
       'smoke-map.png',
       'smoke-card.png',
+      'smoke-loadout.png',
       'smoke-play.png',
       'smoke-crowd.png',
       'smoke-boss.png',
       'smoke-result.png',
       'smoke-expedition-map.png',
       'smoke-expedition-pick.png',
+      'smoke-collection.png',
+      'smoke-home.png',
     ],
     errors,
   };
@@ -404,6 +453,11 @@ try {
   if (offered !== 3) errors.push(`expected 3 upgrade cards after the expedition win, got ${offered}`);
   if (!runAfter || runAfter.upgrades[picked] !== 1 || runAfter.stats.battlesWon !== 1)
     errors.push(`expedition run did not record the win and pick: ${JSON.stringify(expedition)}`);
+  if (loadoutSlots !== 5) errors.push(`expected 5 loadout slots, got ${loadoutSlots}`);
+  if (!ultButton) errors.push('the ultimate button is not showing in a campaign battle');
+  if (!upgradedId || collection.tier !== 1 || collection.coinsAfter >= coinsBefore)
+    errors.push(`collection upgrade did not apply: ${JSON.stringify(collection)}`);
+  if (!builtId || homeRender.tier !== 1) errors.push(`home build did not apply: ${JSON.stringify(homeRender)}`);
   if (errors.length) {
     console.error(`smoke FAILED:\n  ${errors.join('\n  ')}`);
     exitCode = 1;
