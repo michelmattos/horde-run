@@ -3,9 +3,9 @@
 // onto them, so the screens stay independent of how progress is stored.
 //
 // Fixed shared ids (identical in every module):
-//   cannons    popgun, repeater, blunderbuss, snowball-launcher (World 2)
-//   mobs       rifleman, knight, sprinter, bomber, giant (World 2)
-//   champions  sarge, tank, drummer
+//   cannons    popgun, repeater, blunderbuss, snowball-launcher (World 2), gear-gun (World 3)
+//   mobs       rifleman, knight, sprinter, bomber, giant (World 2), archer (World 3)
+//   champions  sarge, tank, drummer, windup (World 3)
 //   ultimates  barrage, paratroopers, marble, blizzard (World 2)
 //   buildings  barracks, walls, workshop, garden, flagpole
 

@@ -1,8 +1,9 @@
-// The Expedition upgrade pool: 25 data-only definitions (20 from World 1, 5 around ice
-// and freezing gates from World 2). Ids are save keys, so never rename one. What each
-// upgrade does to a battle lives in modifiers.ts; run-level effects (Sturdy Fort) live in
-// run.ts. Text lines stay short for phone cards. A World 2 upgrade sets `icon` to its
-// nearest World 1 icon and `iconW2` to its own sticker, which the UI draws instead.
+// The Expedition upgrade pool: 30 data-only definitions (20 from World 1, 5 around ice
+// and freezing gates from World 2, 5 around timed gates, belts, saws and shield walls
+// from World 3). Ids are save keys, so never rename one. What each upgrade does to a
+// battle lives in modifiers.ts; run-level effects (Sturdy Fort) live in run.ts. Text
+// lines stay short for phone cards. A World 2 or 3 upgrade sets `icon` to its nearest
+// World 1 icon and `iconW2` / `iconW3` to its own sticker, which the UI draws instead.
 import type { UpgradeDef, UpgradeRarity } from '../contracts.ts';
 
 export const UPGRADES: readonly UpgradeDef[] = Object.freeze([
@@ -244,6 +245,58 @@ export const UPGRADES: readonly UpgradeDef[] = Object.freeze([
     category: 'champion',
     icon: 'champ-big',
     iconW2: 'champ-avalanche',
+    maxStacks: 2,
+  },
+  // World 3: timed gates, belts, saws and shield walls
+  {
+    id: 'clockwork',
+    name: 'Clockwork Gate',
+    text: 'A timed x3 gate; timed gates stay open longer.',
+    rarity: 'rare',
+    category: 'gate',
+    icon: 'gate-x3',
+    iconW3: 'gate-clock',
+    maxStacks: 1,
+  },
+  {
+    id: 'boots',
+    name: 'Rubber Boots',
+    text: 'Belts and turntables push you 50% (90%) less.',
+    rarity: 'common',
+    category: 'mob',
+    icon: 'mob-tough',
+    iconW3: 'mob-boots',
+    maxStacks: 2,
+  },
+  {
+    id: 'sawguard',
+    name: 'Saw Guards',
+    text: 'Saws do 75% less harm to your soldiers.',
+    drawback: 'Enemy defenders and shield walls +25% HP.',
+    rarity: 'rare',
+    category: 'relic',
+    icon: 'relic-fort',
+    iconW3: 'relic-sawguard',
+    maxStacks: 1,
+  },
+  {
+    id: 'crowbar',
+    name: 'Crowbar',
+    text: 'Soldiers dent shields; Champion +25% damage.',
+    rarity: 'rare',
+    category: 'champion',
+    icon: 'champ-big',
+    iconW3: 'champ-crowbar',
+    maxStacks: 1,
+  },
+  {
+    id: 'bankshot',
+    name: 'Bank Shot',
+    text: 'Every 4th (2nd) shot ricochets; +10% fire rate.',
+    rarity: 'common',
+    category: 'cannon',
+    icon: 'cannon-scatter',
+    iconW3: 'cannon-bank',
     maxStacks: 2,
   },
 ] satisfies UpgradeDef[]);

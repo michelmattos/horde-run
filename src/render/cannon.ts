@@ -3,8 +3,10 @@
 // 'blunderbuss'; World 2's 'snowball-launcher', models/snowballLauncher.ts, whose
 // throwing arm is the recoil part: it flings up on every shot) at the player base. It
 // follows the game's clamped cannonX (the wooden wheels roll as it slides) and kicks on every shot: the barrel recoils and the carriage
-// tips about its trail spade; the repeater's barrel cluster spins while it fires. Nothing
-// here moves the camera.
+// tips about its trail spade; the repeater's barrel cluster spins while it fires. World 3's
+// 'gear-gun' (models/gearGun.ts) ratchets its side gears and crank round one tooth on
+// every shot (crowdLogic.gearRatchet, in step with the recoil). Nothing here moves the
+// camera.
 import type { Scene } from '@babylonjs/core/scene';
 import { LAYOUT } from '../contracts.ts';
 import type { Look } from './look/index.ts';
@@ -12,6 +14,8 @@ import { WHEEL_RADIUS, createCannon } from './models/cannon.ts';
 import type { CannonModel } from './models/cannon.ts';
 import { createCannonVariant } from './models/cannonVariants.ts';
 import { createSnowballLauncher } from './models/snowballLauncher.ts';
+import { GEAR_TEETH, createGearGun } from './models/gearGun.ts';
+import { gearRatchet } from './crowdLogic.ts';
 import type { CannonId } from './crowdLogic.ts';
 
 // The cannon is the player's main tool: drawn 1.4x, with the carriage and wheels widened
@@ -34,6 +38,7 @@ export class Cannon {
   private spin = 0;
   private barrelSpin = 0;
   private spinSpeed = 0;
+  private shots = 0; // Gear Gun: shots fired so far (fractional: time into the current one)
 
   constructor(scene: Scene, look: Look) {
     this.scene = scene;
@@ -47,7 +52,9 @@ export class Cannon {
         ? createCannon(this.scene, this.look)
         : id === 'snowball-launcher'
           ? createSnowballLauncher(this.scene, this.look)
-          : createCannonVariant(this.scene, this.look, id);
+          : id === 'gear-gun'
+            ? createGearGun(this.scene, this.look)
+            : createCannonVariant(this.scene, this.look, id);
     m.root.scaling.set(CANNON_SCALE * CANNON_WIDEN, CANNON_SCALE, CANNON_SCALE);
     m.root.position.set(this.lastX, 0, ROOT_Z);
     m.setWheelSpin(this.spin);
@@ -93,7 +100,12 @@ export class Cannon {
     // Saw-tooth recoil at the fire rate: snap back, ease forward.
     const phase = active ? (time * this.fireRate) % 1 : 1;
     this.model.setRecoil(active ? (1 - phase) * (1 - phase) : 0);
-    if (this.model.setSpin) {
+    if (this.id === 'gear-gun') {
+      // One tooth per shot (in phase with the recoil above); idle, the gears finish their
+      // last snap and hold. Whole teeth look alike, so resuming from time is seamless.
+      this.shots = active ? time * this.fireRate : Math.ceil(this.shots - 1e-6);
+      this.model.setSpin?.(gearRatchet(this.shots, GEAR_TEETH));
+    } else if (this.model.setSpin) {
       const target = active ? SPIN_RATE : 0;
       this.spinSpeed += (target - this.spinSpeed) * Math.min(1, dt * SPIN_EASE);
       this.barrelSpin = (this.barrelSpin + this.spinSpeed * dt) % (Math.PI * 2);

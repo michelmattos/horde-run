@@ -45,10 +45,13 @@ export {
   soundsForFrame,
 } from './mapping.ts';
 
+/** Champions with their own launch sound. */
+export type ChampionSoundId = 'sarge' | 'tank' | 'drummer' | 'windup';
+
 export interface PlayOptions {
   x?: number; // world x for stereo pan
   volume?: number; // 0..1, multiplies the sound's base volume
-  variant?: string; // 'barrage' | 'paratroopers' | 'marble' | 'blizzard' for 'ultimate'; 'sarge' | 'tank' | 'drummer' for 'championLaunch'
+  variant?: string; // 'barrage' | 'paratroopers' | 'marble' | 'blizzard' for 'ultimate'; 'sarge' | 'tank' | 'drummer' | 'windup' for 'championLaunch'
 }
 
 export interface GameAudio {
@@ -60,7 +63,7 @@ export interface GameAudio {
   /** One battle frame: this frame's sim events and battle cues (BattleCue[] fits). */
   battleFrame(events: readonly SimEvent[], cues: readonly AudioCue[]): void;
   /** Which champion's launch sound championLaunched events play (default 'sarge'). */
-  setChampion(id: 'sarge' | 'tank' | 'drummer'): void;
+  setChampion(id: ChampionSoundId): void;
   /**
    * The background music for the screen (null = none). Asking for the song already
    * playing changes nothing, so menus can call this freely; a new song crossfades in,
@@ -89,6 +92,11 @@ export const JITTER = new Set<SoundId>([
   'iceChip',
   'snowballBurst',
   'lobHit',
+  'saw',
+  'arrow',
+  'ricochet',
+  'shieldClang',
+  'gateToggle',
 ]);
 // Reverb send per sound: the musical stings and big moments get some room, while the
 // constant battle noise stays dry and close.
@@ -105,6 +113,9 @@ export const SEND: Readonly<Partial<Record<SoundId, number>>> = {
   defenderDown: 0.2,
   gateBreak: 0.15,
   build: 0.15,
+  jackPop: 0.2,
+  shieldClang: 0.12,
+  ricochet: 0.1,
 };
 // Bus levels at full volume. Music sits under the effects: it is there to make the
 // screens feel alive, not to compete with the battle.

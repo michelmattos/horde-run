@@ -7,7 +7,8 @@
 // 51, 51 and 66 s). The starter wins these about 60% of the time, and that curve is
 // steep: an attempt the starter loses needs 100+ base HP to survive, a maxed one at most
 // 36, so no base HP gives both 60% starter wins and occasional maxed losses. The maxed
-// test therefore pins the time floor, not a loss rate.
+// test therefore pins the time floor, not a loss rate. World 3's hard end (8 attempts):
+// maxed wins every attempt on 3-8, 3-9 and 3-10 (median wins 57, 80 and 58 s).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { getLevelById } from '../src/game/levels.ts';
@@ -22,7 +23,7 @@ const MAXED: Profile = {
   village: Object.fromEntries(BUILDINGS.map((b) => [b.id, MAX_TIER])),
 };
 
-for (const id of ['1-8', '1-9', '1-10']) {
+for (const id of ['1-8', '1-9', '1-10', '3-8', '3-9', '3-10']) {
   test(`maxed gear and village: ${id} is comfortable, not trivial`, () => {
     const r = resolveLoadout(getLevelById(id)!, MAXED);
     const runs = humanRuns(r.level, HUMAN_ATTEMPTS, r.battle);

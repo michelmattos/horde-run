@@ -1,6 +1,10 @@
 // Pure render-side bookkeeping (no Babylon, so it is unit-tested under Node): HP bar
 // fractions, one-use gate label text, pop/fade curves, the preallocated particle and
 // tracer pools the effects draw from, and deterministic scenery placement.
+// Milestone 6 adds the World 3 hazard clocks (toggling gates, gliding gates, belts,
+// turntables, saws) as pure functions of the battle time, so render and sim agree.
+import type { ConveyorDef, CycleDef, GateDef, GateToggleDef, TurntableDef } from '../contracts.ts';
+import { cycleOn, gateGlide, gateLabel, turntableSpin } from '../contracts.ts';
 
 // ---------- Small curves and labels ----------
 
@@ -790,9 +794,10 @@ export function parachuteAt(k: number, startY: number, phase: number, crumpleSha
 // ---------- Milestone 5: World 2 (Freezer / Snow Globe) bookkeeping ----------
 
 // The room a level is played in (contracts LevelDef.theme; absent = the bedroom).
-export type RoomTheme = 'bedroom' | 'freezer';
+// Milestone 6 adds World 3's 'workshop'.
+export type RoomTheme = 'bedroom' | 'freezer' | 'workshop';
 export function roomThemeOf(level: { theme?: RoomTheme }): RoomTheme {
-  return level.theme === 'freezer' ? 'freezer' : 'bedroom';
+  return level.theme === 'freezer' || level.theme === 'workshop' ? level.theme : 'bedroom';
 }
 
 // Holds the assets of exactly one room theme. use(theme) keeps the current assets when
@@ -997,4 +1002,272 @@ export function scatterFreezerScenery(
     }
   }
   return props;
+}
+
+// ---------- Milestone 6: World 3 (Clockwork Workshop) bookkeeping ----------
+// Everything here is a pure function of the battle time (or integrates a value the caller
+// keeps), allocation-free, so toggles, glides, belts, turntables and saws on screen follow
+// the sim's own clocks (contracts cycleOn / gateGlide / conveyorDir / turntableSpin).
+
+const TAU = Math.PI * 2;
+const smooth01 = (x: number): number => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
+
+// A toggling gate's clock at time t, written into `out`.
+export interface ToggleView {
+  on: boolean; // the gate's own op applies (cycleOn)
+  closed: boolean; // off without an alt: the shutter is down
+  flipIn: number; // seconds until the next flip (cycleFlipIn)
+  progress: number; // 0..1 share of the current phase gone (the clock hand)
+  since: number; // seconds since the last flip; Infinity when it flipped at or before t = 0
+}
+
+export function toggleViewAt(c: GateToggleDef, t: number, out: ToggleView): ToggleView {
+  if (!(c.on > 0 && c.off > 0)) {
+    // A cycle with an empty phase never flips: it is always on (or always off).
+    out.on = cycleOn(c, t);
+    out.closed = !out.on && !c.alt;
+    out.flipIn = Infinity;
+    out.progress = 0;
+    out.since = Infinity;
+    return out;
+  }
+  const p = c.on + c.off;
+  const u = (((t + (c.offset ?? 0)) % p) + p) % p;
+  const on = u < c.on;
+  const phase = on ? c.on : c.off;
+  const elapsed = on ? u : u - c.on;
+  out.on = on;
+  out.closed = !on && !c.alt;
+  out.flipIn = phase - elapsed;
+  out.progress = phase > 0 ? elapsed / phase : 0;
+  // A flip at the very start of the battle (or before it) is the initial state, not an event.
+  out.since = t - elapsed > 1e-6 ? elapsed : Infinity;
+  return out;
+}
+
+// The two faces of a toggling gate's card: its own label (on) and, while off, the alt
+// label or '' (shutter down). Same strings as contracts gateLabelAt, computed once per gate.
+export function toggleLabels(g: GateDef): { on: string; off: string } {
+  const alt = g.toggle?.alt;
+  return { on: gateLabel(g), off: alt ? gateLabel({ ...g, op: alt.op, value: alt.value }) : '' };
+}
+
+// The flip time is known in advance (flipIn), so both flip animations are timed around it
+// rather than started by it: what is drawn changes exactly when the sim's effect does.
+
+// Tin shutter of a toggling gate without an alt: 0 open (rolled up under the beam) .. 1 down.
+// It drops like a weight (ease-in) over the SHUTTER_TIME before the gate closes, so it is
+// down at the very instant the gate stops counting, and rolls up (ease-out) once it opens.
+export const SHUTTER_TIME = 0.24;
+export function shutterAt(v: ToggleView): number {
+  if (v.closed) return 1;
+  let k = 0;
+  if (v.flipIn < SHUTTER_TIME) {
+    const u = v.flipIn <= 0 ? 1 : 1 - v.flipIn / SHUTTER_TIME;
+    k = u * u;
+  }
+  if (v.since < SHUTTER_TIME) {
+    const u = v.since <= 0 ? 0 : v.since / SHUTTER_TIME;
+    k = Math.max(k, (1 - u) * (1 - u));
+  }
+  return k;
+}
+
+// Split-flap card of a toggling gate with an alt value: the card flips about its middle
+// over FLAP_TIME, centred on the flip. It folds away showing the current face, is edge-on
+// at the flip, and unfolds showing the new one; so the face drawn is always the face of
+// the gate's current state (gateLabelAt). Returns the card pitch: 0 flat, +-PI/2 edge-on.
+export const FLAP_TIME = 0.32;
+export function flapAt(v: ToggleView): number {
+  const half = FLAP_TIME / 2;
+  if (v.since < half) return (v.since <= 0 ? -0.5 : v.since / FLAP_TIME - 0.5) * Math.PI;
+  if (v.flipIn < half) return (v.flipIn <= 0 ? 0.5 : 0.5 - v.flipIn / FLAP_TIME) * Math.PI;
+  return 0;
+}
+
+// The clock pip warns before a flip: 0 until CLOCK_WARN seconds remain, then rises to 1.
+export const CLOCK_WARN = 1.2;
+export function clockWarn(flipIn: number): number {
+  if (!(flipIn < CLOCK_WARN)) return 0;
+  return flipIn <= 0 ? 1 : 1 - flipIn / CLOCK_WARN;
+}
+
+// A gliding gate (gateMoved): it lifts, glides from (fromX, fromZ) to (toX, toZ) with
+// gateGlide exactly as the sim moves its spot (plus its own move sway on x), and drops.
+export const GLIDE_LIFT = 0.9; // world units the gate rises while it glides
+export interface GlidePose {
+  x: number;
+  z: number;
+  lift: number; // height above the floor
+  landed: boolean;
+}
+export function glidePoseAt(
+  elapsed: number,
+  seconds: number,
+  fromX: number,
+  fromZ: number,
+  toX: number,
+  toZ: number,
+  sway: number,
+  out: GlidePose,
+): GlidePose {
+  const k = gateGlide(elapsed, seconds);
+  out.x = fromX + (toX - fromX) * k + sway;
+  out.z = fromZ + (toZ - fromZ) * k;
+  const u = seconds > 0 ? elapsed / seconds : 1;
+  out.landed = u >= 1;
+  out.lift = out.landed ? 0 : GLIDE_LIFT * smooth01(u / 0.18) * (1 - smooth01((u - 0.82) / 0.18));
+  return out;
+}
+
+// Conveyor belt surface scroll. The belt mesh faces its current direction (it is turned
+// by PI while conveyorDir is -1, so its chevrons always point the way it runs), so in the
+// mesh's own frame the texture always runs forward: the v offset falls by speed * dt /
+// repeat. Returns the new offset, wrapped to [0, 1).
+export const BELT_REPEAT = 2; // world units per belt texture repeat (one chevron)
+export function beltScroll(offset: number, c: ConveyorDef, dt: number, repeat = BELT_REPEAT): number {
+  const speed = Math.hypot(c.vx, c.vz);
+  const v = offset - (speed * (dt > 0 ? dt : 0)) / repeat;
+  return v - Math.floor(v);
+}
+// Yaw (radians about +Y) that turns the belt's local +Z (its chevrons) to the way it runs:
+// its velocity times conveyorDir(c, t) (dir is +1 or -1), snapped to the dominant axis so
+// the belt stays square with its rectangle (0, PI/2, PI or -PI/2).
+export function beltYaw(c: ConveyorDef, dir: number): number {
+  const vx = c.vx * dir;
+  const vz = c.vz * dir;
+  if (Math.abs(vx) > Math.abs(vz)) return vx > 0 ? Math.PI / 2 : -Math.PI / 2;
+  return vz < 0 ? Math.PI : 0;
+}
+
+// Turntable angle after another frame: integrates turntableSpin (a positive spin turns +x
+// toward +z, contracts), wrapped to [0, 2 PI). Draw it as rotation.y = -angle (Babylon's
+// positive yaw turns +x toward -z).
+export function turntableAngle(angle: number, p: TurntableDef, t: number, dt: number): number {
+  const a = angle + turntableSpin(p, t) * (dt > 0 ? dt : 0);
+  return a - Math.floor(a / TAU) * TAU;
+}
+
+// How far a saw blade stands out of its slot (0 sunk .. 1 up) at time t. It never shows
+// less than the danger: it rises SAW_RAISE_TIME before its cycle turns on, stays up while
+// on, and sinks over SAW_RAISE_TIME after it turns off. No cycle = always up.
+export const SAW_RAISE_TIME = 0.28;
+export function sawRaiseAt(cycle: CycleDef | undefined, t: number): number {
+  if (!cycle) return 1;
+  const p = cycle.on + cycle.off;
+  if (!(p > 0)) return 1;
+  const u = (((t + (cycle.offset ?? 0)) % p) + p) % p;
+  if (u < cycle.on) return 1;
+  const off = u - cycle.on; // seconds since it turned off
+  const left = p - u; // seconds until it turns on
+  const sink = 1 - smooth01(off / SAW_RAISE_TIME);
+  const rise = smooth01(1 - left / SAW_RAISE_TIME);
+  return sink > rise ? sink : rise;
+}
+
+// Jack-in-the-Box telegraph: gates tremble a few cm in place while the shuffle winds up
+// (the camera never moves). Writes the offset for one gate (phase decorrelates gates).
+export const SHUFFLE_JITTER = 0.05; // world units at full warn
+export function shuffleJitter(warn: number, time: number, phase: number, out: { x: number; z: number }): void {
+  const w = warn > 0 ? (warn > 1 ? 1 : warn) : 0;
+  const a = SHUFFLE_JITTER * w * w;
+  out.x = a * Math.sin(time * 37 + phase * 2.1) * (0.6 + 0.4 * Math.sin(time * 11 + phase));
+  out.z = a * 0.5 * Math.sin(time * 29 + phase * 3.7);
+}
+
+// Shield wall dents by damage share: 0 smooth, 1-3 more and more dented (never undents).
+export function dentStage(hp: number, maxHp: number): 0 | 1 | 2 | 3 {
+  return iceCrackStage(hp, maxHp);
+}
+
+// Workshop props: the same scatter rules as the bedroom and the freezer (outside the lane
+// plus clearance, never overlapping, clear of any rectangle that pokes past the lane edge).
+export type WorkshopPropKind = 'gears' | 'spring' | 'jar' | 'screwdriver' | 'key' | 'toy';
+export const WORKSHOP_KINDS: readonly WorkshopPropKind[] = ['gears', 'spring', 'jar', 'screwdriver', 'key', 'toy'];
+export const WORKSHOP_RADIUS: Record<WorkshopPropKind, number> = {
+  gears: 1.2,
+  spring: 1.1,
+  jar: 0.85,
+  screwdriver: 1.6,
+  key: 0.9,
+  toy: 1.5,
+};
+export const WORKSHOP_WEIGHTS: Record<WorkshopPropKind, number> = {
+  gears: 0.26,
+  spring: 0.15,
+  jar: 0.14,
+  screwdriver: 0.17,
+  key: 0.18,
+  toy: 0.1,
+};
+export const WORKSHOP_VARIANTS: Record<WorkshopPropKind, number> = {
+  gears: 3,
+  spring: 2,
+  jar: 2,
+  screwdriver: 2,
+  key: 3,
+  toy: 2,
+};
+
+export function scatterWorkshopScenery(
+  seed: number,
+  laneWidth: number,
+  zMin: number,
+  zMax: number,
+  count: number,
+  reach: number,
+  keepOut: readonly Rect[] = [],
+): WorkshopProp[] {
+  const rand = mulberry32(seed);
+  const props: WorkshopProp[] = [];
+  const edge = laneWidth / 2 + SCENERY_CLEARANCE;
+  const pick = (r: number): WorkshopPropKind => {
+    let acc = 0;
+    for (const k of WORKSHOP_KINDS) {
+      acc += WORKSHOP_WEIGHTS[k];
+      if (r < acc) return k;
+    }
+    return 'gears';
+  };
+  for (let i = 0; i < count; i++) {
+    const side = i % 2 === 0 ? -1 : 1;
+    const kind = pick(rand());
+    const scale = 0.85 + rand() * 0.3;
+    const yaw = rand() * Math.PI * 2;
+    const color = Math.floor(rand() * 6);
+    const variant = Math.floor(rand() * WORKSHOP_VARIANTS[kind]);
+    const r = WORKSHOP_RADIUS[kind] * scale;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const x = side * (edge + r + Math.pow(rand(), 1.6) * reach);
+      const z = zMin + rand() * (zMax - zMin);
+      let clear = true;
+      for (const o of props) {
+        const d = WORKSHOP_RADIUS[o.kind] * o.scale + r;
+        if ((o.x - x) * (o.x - x) + (o.z - z) * (o.z - z) < d * d) {
+          clear = false;
+          break;
+        }
+      }
+      for (const w of keepOut) {
+        if (!clear) break;
+        const dx = Math.max(0, Math.abs(x - w.x) - w.width / 2);
+        const dz = Math.max(0, Math.abs(z - w.z) - w.depth / 2);
+        if (dx * dx + dz * dz < (r + SCENERY_CLEARANCE) * (r + SCENERY_CLEARANCE)) clear = false;
+      }
+      if (!clear) continue;
+      props.push({ kind, x, z, scale, yaw, color, variant });
+      break;
+    }
+  }
+  return props;
+}
+
+export interface WorkshopProp {
+  kind: WorkshopPropKind;
+  x: number;
+  z: number;
+  scale: number;
+  yaw: number;
+  color: number; // palette index
+  variant: number;
 }

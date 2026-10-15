@@ -9,8 +9,8 @@
 // dust collapse on the player fort (both timed emitters), and puffs for the marble's
 // dust trail and the paratroopers' landings.
 //
-// Cost: every effect lives in fixed typed-array pools (560 slots in all) drawn as nine
-// thin-instance batches, so the whole system is at most 9 draw calls, and usually far
+// Cost: every effect lives in fixed typed-array pools (FX_POOL_TOTAL slots in all) drawn
+// as eleven thin-instance batches, so the whole system is at most 11 draw calls, and usually far
 // fewer (a batch with nothing live is hidden and costs none). Spawning never allocates,
 // update() never allocates, and nothing here reads input or moves a camera: the active
 // camera's view matrix is only READ to turn puffs, sparks and flares towards it.
@@ -32,6 +32,8 @@
 // championLaunched / clash / blast / barrage / victory / defeat / trailPuff, update(dt)
 // once per frame, clear() on a level reload, dispose() with the scene. `root` holds every mesh (leave it at the origin
 // in the game). No shadows are cast: the bits are small and short-lived.
+// Milestone 6 (World 3) adds sawHit (sparks and chips), gateToggle (shutter clack or
+// split-flap puff), shieldClang, tinShards (a broken shield wall) and gateLanded.
 import '@babylonjs/core/Meshes/thinInstanceMesh';
 import type { Scene } from '@babylonjs/core/scene';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
@@ -72,7 +74,7 @@ const FALLEN = 24; // darts bouncing off after impact
 const SOLIDS = 140; // plastic shards, chips and mini-blocks
 const CONFETTI = 220; // paper confetti and torn paper
 const PUFFS = 64; // fluff / dust / squash / muzzle puffs
-const SPARKS = 32; // boss-phase, launch and blast sparks
+const SPARKS = 48; // boss-phase, launch, blast, saw and clang sparks
 const RINGS = 12; // floor rings
 const STREAMERS = 40; // victory paper streamers
 const FLARES = 4; // barrage muzzle flares
@@ -96,7 +98,7 @@ export const FX_POOL_TOTAL =
   SNOW +
   LOBS +
   LOB_MARKERS +
-  GUSTS; // 660
+  GUSTS; // 676
 
 const DART_TIME = 0.2;
 const DART_FROM_Y = 2.6; // the tan dart shooter on top of a block tower
@@ -117,7 +119,16 @@ const MELT_TIME = 0.9;
 const LOB_PEAK = 2.6; // extra height of a boss snowball's arc
 const LOB_GRACE = 0.25; // a snowball waits this long past its flight for the lobHit event
 const ICE_WALL_INTERVAL = 0.25; // chips per ice wall
+const SAW_INTERVAL = 0.09; // sparks per saw (sawHit arrives every step it bites)
+const CLANG_INTERVAL = 0.18; // clang flashes per shield wall
 const GRAVITY = 16;
+
+// Stable numeric key of an id string (for the keyed throttles).
+function idKey(id: string): number {
+  let key = 0;
+  for (let i = 0; i < id.length; i++) key = (key * 31 + id.charCodeAt(i)) | 0;
+  return key;
+}
 
 // Solid shapes (one pool, two meshes).
 const SHARD = 0;
@@ -289,6 +300,8 @@ export class Effects {
   private readonly muzzleCd = new Cooldown(MUZZLE_INTERVAL);
   private readonly clashCd = new Cooldown(CLASH_INTERVAL);
   private readonly iceWallCd = new KeyedThrottle(8, ICE_WALL_INTERVAL);
+  private readonly sawCd = new KeyedThrottle(8, SAW_INTERVAL);
+  private readonly clangCd = new KeyedThrottle(8, CLANG_INTERVAL);
 
   // Camera axes for sprites (world space), refreshed each update from the active camera.
   private rX = 1;
@@ -344,6 +357,9 @@ export class Effects {
     iceLight: rgb('#e6f5fc'),
     iceDark: rgb('#8cc3e3'),
     drop: rgb('#9fd3f0'),
+    tinBlue: rgb('#2e5aa8'),
+    tinNavy: rgb('#22355e'),
+    tinSteel: rgb('#c9ced4'),
   };
 
   // Sprite colours (sRGB): puffs, rings, sparks.
@@ -368,6 +384,10 @@ export class Effects {
     lobRing: srgbRgb('#e9f6ff'),
     lobFill: srgbRgb('#7fc4f2'),
     wind: srgbRgb('#f6fbff'),
+    sparkHot: srgbRgb('#ffd27a'),
+    sparkWhite: srgbRgb('#fff6e0'),
+    clang: srgbRgb('#dff1ff'),
+    tinDust: srgbRgb('#cbc5ba'),
   };
 
   constructor(scene: Scene, look?: Look) {
@@ -1133,9 +1153,7 @@ export class Effects {
 
   // Units bumped an ice wall at (x, z): a few ice chips and a frost puff, throttled per wall.
   iceWallHit(id: string, x: number, z: number): void {
-    let key = 0;
-    for (let i = 0; i < id.length; i++) key = (key * 31 + id.charCodeAt(i)) | 0;
-    if (!this.iceWallCd.allow(key)) return;
+    if (!this.iceWallCd.allow(idKey(id))) return;
     const C = this.C;
     for (let i = 0; i < this.count(3); i++) {
       const a = this.rand() * Math.PI * 2;
@@ -1275,6 +1293,207 @@ export class Effects {
     this.ring(x, z, R * 0.6, R * 2.4, 1, 0.7, this.S.frostRing, 1.15, 0.8);
     const f = this.S.frost;
     this.puff(x, 0.4, z, 0, 0.4, 0, 0.6, 2, R * 0.6, f.r, f.g, f.b, 0.6);
+  }
+
+  // ---------- Milestone 6 (World 3) spawners ----------
+
+  // A saw bit units at (x, z): hot sparks spray off the blade's front and plastic chips of
+  // both armies fly, more for a bigger bite (weight removed). Throttled per saw.
+  sawHit(id: string, x: number, z: number, weight: number, radius: number): void {
+    if (!this.sawCd.allow(idKey(id))) return;
+    const big = Math.min(1, Math.max(0, weight) / 4);
+    const S = this.S;
+    const n = this.count(3 + Math.round(big * 5));
+    for (let i = 0; i < n; i++) {
+      const side = i % 2 === 0 ? 1 : -1;
+      const c = i % 3 === 0 ? S.sparkWhite : S.sparkHot;
+      const sp = this.r(4, 7.5);
+      this.sparks.spawn(
+        x + side * this.r(0.1, 0.4) * radius,
+        this.r(0.15, 0.45),
+        z - 0.1,
+        side * sp * this.r(0.5, 1),
+        this.r(2, 4.5),
+        -this.r(0.5, 2),
+        this.r(0.25, 0.45),
+        this.r(0.06, 0.1),
+        c.r * 2.2,
+        c.g * 2.2,
+        c.b * 2.2,
+        12,
+      );
+    }
+    const C = this.C;
+    const chips = this.count(1 + Math.round(big * 4));
+    for (let i = 0; i < chips; i++) {
+      const a = this.rand() * Math.PI * 2;
+      const sp = this.r(1.6, 3.4);
+      this.solid(
+        SHARD,
+        x + this.r(-0.4, 0.4) * radius,
+        this.r(0.3, 0.7),
+        z + this.r(-0.2, 0.2),
+        Math.cos(a) * sp,
+        this.r(3, 5.5),
+        Math.sin(a) * sp * 0.7,
+        this.r(0.8, 1.2),
+        this.r(0.08, 0.14),
+        i % 2 === 0 ? C.green : C.tan,
+      );
+    }
+  }
+
+  // A toggling gate flipped at (x, z). Shutter gates: a tin clack of dust along the floor
+  // as the shutter slams down, or a puff under the beam as it rolls up. Split-flap gates:
+  // a cream puff at the card and two brass glints.
+  gateToggle(x: number, z: number, width: number, on: boolean, shutter: boolean): void {
+    const w = Math.max(1, width);
+    const d = this.S.tinDust;
+    if (shutter) {
+      const y = on ? 1.5 : 0.15;
+      for (let i = 0; i < this.count(4); i++)
+        this.puff(
+          x + this.r(-0.45, 0.45) * w,
+          y,
+          z - 0.15,
+          this.r(-0.8, 0.8),
+          on ? -0.2 : 0.4,
+          -this.r(0.3, 0.9),
+          0.5,
+          1.8,
+          this.r(0.4, 0.6),
+          d.r,
+          d.g,
+          d.b,
+          0.7,
+        );
+      return;
+    }
+    const c = this.S.cream;
+    for (let i = 0; i < this.count(3); i++)
+      this.puff(
+        x + this.r(-0.35, 0.35) * w,
+        this.r(2.6, 3.4),
+        z - 0.3,
+        this.r(-0.6, 0.6),
+        this.r(0.2, 0.6),
+        -0.4,
+        0.45,
+        1.6,
+        this.r(0.35, 0.5),
+        c.r,
+        c.g,
+        c.b,
+        0.65,
+      );
+    const b = this.S.sparkBrass;
+    for (const side of [-1, 1])
+      this.sparks.spawn(x + side * w * 0.3, 3, z - 0.3, side * 2, 2.5, -0.5, 0.3, 0.1, b.r * 2, b.g * 2, b.b * 2, 6);
+  }
+
+  // A mob was turned back by a shield wall at (x, z): a cold white clang flash and steel
+  // sparks off its face, throttled per wall.
+  shieldClang(id: string, x: number, z: number): void {
+    if (!this.clangCd.allow(idKey(id))) return;
+    const c = this.S.clang;
+    this.ring(x, z - 0.5, 0.3, 1.4, 0.7, 0.3, c, 1.3, 0.7);
+    for (let i = 0; i < this.count(5); i++) {
+      const a = this.r(-1.2, 1.2);
+      const sp = this.r(3, 5.5);
+      this.sparks.spawn(
+        x + this.r(-0.6, 0.6),
+        this.r(0.5, 1.1),
+        z - 0.45,
+        Math.sin(a) * sp,
+        this.r(1.5, 3.5),
+        -Math.cos(a) * sp * 0.6,
+        this.r(0.2, 0.35),
+        this.r(0.07, 0.1),
+        c.r * 2,
+        c.g * 2,
+        c.b * 2,
+        10,
+      );
+    }
+  }
+
+  // A shield wall is broken: riveted tin shards (blue paint, bare steel, navy posts) and
+  // brass rivets fly, with a puff of dust.
+  tinShards(x: number, z: number, width: number): void {
+    const w = Math.max(1, width);
+    const C = this.C;
+    const n = this.count(18);
+    for (let i = 0; i < n; i++) {
+      const px = x + this.r(-0.5, 0.5) * w;
+      const pick = i % 6;
+      const c = pick < 3 ? C.tinBlue : pick < 5 ? C.tinSteel : C.tinNavy;
+      this.solid(
+        SHARD,
+        px,
+        this.r(0.3, 1.3),
+        z,
+        (px - x) * 1.2,
+        this.r(3, 6),
+        -this.r(0.5, 2.6),
+        this.r(1.4, 2),
+        this.r(0.18, 0.34),
+        c,
+      );
+    }
+    for (let i = 0; i < this.count(6); i++)
+      this.solid(
+        BLOCK,
+        x + this.r(-0.5, 0.5) * w,
+        this.r(0.4, 1.2),
+        z,
+        this.r(-2, 2),
+        this.r(3, 5),
+        -this.r(0.5, 2),
+        1.4,
+        0.07,
+        C.brass,
+      );
+    const d = this.S.tinDust;
+    for (let i = 0; i < 3; i++)
+      this.puff(
+        x + this.r(-0.4, 0.4) * w,
+        this.r(0.3, 0.8),
+        z - 0.2,
+        this.r(-0.8, 0.8),
+        0.4,
+        -0.3,
+        0.85,
+        2.2,
+        this.r(0.9, 1.2),
+        d.r,
+        d.g,
+        d.b,
+        0.75,
+      );
+  }
+
+  // A gliding gate landed at (x, z): a line of dust puffs at its feet.
+  gateLanded(x: number, z: number, width: number): void {
+    const w = Math.max(1, width);
+    const f = this.S.fluff;
+    for (let i = 0; i < this.count(5); i++) {
+      const u = i / 4 - 0.5;
+      this.puff(
+        x + u * w,
+        0.15,
+        z + this.r(-0.15, 0.15),
+        u * 1.6,
+        this.r(0.3, 0.6),
+        this.r(-0.6, 0.2),
+        0.6,
+        1.8,
+        this.r(0.45, 0.65),
+        f.r,
+        f.g,
+        f.b,
+        0.8,
+      );
+    }
   }
 
   private snowBurst(x: number, z: number, spread: number, n: number, speed: number, s0: number, s1: number): void {
@@ -1792,6 +2011,8 @@ export class Effects {
     this.muzzleCd.tick(dt);
     this.clashCd.tick(dt);
     this.iceWallCd.tick(dt);
+    this.sawCd.tick(dt);
+    this.clangCd.tick(dt);
     this.readCamera();
     this.stepEmitters(dt);
 
@@ -2130,6 +2351,8 @@ export class Effects {
     this.gustLeft = 0;
     this.gustWarnLeft = 0;
     this.iceWallCd.clear();
+    this.sawCd.clear();
+    this.clangCd.clear();
     for (const b of [
       this.darts,
       this.shardBatch,

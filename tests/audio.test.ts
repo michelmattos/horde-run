@@ -150,7 +150,8 @@ test('every sound and variant has a recipe', () => {
   for (const id of SOUND_IDS) assert.ok(RECIPES[recipeKey(id)], id);
   for (const v of ['barrage', 'paratroopers', 'marble', 'blizzard'])
     assert.equal(recipeKey('ultimate', v), `ultimate:${v}`);
-  for (const v of ['sarge', 'tank', 'drummer']) assert.equal(recipeKey('championLaunch', v), `championLaunch:${v}`);
+  for (const v of ['sarge', 'tank', 'drummer', 'windup'])
+    assert.equal(recipeKey('championLaunch', v), `championLaunch:${v}`);
   assert.equal(recipeKey('ultimate', 'nope'), 'ultimate:barrage');
   assert.equal(recipeKey('shot', 'ignored'), 'shot');
   for (const r of Object.values(RECIPES)) assert.ok(r.dur > 0 && r.dur <= 2.5);
@@ -224,6 +225,61 @@ test('a storm of ice chips on a frozen gate stays a light tick, a few times a se
   assert.equal(soundsForFrame([], [{ type: 'gustWarn', dir: 1 }], 300, g).length, 0);
 });
 
+test("World 3 sim events map to their sounds; a gliding gate is the cue's job", () => {
+  const events: SimEvent[] = [
+    { type: 'gateToggled', gateId: 'g', x: 1, z: 10, on: false },
+    { type: 'sawHit', id: 's', x: -2, z: 14, weight: 3 },
+    { type: 'shieldBlock', id: 'w', x: 0, z: 20 },
+    { type: 'arrow', x: 1, z: 8, tx: 1, tz: 14 },
+    { type: 'ricochet', x: 4, z: 6 },
+    { type: 'gateWalk', gateId: 'g', x: 1, z: 10, seconds: 3 },
+    { type: 'gateMoved', gateId: 'g', fromX: 1, fromZ: 10, x: -1, z: 12, seconds: 1 },
+  ];
+  const out = soundsForFrame(events, [], 0, createThrottleState());
+  assert.deepEqual(
+    ids(out),
+    (['arrow', 'gateToggle', 'gateWalk', 'ricochet', 'saw', 'shieldClang'] as SoundId[]).sort(),
+  );
+  assert.equal(out[0].id, 'gateWalk', 'the champion at work outranks the hazards');
+  assert.equal(out.find((r) => r.id === 'saw')?.x, -2, 'panned by x like the others');
+  assert.ok(panForX(out.find((r) => r.id === 'ricochet')?.x) > 0);
+});
+
+test('World 3 cues: the crank winds on the shuffle warning, the jester pops on the shuffle', () => {
+  const out = soundsForFrame([], [{ type: 'shuffleWarn' }, { type: 'shuffle' }], 0, createThrottleState());
+  assert.deepEqual(ids(out), (['crank', 'jackPop'] as SoundId[]).sort());
+  assert.equal(out[0].id, 'jackPop');
+  for (const r of out) assert.equal(r.x, undefined, 'the whole box cranks: centred');
+});
+
+test('a volley of archers is one bow twang, a few times a second at most', () => {
+  const state = createThrottleState();
+  let played = 0;
+  // 2 s at 60 fps with 30 archers loosing every frame, and the saws biting every frame.
+  for (let f = 0; f < 120; f++) {
+    const evs: SimEvent[] = Array.from({ length: 30 }, (_, i) => ({
+      type: 'arrow' as const,
+      x: i % 5,
+      z: 5,
+      tx: 0,
+      tz: 9,
+    }));
+    evs.push(
+      { type: 'sawHit', id: 's1', x: 0, z: 12, weight: 2 },
+      { type: 'sawHit', id: 's2', x: 3, z: 16, weight: 1 },
+    );
+    const reqs = soundsForFrame(evs, [], f * (1000 / 60), state);
+    for (const r of reqs) {
+      if (r.id === 'arrow') {
+        played++;
+        assert.ok(r.volume <= SOUND_RULES.arrow.volume * 1.5 + 1e-9, `arrow volume ${r.volume}`);
+      }
+    }
+  }
+  assert.ok(played >= 6 && played <= 13, `${played} twangs in 2 s`);
+  assert.ok(SOUND_RULES.arrow.gapMs >= 150 && SOUND_RULES.saw.gapMs >= 150);
+});
+
 // ---------- Music ----------
 
 test('back-to-back scheduling windows play every note once, across the loop seam', () => {
@@ -272,6 +328,8 @@ test('songs stay in key: pitched notes use only their scale', () => {
     boss: scale('A', [0, 2, 3, 5, 7, 8, 10, 11]), // A minor, with the raised G# of E major
     battle2: scale('E', [0, 2, 3, 5, 7, 8, 10, 11]), // E minor, with the D# of B7
     boss2: scale('D', [0, 2, 3, 5, 7, 8, 10, 11]), // D minor, with the C# of A major
+    battle3: scale('G', major),
+    boss3: scale('C', [0, 2, 3, 5, 7, 8, 10, 11]), // C minor, with the B of G major
   };
   for (const song of Object.values(SONGS)) {
     for (const p of song.parts) {
@@ -303,4 +361,24 @@ test('recorded takes never repeat back to back and all get used', () => {
     assert.equal(seen.size, count);
   }
   assert.equal(pickTake(1, 0, 0.9), 0);
+});
+
+test('World 3 songs: a workshop battle and a faster Jack-in-the-Box boss, the same loop shape', () => {
+  for (const [id, base] of [
+    ['battle3', 'battle2'],
+    ['boss3', 'boss2'],
+  ] as const) {
+    const song = SONGS[id];
+    assert.equal(song.id, id);
+    assert.equal(song.bars, SONGS[base].bars);
+    assert.equal(song.beatsPerBar, SONGS[base].beatsPerBar);
+    const insts = song.parts.map((p) => p.inst);
+    for (const inst of ['celesta', 'woodblock', 'ratchet', 'pizz'] as const)
+      assert.ok(insts.includes(inst), `${id} ${inst}`);
+  }
+  assert.ok(SONGS.boss3.bpm > SONGS.battle3.bpm, 'the boss is tenser');
+  assert.ok(
+    SONGS.boss3.parts.some((p) => p.inst === 'boing'),
+    'the jester pops',
+  );
 });

@@ -1,0 +1,250 @@
+{
+  "id": "3-9",
+  "name": "Iron Works",
+  "theme": "workshop",
+  "lane": {
+    "width": 10,
+    "length": 62
+  },
+  "cannon": {
+    "fireRate": 5.6,
+    "unitsPerShot": 3,
+    "aimLimit": 4
+  },
+  "playerBase": {
+    "hp": 28
+  },
+  "enemyBase": {
+    "hp": 2200,
+    "x": 0,
+    "width": 6
+  },
+  "gates": [
+    {
+      "id": "3-9-x2",
+      "op": "mul",
+      "value": 2,
+      "x": 0,
+      "z": 15,
+      "width": 3.6
+    },
+    {
+      "id": "3-9-x3",
+      "op": "mul",
+      "value": 3,
+      "x": 0.4,
+      "z": 36,
+      "width": 3.2,
+      "toggle": {
+        "on": 4,
+        "off": 2,
+        "alt": {
+          "op": "div",
+          "value": 2
+        }
+      }
+    },
+    {
+      "id": "3-9-minus4",
+      "op": "sub",
+      "value": 4,
+      "x": -3.4,
+      "z": 36,
+      "width": 2.6
+    }
+  ],
+  "enemyWaves": [
+    {
+      "at": 10,
+      "count": 77,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 19,
+      "count": 88,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 28,
+      "count": 99,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 37,
+      "count": 110,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 46,
+      "count": 121,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 55,
+      "count": 126,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 64,
+      "count": 131,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 73,
+      "count": 136,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 82,
+      "count": 141,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 91,
+      "count": 146,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 100,
+      "count": 151,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 109,
+      "count": 156,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 118,
+      "count": 161,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 14,
+      "count": 6,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 24,
+      "count": 7,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 34,
+      "count": 8,
+      "x": -1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 44,
+      "count": 9,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 54,
+      "count": 10,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 64,
+      "count": 11,
+      "x": -1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 74,
+      "count": 12,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 84,
+      "count": 13,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 94,
+      "count": 14,
+      "x": -1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 104,
+      "count": 15,
+      "x": 1.5,
+      "spread": 3.5,
+      "unit": "robot"
+    },
+    {
+      "at": 114,
+      "count": 16,
+      "x": 0,
+      "spread": 3.5,
+      "unit": "robot"
+    }
+  ],
+  "enemySpawnRate": {
+    "perSecond": 13.5,
+    "startAt": 8
+  },
+  "champion": {
+    "chargeNeeded": 280,
+    "hp": 130,
+    "damage": 95
+  },
+  "targetTime": 130,
+  "intro": "Shield walls guard the best gate again, and robots march behind them. Time your champion well.",
+  "defenders": [
+    {
+      "id": "3-9-shield",
+      "kind": "shield",
+      "x": 0.4,
+      "z": 29,
+      "hp": 170,
+      "width": 4
+    }
+  ],
+  "saws": [
+    {
+      "id": "3-9-saw",
+      "x": -2.4,
+      "z": 24,
+      "radius": 1.0,
+      "cycle": {
+        "on": 2.5,
+        "off": 2.5
+      }
+    }
+  ],
+  "trickleMix": {
+    "unit": "robot",
+    "every": 12
+  }
+}

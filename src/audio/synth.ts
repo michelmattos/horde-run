@@ -6,6 +6,8 @@
 // Recorded impacts (samples.ts) replace the recipes for knocks and crashes once loaded. Nothing harsh: no square waves without a lowpass, short
 // attacks but never clicks, and every peak sits well under 1. World 2's freezer adds
 // glassy ice: crystal pings and crackles, soft snow thumps, wind made of swept noise.
+// World 3's workshop adds tin and clockwork: shutter clacks, saw whirrs, tin clangs and
+// pings, a bow's twang, wind-up ticking, a crank's ratchet and a spring's boing.
 //
 // Recipes write into any BaseAudioContext, so the same code pre-renders a sound once
 // into an AudioBuffer (OfflineAudioContext) and, as a fallback, plays it live.
@@ -51,6 +53,23 @@ function snowThump(k: Kit, t: number, peak: number, f = 140): void {
   tone(k, t, { f0: f, f1: f * 0.38, glide: 0.18, attack: 0.004, decay: 0.24, peak });
   noise(k, t, { attack: 0.003, decay: 0.2, peak: peak * 0.75, filter: { type: 'lowpass', freq: 1300, freq1: 300 } });
   noise(k, t, { attack: 0.001, decay: 0.05, peak: peak * 0.25, filter: { type: 'highpass', freq: 3500 } });
+}
+
+// A struck tin plate: a dull knock plus a few short inharmonic partials (a tin can, not a bell).
+function tinHit(k: Kit, t: number, f: number, peak: number, ring = 0.18): void {
+  [1, 1.58, 2.31, 3.07].forEach((m, i) =>
+    tone(k, t, { f0: f * m, attack: 0.001, decay: ring * (1 - i * 0.18), peak: peak * (0.5 - i * 0.09) }),
+  );
+  noise(k, t, { attack: 0.001, decay: 0.04, peak: peak * 0.6, filter: { type: 'bandpass', freq: f * 2, q: 2 } });
+}
+
+// Clockwork ticks: `n` tight clicks `gap` seconds apart, alternating two pitches.
+function ticks(k: Kit, t: number, n: number, gap: number, peak: number): void {
+  for (let i = 0; i < n; i++) {
+    const f = i % 2 === 0 ? 2300 : 1750;
+    noise(k, t + i * gap, { attack: 0.001, decay: 0.012, peak, filter: { type: 'bandpass', freq: f, q: 9 } });
+    tone(k, t + i * gap, { f0: f * 0.5, attack: 0.001, decay: 0.01, peak: peak * 0.3 });
+  }
 }
 
 const NOTE = {
@@ -517,6 +536,148 @@ export const RECIPES: Readonly<Record<string, Recipe>> = {
       tone(k, t + 0.14, { f0: 1700, f1: 2500, glide: 0.07, attack: 0.003, decay: 0.08, peak: 0.16 });
       tone(k, t + 0.26, { f0: 1900, f1: 2800, glide: 0.07, attack: 0.003, decay: 0.09, peak: 0.14 });
       noise(k, t + 0.12, { attack: 0.001, decay: 0.02, peak: 0.2, filter: { type: 'bandpass', freq: 2600, q: 6 } });
+    },
+  },
+  // ----- World 3: the workshop -----
+  // A timed gate's tin shutter dropping or lifting: a sliding rattle and a dusty clack.
+  gateToggle: {
+    dur: 0.26,
+    play(k, t) {
+      noise(k, t, {
+        attack: 0.01,
+        decay: 0.06,
+        peak: 0.18,
+        filter: { type: 'bandpass', freq: 3200, freq1: 1800, q: 3 },
+      });
+      tinHit(k, t + 0.05, 420, 0.55, 0.12);
+      tone(k, t + 0.05, { f0: 180, f1: 90, attack: 0.002, decay: 0.08, peak: 0.4 });
+    },
+  },
+  // A saw blade biting: a whirring buzz (a lowpassed saw wave with a fast flutter) and a grind.
+  saw: {
+    dur: 0.38,
+    play(k, t) {
+      tone(k, t, {
+        type: 'sawtooth',
+        f0: 210,
+        f1: 170,
+        attack: 0.02,
+        hold: 0.12,
+        decay: 0.2,
+        peak: 0.2,
+        filter: { type: 'lowpass', freq: 1800, freq1: 900, q: 2 },
+        vibrato: { rate: 38, depth: 18 },
+      });
+      noise(k, t, {
+        attack: 0.01,
+        hold: 0.1,
+        decay: 0.2,
+        peak: 0.3,
+        filter: { type: 'bandpass', freq: 3800, freq1: 2400, q: 3 },
+        tremolo: { rate: 32, depth: 0.6 },
+      });
+    },
+  },
+  // Mobs bouncing off a riveted shield wall: a hollow tin clang and a low thud.
+  shieldClang: {
+    dur: 0.45,
+    play(k, t) {
+      tinHit(k, t, 330, 0.6, 0.35);
+      tone(k, t, { f0: 140, f1: 80, attack: 0.002, decay: 0.15, peak: 0.45 });
+    },
+  },
+  // An archer's bow: a short plucked twang (a quick pitch drop) and the arrow's swish.
+  arrow: {
+    dur: 0.2,
+    play(k, t) {
+      tone(k, t, {
+        type: 'triangle',
+        f0: 330,
+        f1: 250,
+        glide: 0.06,
+        attack: 0.002,
+        decay: 0.12,
+        peak: 0.8,
+        filter: { type: 'lowpass', freq: 1800 },
+        vibrato: { rate: 30, depth: 8 },
+      });
+      noise(k, t + 0.02, {
+        attack: 0.01,
+        decay: 0.1,
+        peak: 0.3,
+        filter: { type: 'bandpass', freq: 2500, freq1: 5500, q: 2 },
+      });
+    },
+  },
+  // A Gear Gun shot glancing off the lane wall: a bright metal ping that drops a little.
+  ricochet: {
+    dur: 0.26,
+    play(k, t) {
+      tone(k, t, { f0: 2600, f1: 1900, glide: 0.2, attack: 0.001, decay: 0.22, peak: 0.42 });
+      tone(k, t, { f0: 3900, f1: 3100, glide: 0.15, attack: 0.001, decay: 0.1, peak: 0.16 });
+      noise(k, t, { attack: 0.001, decay: 0.02, peak: 0.5, filter: { type: 'highpass', freq: 3000 } });
+    },
+  },
+  // The Wind-up Robot setting off along a gate: a key's clockwork ticking, slowing as it runs.
+  gateWalk: {
+    dur: 1.1,
+    play(k, t) {
+      let at = 0;
+      for (let i = 0; i < 12; i++) {
+        ticks(k, t + at, 1, 0, 0.75 - i * 0.03);
+        if (i % 3 === 0) tinHit(k, t + at, 520, 0.22 - i * 0.012, 0.08);
+        at += 0.06 + i * 0.006;
+      }
+      tone(k, t, { f0: 520, f1: 780, glide: 0.12, attack: 0.004, decay: 0.12, peak: 0.2 });
+    },
+  },
+  // The Jack-in-the-Box cranking (the shuffle telegraph): a ratchet winding faster and faster
+  // under a rising music-box arpeggio.
+  crank: {
+    dur: 1.5,
+    play(k, t) {
+      let at = 0;
+      for (let i = 0; i < 18; i++) {
+        noise(k, t + at, {
+          attack: 0.001,
+          decay: 0.016,
+          peak: 0.34,
+          filter: { type: 'bandpass', freq: 2400 + (i % 3) * 260, q: 8 },
+        });
+        tone(k, t + at, { f0: 800 + (i % 2) * 120, attack: 0.001, decay: 0.012, peak: 0.06 });
+        at += Math.max(0.045, 0.11 - i * 0.005);
+      }
+      [72, 75, 79, 84].forEach((m, i) => INSTRUMENTS.musicBox(k, t + 0.2 + i * 0.26, m, 0.55, 0.2));
+    },
+  },
+  // The jester popping up (the gates start to move): a lid thock, then a big spring boing.
+  jackPop: {
+    dur: 0.9,
+    play(k, t) {
+      thock(k, t, 300, 0.5);
+      INSTRUMENTS.boing(k, t + 0.03, 60, 1, 0.6);
+      noise(k, t + 0.03, {
+        attack: 0.005,
+        decay: 0.12,
+        peak: 0.25,
+        filter: { type: 'bandpass', freq: 700, freq1: 2400, q: 1.5 },
+      });
+      INSTRUMENTS.glock(k, t + 0.08, 84, 0.5, 0.2);
+    },
+  },
+  // The Wind-up Robot champion: a key wound tight (quick ratchet), then clanking tin steps.
+  'championLaunch:windup': {
+    dur: 0.9,
+    play(k, t) {
+      ticks(k, t, 8, 0.035, 0.36);
+      for (const [at, f] of [
+        [0.36, 260],
+        [0.54, 300],
+        [0.72, 260],
+      ] as const) {
+        tinHit(k, t + at, f, 0.42, 0.14);
+        tone(k, t + at, { f0: 120, f1: 70, attack: 0.002, decay: 0.1, peak: 0.5 });
+      }
     },
   },
 };

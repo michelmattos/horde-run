@@ -4,9 +4,11 @@
 // - campaign: title card, world map, level card and loadout (taps through the menus and
 //   Fight into 1-1, which must show the ultimate button), ~3 s
 //   of held touch drag, and a crowd pushed past 1000 units (camera must zoom out); then
-//   World 2's 2-1 (freezer room) played briefly.
+//   World 2's 2-1 (freezer room) and World 3's 3-1 (workshop) played briefly.
 // - boss: level 1-10 played briefly, then its base dropped to reach the victory result card;
-//   then 2-10 (the Snow Globe Giant) played briefly.
+//   then 2-10 (the Snow Globe Giant) and 3-10 (the Jack-in-the-Box) played briefly. The
+//   Jack's gate shuffle comes ~16 s into the battle, too slow to reach under software GL;
+//   unit tests cover it.
 // - expedition: a seeded run map, the first node tapped into a generated battle that
 //   __horde.win() ends, and the upgrade pick; taking a card must land back on the run map
 //   with the upgrade owned.
@@ -327,6 +329,7 @@ try {
     if (final.render.drawCalls < MIN_DRAW_CALLS) errors.push(`crowd frame drew only ${final.render.drawCalls} calls`);
 
     summary.world2 = await playBriefly('2-1', 'smoke-world2.png');
+    summary.world3 = await playBriefly('3-1', 'smoke-world3.png');
   }
 
   if (BOSS) {
@@ -378,6 +381,7 @@ try {
     if (result !== 'victory') errors.push(`expected a victory result screen, got ${result}`);
 
     summary.boss2 = await playBriefly('2-10', 'smoke-boss2.png');
+    summary.boss3 = await playBriefly('3-10', 'smoke-boss3.png');
   }
 
   if (EXPEDITION) {

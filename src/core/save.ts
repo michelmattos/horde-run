@@ -146,8 +146,19 @@ export function starsNeeded(save: SaveData, world: WorldDef, worlds: readonly Wo
   return Math.max(0, u.stars - (from ? starCount(save, from.levels) : 0));
 }
 
+// Open when its stars are in and, down the chain (World 3 needs World 2 open, which needs
+// World 1's stars), the world it names is open too: stars an imported save holds in a
+// locked world never skip a world. A cycle in the chain counts as locked.
 export function isWorldUnlocked(save: SaveData, world: WorldDef, worlds: readonly WorldDef[]): boolean {
-  return starsNeeded(save, world, worlds) === 0;
+  let w: WorldDef | undefined = world;
+  for (let hops = 0; w !== undefined && hops <= worlds.length; hops++) {
+    if (starsNeeded(save, w, worlds) > 0) return false;
+    if (!w.unlock) return true;
+    const from: string = w.unlock.world;
+    w = worlds.find((x) => x.id === from);
+    if (!w) return true; // an unknown world asks for no stars (starsNeeded said so already)
+  }
+  return false;
 }
 
 export function starCount(save: SaveData, levelIds?: readonly string[]): number {

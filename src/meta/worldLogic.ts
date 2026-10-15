@@ -48,12 +48,15 @@ export function worldTabs(save: SaveData, worlds: readonly WorldDef[], seen: rea
   });
 }
 
-// The padlock line of a locked world: 'Earn 4 more stars in Bedroom Floor'. Empty when open.
+// The padlock line of a locked world: 'Earn 4 more stars in Bedroom Floor', or 'Open
+// Freezer first' when the stars are in but the world they come from is still locked (an
+// imported save). Empty when open.
 export function lockedWorldText(save: SaveData, world: WorldDef, worlds: readonly WorldDef[]): string {
-  const n = starsNeeded(save, world, worlds);
-  if (n === 0 || !world.unlock) return '';
+  if (!world.unlock || isWorldUnlocked(save, world, worlds)) return '';
   const from = worlds.find((w) => w.id === world.unlock?.world);
-  return `Earn ${n} more star${n === 1 ? '' : 's'} in ${from?.name ?? worldLabel({ id: world.unlock.world })}`;
+  const fromName = from?.name ?? worldLabel({ id: world.unlock.world });
+  const n = starsNeeded(save, world, worlds);
+  return n > 0 ? `Earn ${n} more star${n === 1 ? '' : 's'} in ${fromName}` : `Open ${fromName} first`;
 }
 
 export type LevelTap = { play: true } | { play: false; nudge: string };

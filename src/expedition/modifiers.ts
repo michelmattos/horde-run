@@ -3,7 +3,11 @@
 // numbers and gates, and puts the rule changes the LevelDef cannot express into
 // LevelDef.mods for battle.ts. Pure: the input level is deep-copied, never mutated.
 // The World 2 upgrades work the same way: Frost Gate adds a freezing gate, Ice Rink an
-// ice patch, and Ice Skates, Hot Cocoa and Avalanche set the World 2 BattleMods.
+// ice patch, and Ice Skates, Hot Cocoa and Avalanche set the World 2 BattleMods. World 3:
+// Clockwork Gate adds a timed x3 and keeps every timed gate open longer, Rubber Boots,
+// Saw Guards, Crowbar and Bank Shot set the World 3 BattleMods (Saw Guards costs enemy
+// defender HP, Crowbar also hits harder, Bank Shot also fires faster). Added gates keep
+// clear of belts, turntables and saws.
 import type { BattleMods, GateDef, IceWallDef, LevelDef } from '../contracts.ts';
 import { cardsClash } from '../game/gateSpacing.ts';
 import { getUpgrade } from './upgrades.ts';
@@ -31,6 +35,12 @@ const RINK = { z: 2.5, length: 8, edge: 0.5 };
 const SKATES_GRIP = 0.45; // iceGrip per stack (cap 0.9: a little slide always stays)
 const COCOA = { thawRate: 2, freezeAfter: 1.5, waves: 1.1, more: 0.75 }; // more: x on snowman/penguin intervals
 const AVALANCHE = { radius: 3, seconds: 2, perStack: 1 }; // champion landing freeze; +1 radius and s per extra stack
+const CLOCKWORK = { value: 3, toggle: { on: 3, off: 2 }, open: 1.5 }; // the added x3; open: x on every timed gate's on time
+const BOOTS_GRIP = [0.5, 0.9]; // beltGrip by stacks
+const SAWGUARD = { guard: 0.75, defenderHp: 1.25 };
+const CROWBAR = { shieldBreak: 0.5, champion: 1.25 }; // shield damage per weight; champion damage x
+const BANKSHOT = { every: [4, 2], fire: 1.1 }; // ricochetEvery by stacks; fire rate x per stack
+const HAZARD_GAP = 1.5; // min clearance between an added gate line and a belt, turntable or saw track
 
 // Stacks owned of a known upgrade, clamped to [0, maxStacks]; unknown ids count 0.
 function stacks(upgrades: Readonly<Record<string, number>>, id: string): number {
@@ -43,7 +53,7 @@ function stacks(upgrades: Readonly<Record<string, number>>, id: string): number 
 interface GatePlan {
   upgradeId: string;
   at: number; // preferred z as a fraction of the player's half [GATE_Z_MIN, length/2]
-  gates: Pick<GateDef, 'op' | 'value' | 'x' | 'width' | 'move' | 'uses' | 'freeze'>[];
+  gates: Pick<GateDef, 'op' | 'value' | 'x' | 'width' | 'move' | 'uses' | 'freeze' | 'toggle'>[];
 }
 
 // Added gates in a fixed order so placement is deterministic: rarest first, so when the
@@ -59,6 +69,12 @@ function gatePlans(upgrades: Readonly<Record<string, number>>, hw: number): Gate
       gates: [{ op: 'mul', value: 3, x: 0, width, move: { amplitude, period: 7 } }],
     });
   }
+  if (stacks(upgrades, 'clockwork') > 0)
+    plans.push({
+      upgradeId: 'clockwork',
+      at: 0.65,
+      gates: [{ op: 'mul', value: CLOCKWORK.value, x: -1, width: 3, toggle: { ...CLOCKWORK.toggle } }],
+    });
   if (stacks(upgrades, 'frost-gate') > 0)
     plans.push({
       upgradeId: 'frost-gate',
@@ -105,6 +121,19 @@ function clearOfIceWall(g: GateDef, w: IceWallDef): boolean {
   return apartX || Math.abs(g.z - w.z) >= w.depth / 2 + ICE_WALL_GAP;
 }
 
+// A gate line must keep clear of belts, turntables and the z span of saw tracks.
+function clearOfHazards(level: LevelDef, g: GateDef): boolean {
+  const z = g.z;
+  for (const c of level.conveyors ?? []) if (z > c.z - HAZARD_GAP && z < c.z + c.length + HAZARD_GAP) return false;
+  for (const t of level.turntables ?? []) if (Math.abs(z - t.z) < t.radius + HAZARD_GAP) return false;
+  for (const s of level.saws ?? []) {
+    const dz = s.path?.dz ?? 0;
+    if (z > Math.min(s.z, s.z + dz) - s.radius - HAZARD_GAP && z < Math.max(s.z, s.z + dz) + s.radius + HAZARD_GAP)
+      return false;
+  }
+  return true;
+}
+
 // Where a plan's gates go: the nearest z to `preferred` (0.5 steps) inside [zMin, zMax],
 // shifted sideways when that is closer, that keeps every gate GATE_GAP from any other gate
 // line, CARD_CLEAR_Z from any gate whose sign card it would cover or be covered by, and
@@ -117,7 +146,8 @@ function place(level: LevelDef, plan: GateDef[], preferred: number, zMin: number
         Math.abs(g.x) + (g.move?.amplitude ?? 0) + g.width / 2 <= hw - LANE_MARGIN + 1e-9 &&
         level.gates.every((o) => (Math.abs(o.z - g.z) >= GATE_GAP || sideBySide(o, g)) && !cardsClash(o, g)) &&
         (level.defenders ?? []).every((d) => Math.abs(d.z - g.z) >= DEFENDER_GAP) &&
-        (level.iceWalls ?? []).every((w) => clearOfIceWall(g, w)),
+        (level.iceWalls ?? []).every((w) => clearOfIceWall(g, w)) &&
+        clearOfHazards(level, g),
     );
   const start = Math.round(Math.min(zMax, Math.max(zMin, preferred)) * 2) / 2;
   const candidates: { z: number; dx: number; cost: number }[] = [];
@@ -155,6 +185,7 @@ function addGates(level: LevelDef, upgrades: Readonly<Record<string, number>>): 
       if (g.move) gate.move = { ...g.move };
       if (g.uses !== undefined) gate.uses = g.uses;
       if (g.freeze) gate.freeze = { ...g.freeze };
+      if (g.toggle) gate.toggle = structuredClone(g.toggle);
       return gate;
     });
     const placed = place(level, drafts, zMin + plan.at * (zMax - zMin), zMin, zMax);
@@ -203,6 +234,15 @@ function scaleMods(
     mods.thawRate = (mods.thawRate ?? 1) * COCOA.thawRate;
     mods.freezeAfter = (mods.freezeAfter ?? 1) * COCOA.freezeAfter;
   }
+  const boots = stacks(upgrades, 'boots');
+  if (boots) mods.beltGrip = Math.max(mods.beltGrip ?? 0, BOOTS_GRIP[boots - 1]);
+  if (stacks(upgrades, 'sawguard')) mods.sawGuard = Math.max(mods.sawGuard ?? 0, SAWGUARD.guard);
+  if (stacks(upgrades, 'crowbar')) mods.shieldBreak = (mods.shieldBreak ?? 0) + CROWBAR.shieldBreak;
+  const bank = stacks(upgrades, 'bankshot');
+  if (bank) {
+    const every = BANKSHOT.every[bank - 1];
+    mods.ricochetEvery = mods.ricochetEvery !== undefined ? Math.min(mods.ricochetEvery, every) : every;
+  }
   const avalanche = stacks(upgrades, 'avalanche');
   if (avalanche) {
     const extra = AVALANCHE.perStack * (avalanche - 1);
@@ -231,11 +271,14 @@ export function applyUpgrades(level: LevelDef, upgrades: Readonly<Record<string,
   if (stacks(upgrades, 'rink')) addRink(out);
   const overcharge = stacks(upgrades, 'overcharge') > 0;
   if (overcharge) for (const g of out.gates) if (g.op === 'mul') g.value += 1;
+  if (stacks(upgrades, 'clockwork'))
+    for (const g of out.gates) if (g.toggle) g.toggle.on = Math.round(g.toggle.on * CLOCKWORK.open * 100) / 100;
 
   // 2. Cannon.
   let fire = 1.2 ** stacks(upgrades, 'rapid');
   if (stacks(upgrades, 'burst')) fire *= 0.45;
   if (stacks(upgrades, 'glass')) fire *= 1.4;
+  fire *= BANKSHOT.fire ** stacks(upgrades, 'bankshot');
   out.cannon.fireRate *= fire;
   out.cannon.unitsPerShot = Math.round(out.cannon.unitsPerShot) + stacks(upgrades, 'scatter');
   if (stacks(upgrades, 'swivel')) {
@@ -249,6 +292,7 @@ export function applyUpgrades(level: LevelDef, upgrades: Readonly<Record<string,
   const big = 1.5 ** stacks(upgrades, 'bigchamp');
   out.champion.hp *= big;
   out.champion.damage *= big;
+  if (stacks(upgrades, 'crowbar')) out.champion.damage *= CROWBAR.champion;
 
   // 4. Fort (this battle only).
   if (stacks(upgrades, 'glass')) out.playerBase.hp = Math.max(1, Math.round(out.playerBase.hp * 0.7));
@@ -257,6 +301,7 @@ export function applyUpgrades(level: LevelDef, upgrades: Readonly<Record<string,
   let defenderHp = 1;
   if (overcharge) defenderHp *= 1.2;
   if (stacks(upgrades, 'sapper')) defenderHp *= 0.7;
+  if (stacks(upgrades, 'sawguard')) defenderHp *= SAWGUARD.defenderHp;
   if (defenderHp !== 1 && out.defenders)
     for (const d of out.defenders) d.hp = Math.max(1, Math.round(d.hp * defenderHp));
   let waves = 1;

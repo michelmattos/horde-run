@@ -1,6 +1,8 @@
 // The toy-box band that plays the music (and the musical stings): a music box, a
 // glockenspiel, a marimba, a pizzicato bass, a tuba, a toy trumpet, a reed organ and a
-// marching kit, plus sleigh bells for World 2's freezer. Each is a few sines, a filtered saw or square, or filtered noise under
+// marching kit, plus sleigh bells for World 2's freezer and, for World 3's workshop, a
+// celesta, a tick-tock woodblock, a winding ratchet and a spring 'boing' for the
+// Jack-in-the-Box. Each is a few sines, a filtered saw or square, or filtered noise under
 // gain envelopes; no samples. Brightness stays low on purpose: lowpassed saws, no bare
 // squares, and bell partials kept short so long loops never tire the ear.
 import { midiHz, noise, tone } from './dsp.ts';
@@ -19,7 +21,11 @@ export type InstrumentId =
   | 'timpani'
   | 'shaker'
   | 'cymbal'
-  | 'sleighBells';
+  | 'sleighBells'
+  | 'celesta'
+  | 'woodblock'
+  | 'ratchet'
+  | 'boing';
 
 /** Plays one note: `midi` pitch at time `t` for `dur` seconds, velocity 0..1. */
 export type Instrument = (k: Kit, t: number, midi: number, vel: number, dur: number) => void;
@@ -176,6 +182,59 @@ const sleighBells: Instrument = (k, t, _m, v) => {
   noise(k, t, { attack: 0.002, decay: 0.06, peak: 0.06 * v, filter: { type: 'highpass', freq: 7000 } });
 };
 
+// Celesta: a struck steel plate over a wooden resonator. A round sine with a soft
+// octave, a quick metallic 4x 'ping' on the attack and a gentle tremolo-free ring that
+// shortens up the keyboard; brighter and rounder than the music box.
+const celesta: Instrument = (k, t, m, v) => {
+  const f = midiHz(m);
+  const ring = 0.45 + 0.8 * clamp01(800 / f);
+  tone(k, t, { f0: f, attack: 0.003, decay: ring, peak: 0.36 * v });
+  tone(k, t, { f0: f * 2, attack: 0.002, decay: ring * 0.35, peak: 0.1 * v });
+  if (f * 4.02 < 12000) tone(k, t, { f0: f * 4.02, attack: 0.001, decay: 0.07, peak: 0.05 * v });
+  noise(k, t, { attack: 0.001, decay: 0.01, peak: 0.03 * v, filter: { type: 'bandpass', freq: 3000, q: 2 } });
+};
+
+// Woodblock (the workshop's clock ticking): a short pitched knock and a hollow click.
+const woodblock: Instrument = (k, t, m, v) => {
+  const f = m > 0 ? midiHz(m) : 1200;
+  tone(k, t, { f0: f, f1: f * 0.92, attack: 0.001, decay: 0.045, peak: 0.34 * v });
+  noise(k, t, { attack: 0.001, decay: 0.018, peak: 0.22 * v, filter: { type: 'bandpass', freq: f * 1.6, q: 5 } });
+};
+
+// Ratchet (a key being wound): a run of tight clicks over the note's length, each a
+// narrow band of noise and a tiny knock, the clicks speeding up a little as it winds.
+const ratchet: Instrument = (k, t, _m, v, dur) => {
+  const span = Math.max(0.1, dur);
+  let at = 0;
+  for (let i = 0; i < 24 && at < span; i++) {
+    noise(k, t + at, {
+      attack: 0.001,
+      decay: 0.014,
+      peak: (0.22 + 0.06 * (i % 2)) * v,
+      filter: { type: 'bandpass', freq: 2600 + (i % 3) * 300, q: 7 },
+    });
+    tone(k, t + at, { f0: 900 + (i % 2) * 140, attack: 0.001, decay: 0.012, peak: 0.05 * v });
+    at += Math.max(0.035, 0.07 - i * 0.003);
+  }
+};
+
+// Spring 'boing' (the jester popping up): a sine that leaps a fifth up and wobbles there
+// with a fast vibrato as it dies away, over a soft wooden knock.
+const boing: Instrument = (k, t, m, v) => {
+  const f = midiHz(m);
+  tone(k, t, {
+    f0: f,
+    f1: f * 1.5,
+    glide: 0.05,
+    attack: 0.004,
+    decay: 0.5,
+    peak: 0.3 * v,
+    vibrato: { rate: 14, depth: f * 0.06 },
+  });
+  tone(k, t, { type: 'triangle', f0: f * 2, f1: f * 1.4, glide: 0.35, attack: 0.004, decay: 0.3, peak: 0.06 * v });
+  noise(k, t, { attack: 0.001, decay: 0.03, peak: 0.12 * v, filter: { type: 'bandpass', freq: 900, q: 2 } });
+};
+
 export const INSTRUMENTS: Readonly<Record<InstrumentId, Instrument>> = {
   musicBox,
   glock,
@@ -190,4 +249,8 @@ export const INSTRUMENTS: Readonly<Record<InstrumentId, Instrument>> = {
   shaker,
   cymbal,
   sleighBells,
+  celesta,
+  woodblock,
+  ratchet,
+  boing,
 };

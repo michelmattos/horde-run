@@ -87,3 +87,67 @@ export class IceWalls {
     this.maxZ = maxZ;
   }
 }
+
+// Result of pushOutOfBox: where the disc ends up (x unclamped) and how it got there.
+export interface BoxPush {
+  x: number;
+  z: number;
+}
+export const BOX_CLEAR = 0; // no contact
+export const BOX_SIDE = 1; // pushed out sideways past the nearer open side
+export const BOX_FACE = 2; // backed off the face it hit (x unchanged: no open side)
+export const BOX_FACE_SLIDE = 3; // backed off the face and slid `slide` toward the open side
+
+// Pushes a disc (x, z, r) out of an axis-aligned box (centre cx, cz; half sizes hw, hd):
+// sideways to the nearer open side when that is the shorter way out, otherwise back off
+// the face it hit while sliding toward the gap. Shared by ice walls and shield walls.
+export function pushOutOfBox(
+  x: number,
+  z: number,
+  r: number,
+  cx: number,
+  cz: number,
+  hw: number,
+  hd: number,
+  leftOpen: boolean,
+  rightOpen: boolean,
+  slide: number,
+  out: BoxPush,
+): number {
+  const dx = x - cx;
+  const dz = z - cz;
+  const ex = hw + r;
+  const ez = hd + r;
+  const adx = dx < 0 ? -dx : dx;
+  const adz = dz < 0 ? -dz : dz;
+  if (adx >= ex || adz >= ez) return BOX_CLEAR;
+  if (adx > hw && adz > hd) {
+    const ox = adx - hw;
+    const oz = adz - hd;
+    if (ox * ox + oz * oz >= r * r) return BOX_CLEAR; // clear of the rounded corner
+  }
+  const near = dx < 0 ? -1 : 1;
+  let side = near;
+  if (!(side < 0 ? leftOpen : rightOpen)) side = -side;
+  const open = side < 0 ? leftOpen : rightOpen;
+  const outX = side === near ? ex - adx : ex + adx;
+  if (open && outX <= ez - adz) {
+    out.x = cx + side * ex;
+    out.z = z;
+    return BOX_SIDE;
+  }
+  out.z = cz + (dz < 0 ? -ez : ez);
+  if (!open) {
+    out.x = x;
+    return BOX_FACE;
+  }
+  out.x = x + side * slide;
+  return BOX_FACE_SLIDE;
+}
+
+// A side of a box counts as open when a mob fits between it and the lane edge.
+export function sideOpen(laneWidth: number, x: number, width: number, side: -1 | 1): boolean {
+  const edge = laneWidth / 2;
+  const gap = 2 * LAYOUT.mobRadius;
+  return side < 0 ? x - width / 2 + edge > gap : edge - (x + width / 2) > gap;
+}

@@ -39,6 +39,7 @@ import { createRenderer } from './render/index.ts';
 import type { RenderStats } from './render/index.ts';
 import { parseCannon, parseChampion } from './render/crowdLogic.ts';
 import { createAudio } from './audio/index.ts';
+import type { MusicId } from './audio/index.ts';
 import { createRng } from './core/rng.ts';
 import { createFixedStep, createFrameCap } from './core/loop.ts';
 import { loadSettings } from './core/settings.ts';
@@ -432,6 +433,13 @@ function startLevel(id: string): void {
   beginBattle(r.level, seedCounter++, r.battle);
 }
 
+// Each world theme has its own battle and boss loop.
+function battleMusic(def: LevelDef): MusicId {
+  if (def.theme === 'freezer') return def.boss ? 'boss2' : 'battle2';
+  if (def.theme === 'workshop') return def.boss ? 'boss3' : 'battle3';
+  return def.boss ? 'boss' : 'battle';
+}
+
 // Fresh RNG, sim and battle on `def`. hud.setRun must already be set for this battle:
 // the renderer frames the lane from hudReserve() when the level loads.
 function beginBattle(def: LevelDef, seed: number, loadout?: BattleLoadout): void {
@@ -440,8 +448,7 @@ function beginBattle(def: LevelDef, seed: number, loadout?: BattleLoadout): void
   screens.hide();
   hideMeta();
   level = def;
-  const freezer = def.theme === 'freezer';
-  audio.setMusic(def.boss ? (freezer ? 'boss2' : 'boss') : freezer ? 'battle2' : 'battle');
+  audio.setMusic(battleMusic(def));
   const rng = createRng(seed);
   const rand = (): number => rng.next();
   const s = createSim(level, rand);

@@ -1,0 +1,136 @@
+{
+  "id": "3-1",
+  "name": "Tick Tock",
+  "theme": "workshop",
+  "lane": {
+    "width": 10,
+    "length": 56
+  },
+  "cannon": {
+    "fireRate": 5.6,
+    "unitsPerShot": 3,
+    "aimLimit": 4
+  },
+  "playerBase": {
+    "hp": 300
+  },
+  "enemyBase": {
+    "hp": 2000,
+    "x": 0,
+    "width": 6
+  },
+  "gates": [
+    {
+      "id": "3-1-x2",
+      "op": "mul",
+      "value": 2,
+      "x": 0,
+      "z": 20,
+      "width": 4,
+      "toggle": {
+        "on": 3,
+        "off": 1.5
+      }
+    },
+    {
+      "id": "3-1-plus1",
+      "op": "add",
+      "value": 1,
+      "x": -2.5,
+      "z": 36,
+      "width": 3
+    },
+    {
+      "id": "3-1-x2b",
+      "op": "mul",
+      "value": 2,
+      "x": 2.5,
+      "z": 36,
+      "width": 3,
+      "toggle": {
+        "on": 2.5,
+        "off": 2.5,
+        "offset": 1
+      }
+    }
+  ],
+  "enemyWaves": [
+    {
+      "at": 8,
+      "count": 60,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 20,
+      "count": 66,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 32,
+      "count": 72,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 44,
+      "count": 78,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 56,
+      "count": 84,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 68,
+      "count": 90,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 80,
+      "count": 96,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 92,
+      "count": 102,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 104,
+      "count": 108,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 116,
+      "count": 114,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 128,
+      "count": 120,
+      "x": -1.5,
+      "spread": 3.5
+    }
+  ],
+  "enemySpawnRate": {
+    "perSecond": 7.0,
+    "startAt": 2
+  },
+  "champion": {
+    "chargeNeeded": 240,
+    "hp": 90,
+    "damage": 75
+  },
+  "targetTime": 85,
+  "intro": "Clockwork gates open and shut on a timer. Fire while the shutter is up: a closed gate does nothing."
+}

@@ -1,0 +1,155 @@
+{
+  "id": "3-2",
+  "name": "Assembly Line",
+  "theme": "workshop",
+  "lane": {
+    "width": 10,
+    "length": 58
+  },
+  "cannon": {
+    "fireRate": 5.6,
+    "unitsPerShot": 3,
+    "aimLimit": 4
+  },
+  "playerBase": {
+    "hp": 300
+  },
+  "enemyBase": {
+    "hp": 2000,
+    "x": 0,
+    "width": 6
+  },
+  "gates": [
+    {
+      "id": "3-2-x3",
+      "op": "mul",
+      "value": 3,
+      "x": 2.4,
+      "z": 21,
+      "width": 3.2
+    },
+    {
+      "id": "3-2-x2",
+      "op": "mul",
+      "value": 2,
+      "x": -1.6,
+      "z": 36,
+      "width": 3.4,
+      "toggle": {
+        "on": 3,
+        "off": 1.5
+      }
+    }
+  ],
+  "enemyWaves": [
+    {
+      "at": 9,
+      "count": 100,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 19,
+      "count": 112,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 29,
+      "count": 124,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 39,
+      "count": 136,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 49,
+      "count": 148,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 59,
+      "count": 154,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 69,
+      "count": 160,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 79,
+      "count": 166,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 89,
+      "count": 172,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 99,
+      "count": 178,
+      "x": 0,
+      "spread": 3.5
+    },
+    {
+      "at": 109,
+      "count": 184,
+      "x": -1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 119,
+      "count": 190,
+      "x": 1.5,
+      "spread": 3.5
+    },
+    {
+      "at": 129,
+      "count": 196,
+      "x": 0,
+      "spread": 3.5
+    }
+  ],
+  "enemySpawnRate": {
+    "perSecond": 9.0,
+    "startAt": 6
+  },
+  "champion": {
+    "chargeNeeded": 260,
+    "hp": 100,
+    "damage": 80
+  },
+  "targetTime": 95,
+  "intro": "Conveyor belts carry your soldiers sideways. Aim upstream and let the belt deliver them to the gate.",
+  "conveyors": [
+    {
+      "id": "3-2-belt",
+      "x": 0,
+      "z": 9,
+      "width": 10,
+      "length": 6,
+      "vx": 2.4,
+      "vz": 0
+    },
+    {
+      "id": "3-2-fast",
+      "x": -2.5,
+      "z": 26,
+      "width": 4,
+      "length": 7,
+      "vx": 0,
+      "vz": 3
+    }
+  ]
+}

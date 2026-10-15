@@ -58,7 +58,7 @@ export function applyGrade(scene: Scene): void {
 
 // Theme part of the grade: the colour curves and the vignette tint (uniforms only, no
 // recompile). The bedroom keeps GRADE's warm highlights; the freezer swaps them for cool
-// ice-blue highlights, deeper blue shadows and a navy vignette.
+// ice-blue highlights, deeper blue shadows and a navy vignette; the workshop below.
 export const FREEZER_GRADE = {
   saturation: 6,
   highlightsHue: 205,
@@ -68,10 +68,21 @@ export const FREEZER_GRADE = {
   vignetteColor: new Color4(0.03, 0.06, 0.12, 0),
 };
 
-export function applyGradeTheme(scene: Scene, theme: 'bedroom' | 'freezer'): void {
+// World 3's workshop at evening: amber lamplight highlights, blue window-light shadows (a
+// warm / cool split a little stronger than the bedroom's) and a deep brown vignette.
+export const WORKSHOP_GRADE = {
+  saturation: 9,
+  highlightsHue: 34,
+  highlightsDensity: 24,
+  shadowsHue: 214,
+  shadowsDensity: 20,
+  vignetteColor: new Color4(0.13, 0.06, 0.02, 0),
+};
+
+export function applyGradeTheme(scene: Scene, theme: 'bedroom' | 'freezer' | 'workshop'): void {
   const ip = scene.imageProcessingConfiguration;
   const c = ip.colorCurves;
-  const g = theme === 'freezer' ? FREEZER_GRADE : GRADE;
+  const g = theme === 'freezer' ? FREEZER_GRADE : theme === 'workshop' ? WORKSHOP_GRADE : GRADE;
   if (c) {
     c.globalSaturation = g.saturation;
     c.highlightsHue = g.highlightsHue;

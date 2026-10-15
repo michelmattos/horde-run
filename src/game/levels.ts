@@ -7,10 +7,17 @@
 // ice patches, ice walls, gusts, the trickle mix, freezing and fork gates, igloos, wave
 // units and the Snow Globe Giant's phases), and worlds may carry a theme and a star unlock.
 // LEVELS lists World 1 then World 2, so getLevel's "next" after 1-10 is 2-1.
+//
+// Milestone 6 (World 3): timed toggling gates (with an optional alt effect), conveyor
+// belts, turntables, saws (on a track and on a clock), shield walls, wind-up robots, the
+// Jack-in-the-Box's gate shuffles and the World 3 mods are validated and copied the same
+// way; LEVELS then lists World 3, and WORLDS ends with the Workshop.
 
 import type {
   BattleMods,
   BossDef,
+  ConveyorDef,
+  CycleDef,
   DefenderDef,
   DefenderKind,
   EnemyUnit,
@@ -21,10 +28,12 @@ import type {
   IcePatchDef,
   IceWallDef,
   LevelDef,
+  SawDef,
+  TurntableDef,
   WorldDef,
   WorldTheme,
 } from '../contracts.ts';
-import { DEFENDER_DEFAULTS, LAYOUT } from '../contracts.ts';
+import { DEFENDER_DEFAULTS, LAYOUT, SHIELD_DEFAULTS } from '../contracts.ts';
 import l01 from '../data/levels/1-01.json' with { type: 'json' };
 import l02 from '../data/levels/1-02.json' with { type: 'json' };
 import l03 from '../data/levels/1-03.json' with { type: 'json' };
@@ -46,15 +55,26 @@ import l208 from '../data/levels/2-08.json' with { type: 'json' };
 import l209 from '../data/levels/2-09.json' with { type: 'json' };
 import l210 from '../data/levels/2-10.json' with { type: 'json' };
 import w1 from '../data/worlds/world-1.json' with { type: 'json' };
+import l301 from '../data/levels/3-01.json' with { type: 'json' };
+import l302 from '../data/levels/3-02.json' with { type: 'json' };
+import l303 from '../data/levels/3-03.json' with { type: 'json' };
+import l304 from '../data/levels/3-04.json' with { type: 'json' };
+import l305 from '../data/levels/3-05.json' with { type: 'json' };
+import l306 from '../data/levels/3-06.json' with { type: 'json' };
+import l307 from '../data/levels/3-07.json' with { type: 'json' };
+import l308 from '../data/levels/3-08.json' with { type: 'json' };
+import l309 from '../data/levels/3-09.json' with { type: 'json' };
+import l310 from '../data/levels/3-10.json' with { type: 'json' };
 import w2 from '../data/worlds/world-2.json' with { type: 'json' };
+import w3 from '../data/worlds/world-3.json' with { type: 'json' };
 
 const MAX_GATES = 32; // the sim tracks gates crossed in a 32-bit mask
 const MAX_DEFENDERS = 16; // the sim's fixed defender capacity
 const GATE_OPS: readonly GateOp[] = ['mul', 'add', 'sub', 'div'];
-const DEFENDER_KINDS: readonly DefenderKind[] = ['tower', 'wall', 'igloo'];
-const ENEMY_UNITS: readonly EnemyUnit[] = ['mob', 'snowman', 'penguin'];
-const THEMES: readonly WorldTheme[] = ['bedroom', 'freezer'];
-const BOSS_MODELS: readonly NonNullable<BossDef['model']>[] = ['tinGeneral', 'snowGlobeGiant'];
+const DEFENDER_KINDS: readonly DefenderKind[] = ['tower', 'wall', 'igloo', 'shield'];
+const ENEMY_UNITS: readonly EnemyUnit[] = ['mob', 'snowman', 'penguin', 'robot'];
+const THEMES: readonly WorldTheme[] = ['bedroom', 'freezer', 'workshop'];
+const BOSS_MODELS: readonly NonNullable<BossDef['model']>[] = ['tinGeneral', 'snowGlobeGiant', 'jackInTheBox'];
 // Igloo footprint when the level gives no width (mirrors the sim: 0.75 of a wall, 1.6 deep).
 export const IGLOO_DEFAULTS = { width: DEFENDER_DEFAULTS.wallWidth * 0.75, depth: 1.6 } as const;
 export const MIN_GUST_WARN = 1.2; // seconds of telegraph every gust gets at least
@@ -153,6 +173,17 @@ function validateGate(raw: unknown, i: number, lane: LevelDef['lane'], source: s
     };
   }
   if (o.fork !== undefined) gate.fork = str(o, 'fork', source, p);
+  if (o.toggle !== undefined) {
+    const tg = obj(o.toggle, source, `${p}toggle`);
+    gate.toggle = cycle(tg, source, `${p}toggle`);
+    if (tg.alt !== undefined) {
+      const a = obj(tg.alt, source, `${p}toggle.alt`);
+      const ap = `${p}toggle.alt.`;
+      const altValue = num(a, 'value', source, ap);
+      if (altValue < 1) fail(source, `${ap}value`, `must be >= 1 (got ${altValue})`);
+      gate.toggle.alt = { op: oneOf(a, 'op', GATE_OPS, source, ap), value: altValue };
+    }
+  }
   let reach = 0;
   if (o.move !== undefined) {
     const m = obj(o.move, source, `${p}move`);
@@ -200,20 +231,42 @@ function validateDefender(raw: unknown, i: number, lane: LevelDef['lane'], sourc
     };
     if (sp.startAt !== undefined) d.spawn.startAt = nonNeg(sp, 'startAt', source, spp);
   } else if (o.spawn !== undefined) fail(source, `${p}spawn`, 'is only allowed on igloos');
-  const width =
-    d.width ??
-    (kind === 'tower'
-      ? DEFENDER_DEFAULTS.towerWidth
-      : kind === 'igloo'
-        ? IGLOO_DEFAULTS.width
-        : DEFENDER_DEFAULTS.wallWidth);
-  const depth = kind === 'tower' ? width : kind === 'igloo' ? IGLOO_DEFAULTS.depth : DEFENDER_DEFAULTS.wallDepth;
+  const width = d.width ?? defenderWidth(kind);
+  const depth = defenderDepth(kind, width);
   inLaneX(d.x, width, lane, source, `${p}x`, kind);
   const zMin = LAYOUT.cannonZ + 2;
   const zMax = lane.length - LAYOUT.enemySpawnInset;
   if (d.z - depth / 2 < zMin || d.z + depth / 2 > zMax)
     fail(source, `${p}z`, `must keep the ${kind} inside [${zMin}, ${zMax}] (got ${d.z})`);
   return d;
+}
+
+// Footprint of a defender kind when the level gives no width (mirrors the sim).
+export function defenderWidth(kind: DefenderKind): number {
+  return kind === 'tower'
+    ? DEFENDER_DEFAULTS.towerWidth
+    : kind === 'igloo'
+      ? IGLOO_DEFAULTS.width
+      : kind === 'shield'
+        ? SHIELD_DEFAULTS.width
+        : DEFENDER_DEFAULTS.wallWidth;
+}
+export function defenderDepth(kind: DefenderKind, width: number): number {
+  return kind === 'tower'
+    ? width
+    : kind === 'igloo'
+      ? IGLOO_DEFAULTS.depth
+      : kind === 'shield'
+        ? SHIELD_DEFAULTS.depth
+        : DEFENDER_DEFAULTS.wallDepth;
+}
+
+// A repeating clock (toggling gates, saws): on and off both > 0, offset >= 0.
+function cycle(o: Obj, source: string, field: string): CycleDef {
+  const p = `${field}.`;
+  const c: CycleDef = { on: pos(o, 'on', source, p), off: pos(o, 'off', source, p) };
+  if (o.offset !== undefined) c.offset = nonNeg(o, 'offset', source, p);
+  return c;
 }
 
 function validateBoss(raw: unknown, source: string): BossDef {
@@ -251,6 +304,17 @@ function validateBoss(raw: unknown, source: string): BossDef {
       phase.freezeGates = { duration: pos(f, 'duration', source, fp), hp: pos(f, 'hp', source, fp) };
     }
     if (ph.gusts !== undefined) phase.gusts = validateGust(ph.gusts, source, `${p}gusts`);
+    if (ph.shuffle !== undefined) {
+      const sh = obj(ph.shuffle, source, `${p}shuffle`);
+      const sp = `${p}shuffle.`;
+      phase.shuffle = {
+        every: pos(sh, 'every', source, sp),
+        warn: pos(sh, 'warn', source, sp),
+        glide: pos(sh, 'glide', source, sp),
+      };
+      if (phase.shuffle.every <= phase.shuffle.warn + phase.shuffle.glide)
+        fail(source, `${sp}every`, `must be longer than warn + glide (${phase.shuffle.warn + phase.shuffle.glide} s)`);
+    }
     return phase;
   });
   if (phases[0].belowHp !== 1) fail(source, 'boss.phases[0].belowHp', `must be 1 (got ${phases[0].belowHp})`);
@@ -383,7 +447,105 @@ function validateMods(raw: unknown, source: string): BattleMods {
       seconds: pos(f, 'seconds', source, 'mods.championFreeze.'),
     };
   }
+  // World 3 (Expedition upgrades Rubber Boots, Saw Guard, Crowbar, Bank Shot).
+  for (const key of ['beltGrip', 'sawGuard'] as const) {
+    if (o[key] === undefined) continue;
+    const g = nonNeg(o, key, source, 'mods.');
+    if (g > 1) fail(source, `mods.${key}`, `must be at most 1 (got ${g})`);
+    mods[key] = g;
+  }
+  if (o.shieldBreak !== undefined) mods.shieldBreak = pos(o, 'shieldBreak', source, 'mods.');
+  if (o.ricochetEvery !== undefined) {
+    const n = posInt(o, 'ricochetEvery', source, 'mods.');
+    if (n < 2) fail(source, 'mods.ricochetEvery', `must be at least 2 (got ${n})`);
+    mods.ricochetEvery = n;
+  }
   return mods;
+}
+
+// World 3 hazards. Belts and turntables stay inside the lane between the cannon and the
+// enemy spawn line; a saw stays inside the lane over its whole track.
+function hazardZ(z0: number, z1: number, lane: LevelDef['lane'], source: string, field: string, what: string): void {
+  const zMax = lane.length - LAYOUT.enemySpawnInset;
+  if (z0 < LAYOUT.cannonZ || z1 > zMax)
+    fail(source, field, `must keep the ${what} inside [${LAYOUT.cannonZ}, ${zMax}] (got ${z0}..${z1})`);
+}
+
+function validateConveyor(raw: unknown, i: number, lane: LevelDef['lane'], source: string): ConveyorDef {
+  const p = `conveyors[${i}].`;
+  const o = obj(raw, source, `conveyors[${i}]`);
+  const c: ConveyorDef = {
+    id: str(o, 'id', source, p),
+    x: num(o, 'x', source, p),
+    z: num(o, 'z', source, p),
+    width: pos(o, 'width', source, p),
+    length: pos(o, 'length', source, p),
+    vx: num(o, 'vx', source, p),
+    vz: num(o, 'vz', source, p),
+  };
+  if (c.vx === 0 && c.vz === 0) fail(source, `${p}vx`, 'and vz must not both be 0');
+  if (o.flip !== undefined) c.flip = pos(o, 'flip', source, p);
+  inLaneX(c.x, c.width, lane, source, `${p}x`, 'conveyor');
+  hazardZ(c.z, c.z + c.length, lane, source, `${p}z`, 'conveyor');
+  return c;
+}
+
+function validateTurntable(raw: unknown, i: number, lane: LevelDef['lane'], source: string): TurntableDef {
+  const p = `turntables[${i}].`;
+  const o = obj(raw, source, `turntables[${i}]`);
+  const t: TurntableDef = {
+    id: str(o, 'id', source, p),
+    x: num(o, 'x', source, p),
+    z: num(o, 'z', source, p),
+    radius: pos(o, 'radius', source, p),
+    spin: num(o, 'spin', source, p),
+  };
+  if (t.spin === 0) fail(source, `${p}spin`, 'must not be 0 (its sign is the direction: + turns +x toward +z)');
+  if (o.flip !== undefined) t.flip = pos(o, 'flip', source, p);
+  inLaneX(t.x, 2 * t.radius, lane, source, `${p}x`, 'turntable');
+  hazardZ(t.z - t.radius, t.z + t.radius, lane, source, `${p}z`, 'turntable');
+  return t;
+}
+
+function validateSaw(raw: unknown, i: number, lane: LevelDef['lane'], source: string): SawDef {
+  const p = `saws[${i}].`;
+  const o = obj(raw, source, `saws[${i}]`);
+  const s: SawDef = {
+    id: str(o, 'id', source, p),
+    x: num(o, 'x', source, p),
+    z: num(o, 'z', source, p),
+    radius: pos(o, 'radius', source, p),
+  };
+  if (o.bite !== undefined) s.bite = pos(o, 'bite', source, p);
+  let dx = 0;
+  let dz = 0;
+  if (o.path !== undefined) {
+    const pa = obj(o.path, source, `${p}path`);
+    const pp = `${p}path.`;
+    s.path = { dx: num(pa, 'dx', source, pp), dz: num(pa, 'dz', source, pp), period: pos(pa, 'period', source, pp) };
+    dx = s.path.dx;
+    dz = s.path.dz;
+  }
+  if (o.cycle !== undefined) s.cycle = cycle(obj(o.cycle, source, `${p}cycle`), source, `${p}cycle`);
+  for (const x of [s.x, s.x + dx]) inLaneX(x, 2 * s.radius, lane, source, `${p}x`, 'saw');
+  hazardZ(Math.min(s.z, s.z + dz) - s.radius, Math.max(s.z, s.z + dz) + s.radius, lane, source, `${p}z`, 'saw');
+  return s;
+}
+
+// Hazard lists: validated one by one, ids unique within the list.
+function hazards<T extends { id: string }>(
+  o: Obj,
+  key: string,
+  source: string,
+  each: (raw: unknown, i: number) => T,
+): T[] {
+  const list = arr(o, key, source).map(each);
+  const ids = new Set<string>();
+  list.forEach((h, i) => {
+    if (ids.has(h.id)) fail(source, `${key}[${i}].id`, `"${h.id}" is not unique`);
+    ids.add(h.id);
+  });
+  return list;
 }
 
 function validateWave(raw: unknown, i: number, source: string): EnemyWaveDef {
@@ -512,6 +674,11 @@ export function validateLevel(raw: unknown, source: string): LevelDef {
       every: posInt(m, 'every', source, 'trickleMix.'),
     };
   }
+  if (o.conveyors !== undefined)
+    level.conveyors = hazards(o, 'conveyors', source, (r, i) => validateConveyor(r, i, lane, source));
+  if (o.turntables !== undefined)
+    level.turntables = hazards(o, 'turntables', source, (r, i) => validateTurntable(r, i, lane, source));
+  if (o.saws !== undefined) level.saws = hazards(o, 'saws', source, (r, i) => validateSaw(r, i, lane, source));
   return level;
 }
 
@@ -543,6 +710,16 @@ export const LEVELS: readonly LevelDef[] = Object.freeze([
   shippedLevel(l208, '2-08.json'),
   shippedLevel(l209, '2-09.json'),
   shippedLevel(l210, '2-10.json'),
+  shippedLevel(l301, '3-01.json'),
+  shippedLevel(l302, '3-02.json'),
+  shippedLevel(l303, '3-03.json'),
+  shippedLevel(l304, '3-04.json'),
+  shippedLevel(l305, '3-05.json'),
+  shippedLevel(l306, '3-06.json'),
+  shippedLevel(l307, '3-07.json'),
+  shippedLevel(l308, '3-08.json'),
+  shippedLevel(l309, '3-09.json'),
+  shippedLevel(l310, '3-10.json'),
 ]);
 
 {
@@ -598,7 +775,12 @@ export function validateWorld(
 }
 
 const world1 = validateWorld(w1, 'world-1.json');
-export const WORLDS: readonly WorldDef[] = Object.freeze([world1, validateWorld(w2, 'world-2.json', LEVELS, [world1])]);
+const world2 = validateWorld(w2, 'world-2.json', LEVELS, [world1]);
+export const WORLDS: readonly WorldDef[] = Object.freeze([
+  world1,
+  world2,
+  validateWorld(w3, 'world-3.json', LEVELS, [world1, world2]),
+]);
 
 // The world a level belongs to (undefined for generated Expedition levels).
 export function worldOfLevel(id: string): WorldDef | undefined {

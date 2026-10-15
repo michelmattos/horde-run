@@ -102,7 +102,15 @@ try {
         musicSend: bus(reverb, musicGain),
       };
     }
-    const pack = (b) => Array.from({ length: b.numberOfChannels }, (_, i) => Array.from(b.getChannelData(i)));
+    // Float32 samples as base64: a plain number array of every song overflows the page's
+    // JSON reply (V8's 512 MB string limit).
+    const base64 = (f) => {
+      const bytes = new Uint8Array(f.buffer, f.byteOffset, f.byteLength);
+      let bin = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      return btoa(bin);
+    };
+    const pack = (b) => Array.from({ length: b.numberOfChannels }, (_, i) => base64(b.getChannelData(i)));
 
     const out = {};
     for (const id of Object.keys(SONGS)) {
@@ -166,7 +174,11 @@ try {
     return out;
   }, loops);
   for (const [name, chans] of Object.entries(results)) {
-    writeFileSync(join(outDir, `${name}.wav`), wav(chans, 44100));
+    const floats = chans.map((b64) => {
+      const buf = Buffer.from(b64, 'base64');
+      return new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
+    });
+    writeFileSync(join(outDir, `${name}.wav`), wav(floats, 44100));
   }
   console.log(`wrote ${Object.keys(results).length} files to ${outDir}`);
 } finally {

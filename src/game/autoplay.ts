@@ -39,11 +39,43 @@
 // pushes, it aims upwind by the drift the stream will pick up on its way to each gate
 // (more over ice, where wind feeds the slide); the human counter-steers through its
 // usual reaction delay, so late.
+//
+// Milestone 6 (World 3): a toggling gate scores by the effect it will have when the
+// stream gets there (gateEffectAt), so the bot fires at gates that will be open and
+// steers off a timed x3 about to flip to a trap; the human cannot time it and counts the
+// worse of what a timed gate shows now and half its flight ahead.
+// Saws on the line cost like a defender (where a sliding saw will be when the stream
+// passes, less with mods.sawGuard). Belts and turntables carry the stream: each candidate
+// aim is traced up the lane through them (the human reads a flipping belt's current
+// direction), so the bot aims upstream to ride a belt into a good gate. Gates are read
+// at their live spots (sim.gateSpot) and skipped while gliding (sim.gateLifted), so after
+// a Jack-in-the-Box shuffle the bot re-targets (the human through its reaction delay).
+// Shield walls block the line like walls, and the champion is launched at them. With a
+// Gear Gun each aim scores as the mean of its left and right ricochet streams.
 
-import type { BattleState, DefenderDef, DefenderView, GateDef, LevelDef, SimEvent, SimView } from '../contracts.ts';
-import { DEFENDER_DEFAULTS, LAYOUT, Team, gateX } from '../contracts.ts';
+import type {
+  BattleState,
+  DefenderDef,
+  DefenderView,
+  GateDef,
+  GateOp,
+  LevelDef,
+  SimEvent,
+  SimView,
+} from '../contracts.ts';
+import {
+  DEFENDER_DEFAULTS,
+  LAYOUT,
+  Team,
+  conveyorDir,
+  gateEffectAt,
+  gateX,
+  sawPos,
+  sawUp,
+  turntableSpin,
+} from '../contracts.ts';
 import type { BattleInput } from './battle.ts';
-import { IGLOO_DEFAULTS } from './levels.ts';
+import { defenderWidth } from './levels.ts';
 import type { BattleLoadout } from './loadout.ts';
 import { firingOrder } from './loadout.ts';
 
@@ -73,6 +105,10 @@ const ICE_WIND_GAIN = 1.5;
 const ICE_DECAY = 0.6;
 const OFF_ICE_DECAY = 8;
 const ICE_MAX_SLIDE = 8;
+// World 3
+const SAW_FACTOR = 0.3; // crowd kept when a saw sits on the line (it shreds the stream)
+const TRACE_DT = 0.1; // seconds per step when tracing a stream over belts and turntables
+const HEAVY_CARRY = 0.5; // belts carry champion-kind units at this share (mirrors the sim)
 
 export type AutoplayProfile = 'precise' | 'human';
 export interface AutoplayOptions {
@@ -100,6 +136,8 @@ export type AutoplaySim = {
   readonly view: SimView;
   readonly defenders?: readonly DefenderView[];
   gateIce?(index: number): number; // World 2: remaining ice hp of a gate (level order); 0 = open
+  gateSpot?(index: number, out: { x: number; z: number }): void; // World 3: a gate's live spot
+  gateLifted?(index: number): boolean; // World 3: true while a gate glides (no effect)
 };
 export type Autoplay = (
   state: BattleState,
@@ -122,6 +160,12 @@ interface Obstacle {
   ice: boolean; // an ice wall: never destroyed
 }
 
+// What a gate effect does to a stream of single mobs (null: a shut gate, no change).
+function effectGain(e: { op: GateOp; value: number } | null): number {
+  if (!e) return 1;
+  return e.op === 'mul' ? e.value : e.op === 'add' ? 1 + e.value : e.op === 'div' ? 1 / e.value : 0;
+}
+
 // Human profile: how far off it sees a far gate or defender at noise time nt. Each
 // object gets its own phase so they do not all err the same way.
 function farOffset(nt: number, k: number): number {
@@ -140,13 +184,7 @@ export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autopla
   const championPatience = human ? HUMAN.championPatience : CHAMPION_PATIENCE;
   // Gates and defenders sorted by z once, so the chain is evaluated in crossing order.
   const gates = level.gates.slice().sort((a, b) => a.z - b.z);
-  const defWidth = (d: DefenderDef): number =>
-    d.width ??
-    (d.kind === 'tower'
-      ? DEFENDER_DEFAULTS.towerWidth
-      : d.kind === 'igloo'
-        ? IGLOO_DEFAULTS.width
-        : DEFENDER_DEFAULTS.wallWidth);
+  const defWidth = (d: DefenderDef): number => d.width ?? defenderWidth(d.kind);
   const obstacles: Obstacle[] = [
     ...(level.defenders ?? []).map((d) => ({
       def: d,
@@ -187,6 +225,41 @@ export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autopla
   const mobTravel = (level.lane.length - LAYOUT.cannonZ) / mobSpeed;
   const champTravel = (level.lane.length - LAYOUT.cannonZ) / (opts?.loadout?.champion.speed ?? CHAMPION_SPEED);
   const useUltimate = opts?.loadout !== undefined;
+  // World 3. Each is only switched on by a level that has the hazard, so World 1 and 2
+  // levels score exactly as before.
+  const toggles = gates.some((g) => g.toggle);
+  const saws = level.saws ?? [];
+  const sawKeep = 1 - (1 - SAW_FACTOR) * (1 - (level.mods?.sawGuard ?? 0));
+  const belts = level.conveyors ?? [];
+  const tables = level.turntables ?? [];
+  const carried = belts.length > 0 || tables.length > 0;
+  const grip = 1 - (level.mods?.beltGrip ?? 0);
+  const carry = opts?.loadout && firingOrder(opts.loadout.mobs)[0].kind === 'heavy' ? HEAVY_CARRY * grip : grip;
+  const liveSpots = phases.some((ph) => ph.shuffle);
+  const liveX = Float64Array.from(gates, (g) => g.x); // each sorted gate's live spot
+  const liveZ = Float64Array.from(gates, (g) => g.z);
+  const lifted = new Uint8Array(gates.length); // refreshed every call
+  const order = Int32Array.from(gates, (_, k) => k); // sorted gates in their live z order
+  const spot = { x: 0, z: 0 };
+  const sawPt = { x: 0, z: 0 };
+  // The traced stream (carried levels): x offset picked up on the way to each gate, obstacle
+  // and saw, and the seconds it takes to get there. Targets are walked in z order.
+  const pathG = new Float64Array(gates.length);
+  const pathO = new Float64Array(obstacles.length);
+  const pathS = new Float64Array(saws.length);
+  const timeG = new Float64Array(gates.length);
+  const timeS = new Float64Array(saws.length);
+  const sawZ = saws.map((sw) => sw.z + (sw.path?.dz ?? 0) / 2); // the line a saw is crossed on
+  // Gear Gun: every crowd shot ricochets, half of them to each side, so each aim is scored
+  // as the mean of a left and a right stream bouncing off the lane walls.
+  const shot = opts?.loadout?.shot;
+  const rico = shot?.kind === 'ricochet' ? shot : undefined;
+  const ricoVx = rico ? rico.angle * mobSpeed : 0;
+  const targets: { z: number; kind: 0 | 1 | 2; i: number }[] = [
+    ...gates.map((g, i) => ({ z: g.z, kind: 0 as const, i })),
+    ...obstacles.map((o) => ({ z: o.def.z, kind: 1 as const, i: o.slot })),
+    ...saws.map((_, i) => ({ z: sawZ[i], kind: 2 as const, i })),
+  ];
 
   let aim = 0;
   let lastTime = 0;
@@ -205,10 +278,26 @@ export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autopla
   // Precise: exactly where a moving gate will be when the stream gets there. Human:
   // the middle of its sweep, pulled `lead` of the way toward that (and only the middle
   // of the sweep, misplaced, for a far gate).
-  const gateSeenX = (g: GateDef, i: number, time: number): number => {
-    if (g.z > farZ) return g.x + farOffset(time + noiseShift, i);
-    const exact = gateX(g, time + (g.z - LAYOUT.cannonZ) / mobSpeed);
-    return lead === 1 ? exact : g.x + lead * (exact - g.x);
+  // `k` is the gate's sorted index; a shuffled gate sways around its live spot.
+  const gateSeenX = (g: GateDef, k: number, time: number): number => {
+    const bx = liveX[k];
+    const bz = liveZ[k];
+    if (bz > farZ) return bx + farOffset(time + noiseShift, k + 1);
+    const tc = time + (carried ? timeG[k] : (bz - LAYOUT.cannonZ) / mobSpeed);
+    const exact = bx === g.x ? gateX(g, tc) : bx + gateX(g, tc) - g.x;
+    return lead === 1 ? exact : bx + lead * (exact - bx);
+  };
+  // The effect a toggling gate will have when the stream gets there. The human cannot
+  // time it: it plays safe and counts the worse of what the gate shows now and what it
+  // will show half the flight ahead (only what it shows now far up the lane).
+  const gateEffect = (g: GateDef, k: number, time: number): { op: GateOp; value: number } | null => {
+    if (!g.toggle) return g;
+    const travel = carried ? timeG[k] : (liveZ[k] - LAYOUT.cannonZ) / mobSpeed;
+    if (!human) return gateEffectAt(g, time + travel);
+    const now = gateEffectAt(g, time);
+    if (liveZ[k] > farZ) return now;
+    const then = gateEffectAt(g, time + lead * travel);
+    return effectGain(then) < effectGain(now) ? then : now;
   };
   const obstacleX = (o: Obstacle, time: number): number =>
     o.def.z <= farZ ? o.def.x : o.def.x + farOffset(time + noiseShift, 17 + o.slot);
@@ -216,23 +305,48 @@ export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autopla
   // Expected crowd multiplier for weight-1 mobs fired at x: every gate on the line
   // applies in z order (clones go on through the later ones too), and a defender
   // standing on the line soaks part of the stream before anything behind it.
-  function chainScore(x: number, time: number): number {
+  // Where a ricochet stream fired at x0 is after t seconds (side -1 left, 1 right): it
+  // flips at each lane wall and walks straight on along the wall once its bounces run out.
+  function ricoX(x0: number, t: number, side: number): number {
+    const wall = laneHalf - LAYOUT.mobRadius;
+    let x = x0;
+    let v = side * ricoVx;
+    let left = rico?.bounces ?? 0;
+    let rest = t;
+    while (rest > 0 && v !== 0) {
+      const tw = ((v > 0 ? wall : -wall) - x) / v;
+      if (tw >= rest) return x + v * rest;
+      x = v > 0 ? wall : -wall;
+      rest -= tw;
+      left--;
+      v = left > 0 ? -v : 0;
+    }
+    return x;
+  }
+  // The sideways offset a ricochet stream (side, 0 = none) has picked up by depth z.
+  const ricoOff = (x: number, z: number, side: number): number =>
+    side === 0 ? 0 : ricoX(x, (z - LAYOUT.cannonZ) / mobSpeed, side) - x;
+
+  function chainScore(x: number, time: number, side = 0): number {
+    if (carried) trace(x, time);
     let c = 1;
     let gi = 0;
     let oi = 0;
     while (gi < gates.length || oi < obstacles.length) {
-      const g: GateDef | undefined = gates[gi];
+      const k = gi < gates.length ? order[gi] : -1;
+      const g: GateDef | undefined = gates[k];
       const o: Obstacle | undefined = obstacles[oi];
-      if (o && (!g || o.def.z < g.z)) {
+      if (o && (!g || o.def.z < liveZ[k])) {
         oi++;
-        if (alive(o) && Math.abs(x + obstacleDrift[o.slot] - obstacleX(o, time)) < o.half + BLOCK_MARGIN)
+        const ox = x + obstacleDrift[o.slot] + pathO[o.slot] + ricoOff(x, o.def.z, side);
+        if (alive(o) && Math.abs(ox - obstacleX(o, time)) < o.half + BLOCK_MARGIN)
           c *= o.def.kind === 'igloo' && crowd >= IGLOO_CROWD ? IGLOO_BONUS : BLOCK_FACTOR;
         continue;
       }
-      const k = gi++;
-      if (broken.has(g.id)) continue;
-      const gx = gateSeenX(g, gi, time);
-      const d = Math.abs(x + drift[k] - gx);
+      gi++;
+      if (broken.has(g.id) || lifted[k]) continue;
+      const gx = gateSeenX(g, k, time);
+      const d = Math.abs(x + drift[k] + pathG[k] + ricoOff(x, liveZ[k], side) - gx);
       if (iced[k]) {
         // A frozen gate does nothing and soaks the stream until it is chipped open; when
         // every line is blocked, the better gate is the one worth chipping.
@@ -240,22 +354,33 @@ export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autopla
           c *= BLOCK_FACTOR * (1 + CHIP_PULL * (g.op === 'mul' ? g.value - 1 : g.op === 'add' ? g.value : 0));
         continue;
       }
-      const good = g.op === 'mul' || g.op === 'add';
+      const e = toggles ? gateEffect(g, k, time) : g;
+      if (!e) continue; // a timed gate that will be shut: nothing happens there
+      const good = e.op === 'mul' || e.op === 'add';
       if (good ? d > g.width / 2 - GOOD_MARGIN : d > g.width / 2 + TRAP_MARGIN) continue;
-      switch (g.op) {
+      switch (e.op) {
         case 'mul':
-          c *= g.value;
+          c *= e.value;
           break;
         case 'add':
-          c *= 1 + g.value;
+          c *= 1 + e.value;
           break;
         case 'sub':
           c = 0;
           break;
         case 'div':
-          c /= g.value;
+          c /= e.value;
           break;
       }
+    }
+    // Saws shred whatever passes through them while they are up.
+    for (let i = 0; i < saws.length; i++) {
+      const sw = saws[i];
+      const tc = time + lead * (carried ? timeS[i] : (sawZ[i] - LAYOUT.cannonZ) / mobSpeed);
+      if (!sawUp(sw, tc)) continue;
+      sawPos(sw, tc, sawPt);
+      const sx = sawZ[i] > farZ ? sw.x + (sw.path?.dx ?? 0) / 2 + farOffset(time + noiseShift, 29 + i) : sawPt.x;
+      if (Math.abs(x + pathS[i] + ricoOff(x, sawZ[i], side) - sx) < sw.radius + BLOCK_MARGIN) c *= sawKeep;
     }
     // Towers shoot whatever passes within range; the closer the line, the more it costs.
     for (const o of obstacles) {
@@ -264,6 +389,74 @@ export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autopla
       if (d < o.range) c *= 1 - TOWER_COST * (1 - d / o.range);
     }
     return c;
+  }
+
+  // Follows a stream fired at x0 up the lane over belts and turntables, recording the x
+  // offset and travel time at each gate, obstacle and saw line (targets sorted by z).
+  function trace(x0: number, time: number): void {
+    let x = x0;
+    let z: number = LAYOUT.cannonZ;
+    let t = 0;
+    let ti = 0;
+    const zEnd = level.lane.length;
+    while (ti < targets.length && z < zEnd && t < 30) {
+      const now = human ? time : time + t; // the human reads belts as they run now
+      let vx = 0;
+      let vz = mobSpeed;
+      for (const b of belts) {
+        if (Math.abs(x - b.x) > b.width / 2 || z < b.z || z > b.z + b.length) continue;
+        const dir = conveyorDir(b, now) * carry;
+        vx += b.vx * dir;
+        vz += b.vz * dir;
+      }
+      let nx = x + vx * TRACE_DT;
+      let nz = z + Math.max(0.5, vz) * TRACE_DT;
+      for (const p of tables) {
+        const dx = nx - p.x;
+        const dz = nz - p.z;
+        if (dx * dx + dz * dz > p.radius * p.radius) continue;
+        const a = turntableSpin(p, now) * carry * TRACE_DT;
+        const ca = Math.cos(a);
+        const sa = Math.sin(a);
+        nx = p.x + dx * ca - dz * sa;
+        nz = Math.max(nz, p.z + dx * sa + dz * ca); // the stream still walks on: never backward
+      }
+      nx = Math.max(-laneHalf, Math.min(laneHalf, nx));
+      while (ti < targets.length && targets[ti].z <= nz) {
+        const tg = targets[ti++];
+        const f = nz > z ? (tg.z - z) / (nz - z) : 1;
+        const off = x + (nx - x) * Math.max(0, Math.min(1, f)) - x0;
+        const at = t + TRACE_DT * Math.max(0, Math.min(1, f));
+        if (tg.kind === 0) {
+          pathG[tg.i] = off;
+          timeG[tg.i] = at;
+        } else if (tg.kind === 1) pathO[tg.i] = off;
+        else {
+          pathS[tg.i] = off;
+          timeS[tg.i] = at;
+        }
+      }
+      x = nx;
+      z = nz;
+      t += TRACE_DT;
+    }
+  }
+
+  // Refreshes live gate spots after a shuffle (sorted order by live z) and the target list.
+  function updateSpots(sim: AutoplaySim): void {
+    let changed = false;
+    for (let k = 0; k < gates.length; k++) {
+      lifted[k] = sim.gateLifted?.(gateIndex[k]) ? 1 : 0;
+      if (!sim.gateSpot) continue;
+      sim.gateSpot(gateIndex[k], spot);
+      if (spot.x !== liveX[k] || spot.z !== liveZ[k]) changed = true;
+      liveX[k] = spot.x;
+      liveZ[k] = spot.z;
+    }
+    if (!changed) return;
+    order.sort((a, b) => liveZ[a] - liveZ[b] || a - b);
+    for (const tg of targets) if (tg.kind === 0) tg.z = liveZ[tg.i];
+    targets.sort((a, b) => a.z - b.z);
   }
 
   // Is x inside an ice patch at depth z?
@@ -344,8 +537,15 @@ export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autopla
     let bestScore = -Infinity;
     const branch = forkBranch(intent, time);
     for (let x = -lim; x <= lim + 1e-9; x += SAMPLE_STEP) {
-      let s = chainScore(x, time);
-      if (phases.length) s *= hitFactor(x, px);
+      let s: number;
+      if (rico) {
+        const end = level.lane.length;
+        s = 0.5 * chainScore(x, time, -1) * (phases.length ? hitFactor(x + ricoOff(x, end, -1), px) : 1);
+        s += 0.5 * chainScore(x, time, 1) * (phases.length ? hitFactor(x + ricoOff(x, end, 1), px) : 1);
+      } else {
+        s = chainScore(x, time);
+        if (phases.length) s *= hitFactor(x, px);
+      }
       // Stay on the fork branch already chosen unless another is clearly better.
       if (branch >= 0 && forkBranch(x, time) === branch) s *= FORK_STICK;
       // Small pull toward the current aim (the human's intended aim, so its aim error
@@ -364,7 +564,7 @@ export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autopla
     for (let k = 0; k < gates.length; k++) {
       const g = gates[k];
       if (forkOf[k] === undefined || broken.has(g.id)) continue;
-      if (Math.abs(x + drift[k] - gateSeenX(g, k + 1, time)) <= g.width / 2 - GOOD_MARGIN) return k;
+      if (Math.abs(x + drift[k] - gateSeenX(g, k, time)) <= g.width / 2 - GOOD_MARGIN) return k;
     }
     return -1;
   }
@@ -385,7 +585,7 @@ export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autopla
   function wallTarget(): Obstacle | undefined {
     let best: Obstacle | undefined;
     for (const o of obstacles) {
-      if ((o.def.kind !== 'wall' && o.def.kind !== 'igloo') || o.ice || !alive(o)) continue;
+      if ((o.def.kind !== 'wall' && o.def.kind !== 'igloo' && o.def.kind !== 'shield') || o.ice || !alive(o)) continue;
       if (!best || Math.abs(o.def.x - aim) < Math.abs(best.def.x - aim)) best = o;
     }
     return best;
@@ -406,6 +606,7 @@ export function createAutoplay(level: LevelDef, opts?: AutoplayOptions): Autopla
       iced[k] = ice ? 1 : 0;
     }
     crowd = state.playerUnits;
+    if (liveSpots) updateSpots(sim);
     // Defenders stand until the sim reports hp 0 (or, without sim.defenders, until destroyed).
     for (const o of obstacles) {
       const view = sim.defenders?.find((d) => d.id === o.def.id);

@@ -260,12 +260,40 @@ const DRUMMER_DETAIL =
   `<path d="M36 38.5 L39.5 45 L43 38.5 L46.5 45 L50 38.5" fill="none" stroke="${INK}" stroke-width="1.8" stroke-linejoin="round"/>` +
   `<path d="M34 36.5 L52 36.5 M34 46.5 L52 46.5" stroke="${INK}" stroke-width="2"/>`;
 
-export type ChampionIconId = 'sarge' | 'tank' | 'drummer';
+// Wind-up Robot (World 3): a boxy tin robot with an antenna, a barrel chest, mitt hands
+// held forward and a wind-up key over its shoulder; visor, lamp eyes and the chest gear in ink.
+const WINDUP: Stroke[] = [
+  { d: 'M44 25 L50 19', w: 2.6 }, // key shaft
+  { d: 'M48 15 C52 11 57 14 54 18 C58 20 55 25 50 22 Z', w: 2 }, // key bow
+  { d: 'M32 10 L32 5', w: 2.4 }, // antenna
+  { d: 'M32 4 L32 4.5', w: 5.5 }, // antenna bead
+  { d: 'M21 10 L43 10 L43 24 L21 24 Z', w: 3 }, // head
+  { d: 'M17.5 14 L21 14 L21 20 L17.5 20 Z', w: 1.5 }, // ear bolts
+  { d: 'M46.5 14 L43 14 L43 20 L46.5 20 Z', w: 1.5 },
+  { d: 'M18 28 L46 28 L46 44 C46 50 18 50 18 44 Z', w: 3 }, // barrel chest
+  { d: 'M18 31 L11 41', w: 5.5 }, // arms
+  { d: 'M46 31 L53 41', w: 5.5 },
+  { d: 'M10 44 L10 44.5', w: 8 }, // mitts
+  { d: 'M54 44 L54 44.5', w: 8 },
+  { d: 'M26 48 L26 55', w: 6 }, // legs
+  { d: 'M38 48 L38 55', w: 6 },
+  { d: 'M20 57.5 L30 57.5', w: 4 }, // feet
+  { d: 'M34 57.5 L44 57.5', w: 4 },
+];
+const WINDUP_DETAIL =
+  `<path d="M23.5 14 L40.5 14 L40.5 19.5 L23.5 19.5 Z" fill="${INK}"/>` +
+  `<circle cx="27.6" cy="16.8" r="1.8" fill="#ffb347"/><circle cx="36.4" cy="16.8" r="1.8" fill="#ffb347"/>` +
+  `<circle cx="32" cy="38" r="6" fill="none" stroke="${INK}" stroke-width="2.2" stroke-dasharray="2.4 1.6"/>` +
+  `<circle cx="32" cy="38" r="2" fill="${INK}"/>` +
+  `<path d="M21.5 31.5 L21.6 31.5 M42.5 31.5 L42.6 31.5" stroke="${INK}" stroke-width="2.2" stroke-linecap="round"/>`;
 
-/** The champion's sticker figure: Sarge (bazooka), Tank or Drummer. */
+export type ChampionIconId = 'sarge' | 'tank' | 'drummer' | 'windup';
+
+/** The champion's sticker figure: Sarge (bazooka), Tank, Drummer or the Wind-up Robot. */
 export function championIconFor(id: ChampionIconId, size: number | string, color: string = HEX.uiCream): string {
   if (id === 'tank') return svg('0 0 64 64', figure(TANK, color, 2.6, TANK_DETAIL), size, 'tb-ico');
   if (id === 'drummer') return svg('0 0 64 64', figure(DRUMMER, color, 2.6, DRUMMER_DETAIL), size, 'tb-ico');
+  if (id === 'windup') return svg('0 0 64 64', figure(WINDUP, color, 2.6, WINDUP_DETAIL), size, 'tb-ico');
   return championIcon(size, color);
 }
 
@@ -396,6 +424,30 @@ export function gustArrowIcon(size: number | string): string {
       `<path d="${arrow}" fill="${INK}" stroke="${INK}" stroke-width="6" stroke-linejoin="round" transform="translate(0 2)"/>` +
       `<path d="${arrow}" fill="#f4f9fc" stroke="${INK}" stroke-width="3.2" stroke-linejoin="round"/>` +
       `<path d="M12 29.5 L37 29.5" stroke="#bfe3f5" stroke-width="2.4" stroke-linecap="round"/>`,
+    size,
+    'tb-ico',
+  );
+}
+
+/**
+ * Jack-in-the-Box crank (World 3, the HUD's shuffle chip): a brass crank arm with a red
+ * knob on a tin axle boss. The arm is its own group (class tb-crank-arm) turning about
+ * the axle at (32, 32), so the HUD can wind it with a CSS transform.
+ */
+export function crankIcon(size: number | string): string {
+  const arm = 'M32 32 L32 12 L46 12';
+  return svg(
+    '0 0 64 64',
+    `<circle cx="32" cy="34" r="17" fill="${INK}"/>` +
+      `<circle cx="32" cy="32" r="16.5" fill="${HEX.brass}" stroke="${INK}" stroke-width="3"/>` +
+      `<circle cx="32" cy="32" r="11" fill="none" stroke="#a87a22" stroke-width="2.4" stroke-dasharray="3 2.6"/>` +
+      `<g class="tb-crank-arm" style="transform-origin:32px 32px">` +
+      `<path d="${arm}" fill="none" stroke="${INK}" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>` +
+      `<path d="${arm}" fill="none" stroke="#e8c45a" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"/>` +
+      `<circle cx="48" cy="12" r="6.5" fill="${HEX.uiRed}" stroke="${INK}" stroke-width="3"/>` +
+      `<circle cx="46.2" cy="10.2" r="1.8" fill="#ffb3a6"/>` +
+      `</g>` +
+      `<circle cx="32" cy="32" r="5.5" fill="#c9ced4" stroke="${INK}" stroke-width="2.6"/>`,
     size,
     'tb-ico',
   );

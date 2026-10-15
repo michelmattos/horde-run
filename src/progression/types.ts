@@ -21,7 +21,7 @@ export type UnlockRule =
   | { type: 'buy'; price: number; after?: string };
 
 // Cannon stats are multipliers on LevelDef.cannon; shotSpread sets mods.shotSpread; shot
-// (the Snowball Launcher) goes to BattleLoadout.shot.
+// (the Snowball Launcher, the Gear Gun) goes to BattleLoadout.shot.
 export interface CannonStats {
   fireRate: number;
   unitsPerShot: number;

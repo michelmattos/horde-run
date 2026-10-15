@@ -21,7 +21,11 @@ import type {
 export const MIX_EVERY = 10;
 
 // Boss levels get a named hint instead of "Clear level x-y".
-const BOSS_NAMES: Record<string, string> = { '1-10': 'the Tin General', '2-10': 'the Snow Globe Giant' };
+const BOSS_NAMES: Record<string, string> = {
+  '1-10': 'the Tin General',
+  '2-10': 'the Snow Globe Giant',
+  '3-10': 'the Jack-in-the-Box',
+};
 
 function cleared(facts: ProgressFacts, levelId: string): boolean {
   return facts.levels[levelId]?.stars[0] === true;
@@ -188,7 +192,13 @@ export function itemStats(id: string, tier: number): { label: string; value: str
         { label: 'Troops per shot', value: `x${fmt(s.unitsPerShot)}` },
       ];
       if (s.shotSpread !== undefined) lines.push({ label: 'Spread', value: 'Wide' });
-      if (s.shot) lines.push({ label: 'Snowball', value: `Bursts at ${fmt(s.shot.burstWeight)} troops` });
+      if (s.shot?.kind === 'snowball')
+        lines.push({ label: 'Snowball', value: `Bursts at ${fmt(s.shot.burstWeight)} troops` });
+      if (s.shot?.kind === 'ricochet')
+        lines.push({
+          label: 'Ricochet',
+          value: `${fmt(s.shot.bounces)} wall bounce${s.shot.bounces === 1 ? '' : 's'}`,
+        });
       return lines;
     }
     case 'mob': {
@@ -201,6 +211,7 @@ export function itemStats(id: string, tier: number): { label: string; value: str
       ];
       if (s.deathBlast) lines.push({ label: 'Blast damage', value: fmt(s.deathBlast.damage) });
       if (s.riders) lines.push({ label: 'Riders', value: `${fmt(s.riders)} troops` });
+      if (s.ranged) lines.push({ label: 'Arrows', value: `${fmt(s.ranged.damage)} every ${fmt(s.ranged.every)} s` });
       return lines;
     }
     case 'champion': {
@@ -212,6 +223,7 @@ export function itemStats(id: string, tier: number): { label: string; value: str
         { label: 'Charge time', value: `x${fmt(s.chargeMul)}` },
       ];
       if (s.echo > 0) lines.push({ label: 'Rallies', value: `+${fmt(s.echo)} troops` });
+      if (s.gateWalk) lines.push({ label: 'Gate walk', value: `${fmt(s.gateWalk.seconds)} s` });
       return lines;
     }
     case 'ultimate': {
@@ -272,12 +284,16 @@ function mobSpec(id: string, tier: number): MobSpec {
   };
   if (s.deathBlast) spec.deathBlast = { ...s.deathBlast };
   if (s.riders) spec.riders = s.riders;
+  if (s.ranged) spec.ranged = { ...s.ranged };
   return spec;
 }
 
 function championSpec(id: string, tier: number): ChampionSpec {
   const it = itemOf(id, 'champion');
-  return { id, variant: it.variant, ...it.tiers[tier] };
+  const s = it.tiers[tier];
+  return s.gateWalk
+    ? { id, variant: it.variant, ...s, gateWalk: { ...s.gateWalk } }
+    : { id, variant: it.variant, ...s };
 }
 
 function ultimateSpec(id: string, tier: number): UltimateSpec {

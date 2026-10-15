@@ -30,6 +30,14 @@
 //   g.pulse(k, strong);                   // k: 1 -> 0 over the crossing pulse; strong = added > 0
 //   g.setBreak(o.scale, o.alpha);         // from fxLogic.gateBreakAt; hides itself at alpha 0
 //   g.dispose();
+// World 3 (Clockwork Workshop): toggling gates (opts.toggle) carry a brass clock token on
+// the card whose hand sweeps the current phase and whose rim glows red before a flip
+// (setClock); without an alt a painted tin shutter rolls down between the posts while the
+// gate is off (setShutter) and the card shows its label washed out (setFace ghost); with
+// an alt the card flips like a split-flap sign (setFlap) to the alt face, the frame and
+// film swapping colour when the alt is the other kind (opts.altGood). Gliding gates lift
+// (the caller raises root.position.y) and read inactive (setLifted); on a Jack-in-the-Box
+// level the posts carry glow shells for the shuffle telegraph (opts.shuffles, setGlow).
 // Pivot: ground centre (y = 0); the arch spans x in [-width/2, width/2] (posts pull in a
 // little only when the slot is tighter than the posts' outer edges). Front (sign face) is
 // +Z. Shadows are registered here (frame, card and struts cast; frame receives). The film
@@ -41,6 +49,7 @@ import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData';
 import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture';
 import { Texture } from '@babylonjs/core/Materials/Textures/texture';
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial';
+import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
 import type { Look } from '../look/index.ts';
 import {
@@ -51,12 +60,16 @@ import {
   lin,
   mergeParts,
   paint,
+  paintedTinMaterial,
   place,
   plasticMaterial,
   roundedBox,
 } from '../look/index.ts';
 import type { ModelInfo, PreviewOptions, PreviewResult } from '../look/model.ts';
 import { computeFraming } from '../framing.ts';
+import type { GateToggleDef } from '../../contracts.ts';
+import { clockWarn, flapAt, shutterAt, toggleViewAt } from '../fxLogic.ts';
+import type { ToggleView } from '../fxLogic.ts';
 import { iceSurfaceTexture } from './icePatch.ts';
 
 export const info: ModelInfo = {
@@ -68,7 +81,7 @@ export const info: ModelInfo = {
   height: 3.6,
   triangleBudget: 3000,
   gameZ: 30,
-  variants: ['row', 'single', 'tight', 'frozen'],
+  variants: ['row', 'single', 'tight', 'frozen', 'workshop'],
 };
 
 export interface GateOptions {
@@ -83,6 +96,11 @@ export interface GateOptions {
   // every gate) gets its ice sheet built up front so freezing never stalls a frame.
   freezing?: boolean;
   freezable?: boolean;
+  // World 3: toggle = GateDef.toggle is set; altGood = the colour of its alt face (absent:
+  // no alt, the gate closes behind a shutter instead); shuffles = boss shuffle telegraph.
+  toggle?: boolean;
+  altGood?: boolean;
+  shuffles?: boolean;
 }
 
 export interface GateModel {
@@ -95,6 +113,13 @@ export interface GateModel {
   // from the floor and shrinks back down as it melts), and how cracked it is (0..3).
   setFrozen(k: number): void;
   setCracks(stage: number): void;
+  // World 3. setFace redraws the card only when label, colour or ghost changed.
+  setFace(label: string, good: boolean, ghost: boolean): void;
+  setFlap(angle: number): void; // card pitch about its middle (fxLogic.flapAt)
+  setShutter(k: number): void; // 0 rolled up .. 1 down (fxLogic.shutterAt)
+  setClock(progress: number, warn: number, on: boolean): void; // hand 0..1, warn glow 0..1
+  setGlow(k: number): void; // shuffle telegraph glow on the posts 0..1
+  setLifted(k: number): void; // 0 standing .. 1 lifted (gliding: reads inactive)
   dispose(): void;
 }
 
@@ -526,7 +551,15 @@ function skull(ctx: CanvasRenderingContext2D, cx: number, cy: number, s: number)
   ctx.restore();
 }
 
-function drawCard(tex: DynamicTexture, cw: number, texH: number, good: boolean, label: string, usesLeft: number): void {
+function drawCard(
+  tex: DynamicTexture,
+  cw: number,
+  texH: number,
+  good: boolean,
+  label: string,
+  usesLeft: number,
+  ghost = false,
+): void {
   const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
   const W = TEX_W;
   const H = texH - STRIP; // face height in px (face drawn at the top of the canvas)
@@ -701,6 +734,12 @@ function drawCard(tex: DynamicTexture, cw: number, texH: number, good: boolean, 
     skull(ctx, pin + s * 0.6, pin + s * 0.6, s);
     skull(ctx, W - pin - s * 0.6, pin + s * 0.6, s);
   }
+  if (ghost) {
+    // Closed (World 3 shutter down): the label stays readable but washed out.
+    roundRect(ctx, pin, pin, W - pin * 2, H - pin * 2, r * 0.6);
+    ctx.fillStyle = 'rgba(236,226,204,0.66)';
+    ctx.fill();
+  }
   tex.update(true);
 }
 
@@ -804,6 +843,140 @@ function drawBadge(tex: DynamicTexture, n: number): void {
   tex.update(true);
 }
 
+// ---------- World 3: clock token, tin shutter, glow shells ----------
+const CLOCK_R = 0.42;
+
+// Clock face (shared): cream dial with twelve ink ticks inside a brass rim.
+function clockMaterial(scene: Scene, look: Look): PBRMaterial {
+  return look.material('gate-clock', () => {
+    const tex = new DynamicTexture(
+      'gateClockTex',
+      { width: BADGE_TEX, height: BADGE_TEX },
+      scene,
+      true,
+      Texture.TRILINEAR_SAMPLINGMODE,
+    );
+    tex.wrapU = Texture.CLAMP_ADDRESSMODE;
+    tex.wrapV = Texture.CLAMP_ADDRESSMODE;
+    const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
+    const S = BADGE_TEX;
+    const c = S / 2;
+    const brass = ctx.createLinearGradient(0, 0, 0, S);
+    brass.addColorStop(0, '#f6dc8a');
+    brass.addColorStop(0.5, HEX.brass);
+    brass.addColorStop(1, '#8a6420');
+    ctx.fillStyle = brass;
+    ctx.fillRect(0, 0, S, S);
+    ctx.beginPath();
+    ctx.arc(c, c, S * 0.445, 0, Math.PI * 2);
+    ctx.fillStyle = HEX.ink;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(c, c, S * 0.415, 0, Math.PI * 2);
+    ctx.fillStyle = '#fbf3e0';
+    ctx.fill();
+    ctx.strokeStyle = HEX.ink;
+    ctx.lineCap = 'round';
+    for (let k = 0; k < 12; k++) {
+      const a = (k / 12) * Math.PI * 2;
+      const r0 = S * (k % 3 === 0 ? 0.28 : 0.33);
+      ctx.lineWidth = k % 3 === 0 ? 7 : 4;
+      ctx.beginPath();
+      ctx.moveTo(c + Math.cos(a) * r0, c + Math.sin(a) * r0);
+      ctx.lineTo(c + Math.cos(a) * S * 0.38, c + Math.sin(a) * S * 0.38);
+      ctx.stroke();
+    }
+    tex.update(true);
+    const m = new PBRMaterial('gate-clock', scene);
+    m.albedoTexture = tex;
+    m.emissiveTexture = tex;
+    m.emissiveColor = Color3.White();
+    m.emissiveIntensity = 0.25;
+    m.metallic = 0.15;
+    m.roughness = 0.35;
+    m.clearCoat.isEnabled = true;
+    m.clearCoat.intensity = 0.5;
+    return m;
+  });
+}
+
+// Unlit warm glow (clock warning rim, shuffle shells): visibility drives its strength.
+function glowMaterial(scene: Scene, look: Look, key: string, hex: string): StandardMaterial {
+  return look.material(key, () => {
+    const m = new StandardMaterial(key, scene);
+    m.disableLighting = true;
+    m.diffuseColor = Color3.Black();
+    m.specularColor = Color3.Black();
+    m.emissiveColor = lin(hex);
+    m.alpha = 0.55;
+    m.disableDepthWrite = true;
+    return m;
+  });
+}
+
+// Clock hand (pointing +Y from the centre) and the centre pip, on the frame material.
+function clockHandData(): VertexData {
+  const hand = box(0.05, CLOCK_R * 0.72, 0.03, 0.02, lin(HEX.ink), { y: CLOCK_R * 0.3 });
+  return mergeParts([hand, ball(0.07, lin(HEX.brass), 0, 0, 0, 10, 4)]);
+}
+
+// The rim that glows before a flip: a flat ring round the token.
+function clockRimData(): VertexData {
+  // Outer to inner, so the flat ring faces up (then forward).
+  const ring = lathe(
+    [
+      [CLOCK_R * 1.22, 0],
+      [CLOCK_R * 0.98, 0],
+    ],
+    32,
+  );
+  return place(ring, { rx: Math.PI / 2 });
+}
+
+// Painted tin roller shutter hanging from y = 0 down to -h (scaled in y as it rolls):
+// corrugated slats (lighting from the normals) and a red bottom bar with a brass handle.
+function shutterData(w: number, h: number): VertexData {
+  const g: { p: number[]; n: number[]; c: number[]; i: number[] } = { p: [], n: [], c: [], i: [] };
+  const tin = lin('#9eabb8');
+  const tinDark = lin('#7d8a97');
+  const slat = 0.11;
+  const bar = 0.12;
+  const n = Math.max(3, Math.round((h - bar) / slat));
+  const sh = (h - bar) / n;
+  const add = (y: number, ny: number, c: Color3): void => {
+    for (const x of [-w / 2, w / 2]) {
+      g.p.push(x, y, 0);
+      g.n.push(0, ny, 1);
+      g.c.push(c.r, c.g, c.b, 1);
+    }
+  };
+  for (let k = 0; k < n; k++) {
+    const y0 = -k * sh;
+    const c = k % 4 === 3 ? tinDark : tin;
+    add(y0, 0.7, c);
+    add(y0 - sh * 0.45, 0, c);
+    add(y0 - sh, -0.7, c);
+  }
+  for (let k = 0; k < n * 3 - 1; k++) {
+    const a = k * 2;
+    g.i.push(a, a + 1, a + 3, a, a + 3, a + 2);
+  }
+  const vd = new VertexData();
+  vd.positions = g.p;
+  vd.normals = g.n;
+  vd.colors = g.c;
+  vd.indices = g.i;
+  fixWinding(vd);
+  const barMesh = box(w + 0.04, bar, 0.08, 0.03, lin('#b5372f'), { y: -h + bar / 2, z: 0.01 });
+  const handle = box(Math.min(0.6, w * 0.3), 0.05, 0.06, 0.02, lin(HEX.brass), { y: -h + bar / 2, z: 0.07 });
+  return mergeParts([vd, barMesh, handle]);
+}
+
+// The shutter's roll box under the beam (static).
+function shutterBoxData(w: number): VertexData {
+  return box(w + 0.06, 0.16, 0.18, 0.06, lin('#8996a3'), { y: -0.08, z: 0.02 }, 2);
+}
+
 // ---------- game API ----------
 export function createGate(scene: Scene, look: Look, opts: GateOptions): GateModel {
   const D = GATE_DIMS;
@@ -821,27 +994,34 @@ export function createGate(scene: Scene, look: Look, opts: GateOptions): GateMod
   const frame = buildMesh(scene, 'gateFrame', buildFrameData(L, good), frameMat);
   frame.parent = root;
 
-  const filmKey = good ? 'gate-film-good' : 'gate-film-trap';
-  const filmMat = look.material(filmKey, () => {
-    const m = plasticMaterial(scene, null, {
-      name: filmKey,
-      roughness: 0.12,
-      alpha: 0.999,
-      backFaceCulling: false,
-      emissive: good ? HEX.gateGood : HEX.gateTrap,
-      emissiveIntensity: 1.0,
-      envIntensity: 0.7,
+  const filmMat = (g: boolean): PBRMaterial => {
+    const filmKey = g ? 'gate-film-good' : 'gate-film-trap';
+    return look.material(filmKey, () => {
+      const m = plasticMaterial(scene, null, {
+        name: filmKey,
+        roughness: 0.12,
+        alpha: 0.999,
+        backFaceCulling: false,
+        emissive: g ? HEX.gateGood : HEX.gateTrap,
+        emissiveIntensity: 1.0,
+        envIntensity: 0.7,
+      });
+      m.disableDepthWrite = true;
+      return m;
     });
-    m.disableDepthWrite = true;
-    return m;
-  });
+  };
   const filmH = D.postTop - D.beamH - 0.06;
   const filmW = 2 * L.postX - D.post + 0.02;
-  const film = buildMesh(scene, 'gateFilm', buildFilmData(filmW, filmH, good), filmMat);
-  film.hasVertexAlpha = true;
-  film.parent = root;
-  film.position.y = 0.04 + filmH / 2;
-  film.visibility = FILM_REST;
+  const makeFilm = (g: boolean): Mesh => {
+    const m = buildMesh(scene, 'gateFilm', buildFilmData(filmW, filmH, g), filmMat(g));
+    m.hasVertexAlpha = true;
+    m.parent = root;
+    m.position.y = 0.04 + filmH / 2;
+    m.visibility = FILM_REST;
+    return m;
+  };
+  const film0 = makeFilm(good);
+  let film = film0;
 
   // Sign card on its hinge pivot. `layer` nudges it a few mm in depth (never z-fights).
   const layer = Math.abs(Math.round(opts.layer ?? 0)) % 3;
@@ -871,8 +1051,13 @@ export function createGate(scene: Scene, look: Look, opts: GateOptions): GateMod
   cardMat.clearCoat.isEnabled = true;
   cardMat.clearCoat.intensity = 0.35;
   cardMat.clearCoat.roughness = 0.2;
+  // The card hangs from a flap node at its middle so it can flip like a split-flap sign.
+  const flap = new TransformNode('gateCardFlap', scene);
+  flap.parent = pivot;
+  flap.position.y = ch / 2;
   const card = buildMesh(scene, 'gateCard', buildCardData(cw, ch, texH), cardMat);
-  card.parent = pivot;
+  card.parent = flap;
+  card.position.y = -ch / 2;
 
   // Kickstand struts from the beam's back to the card's back; re-aimed by setLabelTilt.
   const strutNode = new TransformNode('gateStruts', scene);
@@ -954,9 +1139,82 @@ export function createGate(scene: Scene, look: Look, opts: GateOptions): GateMod
   look.addShadowCaster(card);
   look.addShadowCaster(struts);
   look.receiveShadows(frame);
+  const meshes: Mesh[] = [frame, film0, card, struts];
+  if (badge) meshes.push(badge);
+  if (snowBadge) meshes.push(snowBadge);
+
+  // World 3: an alt face of the other kind swaps in its own frame, struts and film.
+  let alt: { frame: Mesh; struts: Mesh; film: Mesh } | null = null;
+  if (opts.toggle && opts.altGood !== undefined && opts.altGood !== good) {
+    const a = {
+      frame: buildMesh(scene, 'gateFrameAlt', buildFrameData(L, opts.altGood), frameMat),
+      struts: buildMesh(scene, 'gateStrutsAlt', buildStrutData(L, opts.altGood), frameMat),
+      film: makeFilm(opts.altGood),
+    };
+    a.frame.parent = root;
+    a.struts.parent = strutNode;
+    look.addShadowCaster(a.frame);
+    look.addShadowCaster(a.struts);
+    look.receiveShadows(a.frame);
+    for (const m of [a.frame, a.struts, a.film]) m.setEnabled(false);
+    meshes.push(a.frame, a.struts, a.film);
+    alt = a;
+  }
+  // Tin shutter (toggling gate without an alt): rolls down from under the beam.
+  let shutter: TransformNode | null = null;
+  if (opts.toggle && opts.altGood === undefined) {
+    const shutterMat = look.material('gate-shutter', () =>
+      paintedTinMaterial(scene, null, { name: 'gate-shutter', roughness: 0.4 }),
+    );
+    shutter = new TransformNode('gateShutter', scene);
+    shutter.parent = root;
+    shutter.position.set(0, D.postTop - D.beamH - 0.16, D.beamD / 2 - 0.12);
+    const slats = buildMesh(scene, 'gateShutterSlats', shutterData(filmW, filmH - 0.12), shutterMat);
+    slats.parent = shutter;
+    const rollBox = buildMesh(scene, 'gateShutterBox', shutterBoxData(filmW), shutterMat);
+    rollBox.parent = root;
+    rollBox.position.set(0, D.postTop - D.beamH, D.beamD / 2 - 0.12);
+    look.addShadowCaster(slats);
+    look.addShadowCaster(rollBox);
+    look.receiveShadows(rollBox);
+    shutter.setEnabled(false);
+    meshes.push(slats, rollBox);
+  }
+  // Clock token (toggling gates): screen-left top corner of the card.
+  let clockHand: Mesh | null = null;
+  let clockRim: Mesh | null = null;
+  if (opts.toggle) {
+    const clock = buildMesh(scene, 'gateClock', badgeData(CLOCK_R, BADGE_T), clockMaterial(scene, look));
+    clock.parent = pivot;
+    clock.position.set(cw / 2 - CLOCK_R * 0.3, ch - CLOCK_R * 0.25, D.cardD / 2 + BADGE_T / 2 + 0.012);
+    clockHand = buildMesh(scene, 'gateClockHand', clockHandData(), frameMat);
+    clockHand.parent = clock;
+    clockHand.position.z = BADGE_T / 2 + 0.02;
+    clockRim = buildMesh(scene, 'gateClockWarn', clockRimData(), glowMaterial(scene, look, 'gate-warn', '#ff4a2a'));
+    clockRim.parent = clock;
+    clockRim.setEnabled(false);
+    meshes.push(clock, clockHand, clockRim);
+  }
+  // Shuffle telegraph shells round both posts (Jack-in-the-Box levels).
+  let glow: Mesh | null = null;
+  if (opts.shuffles) {
+    const shell = (x: number): VertexData =>
+      place(roundedBox(D.post + 0.16, D.postTop + 0.12, D.post + 0.16, 0.12, 2), { x, y: (D.postTop + 0.12) / 2 });
+    glow = buildMesh(
+      scene,
+      'gateGlow',
+      [shell(-L.postX), shell(L.postX)],
+      glowMaterial(scene, look, 'gate-glow', '#ffcf4a'),
+    );
+    glow.parent = root;
+    glow.setEnabled(false);
+    meshes.push(glow);
+  }
 
   let curLabel = '';
   let curUses = Number.NaN;
+  let curGood = good;
+  let curGhost = false;
   let broken = false;
   const setLabel = (label: string, usesLeft: number): void => {
     const u = usesLeft < 0 ? -1 : Math.max(0, Math.floor(usesLeft));
@@ -964,15 +1222,21 @@ export function createGate(scene: Scene, look: Look, opts: GateOptions): GateMod
     const labelChanged = label !== curLabel;
     curLabel = label;
     curUses = u;
-    if (labelChanged) drawCard(tex, cw, texH, good, label, u);
+    if (labelChanged) drawCard(tex, cw, texH, curGood, label, u, curGhost);
     if (badgeTex && u >= 0) drawBadge(badgeTex, u);
   };
   setLabel(opts.label, opts.usesLeft);
 
-  const meshes: Mesh[] = [frame, film, card, struts];
-  if (badge) meshes.push(badge);
-  if (snowBadge) meshes.push(snowBadge);
+  // Film strength: dimmed while frozen, lifted or shuttered; a crossing pulse brightens it.
   let frozen = 0;
+  let lifted = 0;
+  let shut = 0;
+  let pulseK = 0;
+  const applyFilm = (): void => {
+    if (broken) return;
+    const base = FILM_REST * (frozen > 0.001 ? 0.35 : 1) * (1 - 0.75 * lifted) * (1 - 0.7 * shut);
+    film.visibility = base + (1 - base) * pulseK;
+  };
   return {
     root,
     setLabel,
@@ -985,7 +1249,8 @@ export function createGate(scene: Scene, look: Look, opts: GateOptions): GateMod
       const c = Math.max(0, Math.min(1, k));
       const s = 1 + (strong ? 0.18 : 0.08) * c;
       film.scaling.set(s, s, 1);
-      film.visibility = FILM_REST + (1 - FILM_REST) * c;
+      pulseK = c;
+      applyFilm();
       const cs = 1 + 0.06 * c;
       pivot.scaling.set(cs, cs, cs);
     },
@@ -993,12 +1258,9 @@ export function createGate(scene: Scene, look: Look, opts: GateOptions): GateMod
       broken = true;
       const a = Math.max(0, Math.min(1, alpha));
       root.scaling.setAll(Math.max(1e-3, scale));
-      frame.visibility = a;
-      card.visibility = a;
-      struts.visibility = a;
-      if (badge) badge.visibility = a;
-      if (snowBadge) snowBadge.visibility = a;
-      film.visibility = FILM_REST * a;
+      for (const m of meshes) m.visibility = m === film ? FILM_REST * a : a;
+      if (glow) glow.setEnabled(false);
+      if (clockRim) clockRim.setEnabled(false);
       root.setEnabled(a > 0 && scale > 0);
     },
     setFrozen(k: number): void {
@@ -1014,11 +1276,62 @@ export function createGate(scene: Scene, look: Look, opts: GateOptions): GateMod
         ice.shell.visibility = Math.min(1, Math.max(0, f - 0.3) / 0.7);
       }
       // A frozen gate gives nothing: its film dims under the ice; the badge hides.
-      if (!broken) film.visibility = on ? FILM_REST * 0.35 : FILM_REST;
+      applyFilm();
       if (snowBadge) snowBadge.setEnabled(!on);
     },
     setCracks(stage: number): void {
       ice?.setCracks(stage);
+    },
+    setFace(label: string, faceGood: boolean, ghost: boolean): void {
+      if (label === curLabel && faceGood === curGood && ghost === curGhost) return;
+      const swap = faceGood !== curGood;
+      curGood = faceGood;
+      curGhost = ghost;
+      curLabel = label;
+      drawCard(tex, cw, texH, faceGood, label, curUses, ghost);
+      if (swap && alt) {
+        const useAlt = faceGood !== good;
+        frame.setEnabled(!useAlt);
+        struts.setEnabled(!useAlt);
+        film0.setEnabled(!useAlt);
+        alt.frame.setEnabled(useAlt);
+        alt.struts.setEnabled(useAlt);
+        alt.film.setEnabled(useAlt);
+        const prev = film;
+        film = useAlt ? alt.film : film0;
+        film.scaling.copyFrom(prev.scaling);
+        applyFilm();
+      }
+    },
+    setFlap(angle: number): void {
+      flap.rotation.x = angle;
+    },
+    setShutter(k: number): void {
+      const c = Math.max(0, Math.min(1, k));
+      if (!shutter || c === shut) return;
+      shut = c;
+      shutter.setEnabled(c > 0.001);
+      shutter.scaling.y = Math.max(0.001, c);
+      applyFilm();
+    },
+    setClock(progress: number, warn: number, on: boolean): void {
+      if (!clockHand || !clockRim) return;
+      // +X is screen-left seen from the front, so a positive roll sweeps clockwise.
+      clockHand.rotation.z = progress * Math.PI * 2;
+      clockRim.setEnabled(warn > 0.01 && !broken);
+      clockRim.visibility = warn;
+      clockHand.scaling.setAll(on ? 1 : 0.85);
+    },
+    setGlow(k: number): void {
+      if (!glow || broken) return;
+      glow.setEnabled(k > 0.01);
+      glow.visibility = Math.min(1, k);
+    },
+    setLifted(k: number): void {
+      const c = Math.max(0, Math.min(1, k));
+      if (c === lifted) return;
+      lifted = c;
+      applyFilm();
     },
     dispose(): void {
       for (const m of meshes) look.removeShadowCaster(m);
@@ -1377,35 +1690,52 @@ export function preview(scene: Scene, look: Look, opts: PreviewOptions): Preview
     width: number;
     z?: number;
     ice?: number; // World 2: -1 freezing (badge), 0..3 frozen with that crack stage
+    toggle?: GateToggleDef; // World 3
+    alt?: string; // the alt face's label
   };
   const frozen = opts.variant === 'frozen';
-  const specs: Spec[] = frozen
+  const workshop = opts.variant === 'workshop';
+  const specs: Spec[] = workshop
     ? [
-        // World 2: a freezing gate (badge), a fresh frozen one, cracked ones, a fork pair.
-        { label: 'x2', good: true, uses: -1, x: -5.4, width: 3, ice: -1 },
-        { label: '+10', good: true, uses: -1, x: -1.8, width: 3, ice: 0 },
-        { label: 'x3', good: true, uses: -1, x: 1.8, width: 3, ice: 2 },
-        { label: '+5', good: true, uses: -1, x: 5.4, width: 3, ice: 3 },
-        { label: 'x2', good: true, uses: -1, x: -2.6, width: 3.4, z: -7 },
-        { label: '+20', good: true, uses: -1, x: 2.6, width: 3.4, z: -7 },
+        // World 3: a shuttered toggle, a split-flap toggle to a trap, both glowing for a shuffle.
+        { label: 'x2', good: true, uses: -1, x: -2.6, width: 3.4, toggle: { on: 3, off: 1.5 } },
+        {
+          label: 'x3',
+          good: true,
+          uses: -1,
+          x: 2.6,
+          width: 3.4,
+          toggle: { on: 2.5, off: 2, alt: { op: 'div', value: 2 } },
+          alt: '÷2',
+        },
       ]
-    : opts.variant === 'single'
-      ? [{ label: '÷2', good: false, uses: 12, x: 0, width: 4.2 }]
-      : opts.variant === 'tight'
-        ? [
-            // Level 1-03's real layout: three gates abutting at spacing 3 (+ a 3-glyph label).
-            { label: '÷2', good: false, uses: -1, x: -3, width: 3 },
-            { label: 'x3', good: true, uses: -1, x: 0, width: 2.6 },
-            { label: '-3', good: false, uses: -1, x: 3, width: 3 },
-            { label: '+10', good: true, uses: 900, x: -2.5, width: 3, z: -6 },
-            { label: 'x100', good: true, uses: -1, x: 2.5, width: 3, z: -6 },
-          ]
-        : [
-            { label: 'x2', good: true, uses: -1, x: -5.4, width: 3 },
-            { label: '+10', good: true, uses: -1, x: -1.8, width: 3 },
-            { label: '-5', good: false, uses: -1, x: 1.8, width: 3 },
-            { label: '÷2', good: false, uses: 12, x: 5.4, width: 3 },
-          ];
+    : frozen
+      ? [
+          // World 2: a freezing gate (badge), a fresh frozen one, cracked ones, a fork pair.
+          { label: 'x2', good: true, uses: -1, x: -5.4, width: 3, ice: -1 },
+          { label: '+10', good: true, uses: -1, x: -1.8, width: 3, ice: 0 },
+          { label: 'x3', good: true, uses: -1, x: 1.8, width: 3, ice: 2 },
+          { label: '+5', good: true, uses: -1, x: 5.4, width: 3, ice: 3 },
+          { label: 'x2', good: true, uses: -1, x: -2.6, width: 3.4, z: -7 },
+          { label: '+20', good: true, uses: -1, x: 2.6, width: 3.4, z: -7 },
+        ]
+      : opts.variant === 'single'
+        ? [{ label: '÷2', good: false, uses: 12, x: 0, width: 4.2 }]
+        : opts.variant === 'tight'
+          ? [
+              // Level 1-03's real layout: three gates abutting at spacing 3 (+ a 3-glyph label).
+              { label: '÷2', good: false, uses: -1, x: -3, width: 3 },
+              { label: 'x3', good: true, uses: -1, x: 0, width: 2.6 },
+              { label: '-3', good: false, uses: -1, x: 3, width: 3 },
+              { label: '+10', good: true, uses: 900, x: -2.5, width: 3, z: -6 },
+              { label: 'x100', good: true, uses: -1, x: 2.5, width: 3, z: -6 },
+            ]
+          : [
+              { label: 'x2', good: true, uses: -1, x: -5.4, width: 3 },
+              { label: '+10', good: true, uses: -1, x: -1.8, width: 3 },
+              { label: '-5', good: false, uses: -1, x: 1.8, width: 3 },
+              { label: '÷2', good: false, uses: 12, x: 5.4, width: 3 },
+            ];
   const slots = gateSlots(
     specs.map((s) => ({ x: s.x, z: s.z ?? 0, width: s.width })),
     opts.variant === 'row' || !opts.variant ? 14.4 : 10,
@@ -1420,6 +1750,9 @@ export function preview(scene: Scene, look: Look, opts: PreviewOptions): Preview
       layer: slots[i].layer,
       freezing: s.ice === -1,
       freezable: s.ice !== undefined,
+      toggle: !!s.toggle,
+      altGood: s.toggle?.alt ? false : undefined,
+      shuffles: workshop,
     });
     g.root.parent = root;
     g.root.position.set(s.x, 0, s.z ?? 0);
@@ -1430,6 +1763,7 @@ export function preview(scene: Scene, look: Look, opts: PreviewOptions): Preview
     }
     return g;
   });
+  const view: ToggleView = { on: true, closed: false, flipIn: 0, progress: 0, since: 0 };
   let sign: ForkSignModel | null = null;
   if (frozen) {
     sign = createForkSign(scene, look, 5.2 - 3.4);
@@ -1440,6 +1774,23 @@ export function preview(scene: Scene, look: Look, opts: PreviewOptions): Preview
     root,
     update(time) {
       if (frozen) return;
+      if (workshop) {
+        specs.forEach((s, i) => {
+          if (!s.toggle) return;
+          const v = toggleViewAt(s.toggle, time, view);
+          const g = gates[i];
+          if (s.alt) {
+            g.setFace(v.on ? s.label : s.alt, v.on, false);
+            g.setFlap(flapAt(v));
+          } else {
+            g.setFace(s.label, true, v.closed);
+            g.setShutter(shutterAt(v));
+          }
+          g.setClock(v.progress, clockWarn(v.flipIn), v.on);
+          g.setGlow(0.5 + 0.5 * Math.sin(time * 6));
+        });
+        return;
+      }
       // Pulse each gate in turn (0.6 s apart), like units crossing.
       const period = 0.6 * gates.length;
       gates.forEach((g, i) => {

@@ -267,3 +267,22 @@ export function gustChipLook(gust: { dir: -1 | 0 | 1; warn: number; active: bool
 export function frozenSecondsLabel(seconds: number | undefined): string {
   return seconds !== undefined && Number.isFinite(seconds) && seconds > 0 ? String(Math.ceil(seconds)) : '';
 }
+
+// ---------- World 3: the Jack-in-the-Box shuffle on the HUD ----------
+// The shuffle telegraph chip: hidden with no shuffle coming; while the boss cranks it fills
+// with state.shuffle.warn and its crank arm winds round (two full turns by the time the
+// gates move), then it stays full and pulses while the gates glide. `fill` is snapped to
+// 1/50 (and `turn` follows it) so the per-frame update only touches the DOM when it moves.
+export const SHUFFLE_CRANK_TURNS = 2;
+export interface ShuffleChipLook {
+  show: boolean;
+  fill: number; // 0..1
+  turn: number; // crank arm angle in degrees
+  active: boolean;
+}
+export function shuffleChipLook(shuffle: { warn: number; active: boolean } | undefined): ShuffleChipLook {
+  if (!shuffle || !(shuffle.active || shuffle.warn > 0)) return { show: false, fill: 0, turn: 0, active: false };
+  const warn = Number.isFinite(shuffle.warn) ? Math.min(1, Math.max(0, shuffle.warn)) : 0;
+  const fill = shuffle.active ? 1 : Math.round(warn * 50) / 50;
+  return { show: true, fill, turn: Math.round(fill * SHUFFLE_CRANK_TURNS * 360), active: shuffle.active };
+}
