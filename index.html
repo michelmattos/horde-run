@@ -210,7 +210,7 @@
                 return a && a.message ? a.message : String(a);
               })
               .join(' ');
-            consoleLines.push(new Date().toISOString().slice(11, 19) + ' ' + kind + ': ' + text.slice(0, 300));
+            consoleLines.push(new Date().toISOString().slice(11, 19) + ' ' + kind + ': ' + text.slice(0, 1500));
             if (consoleLines.length > 40) consoleLines.shift();
           } catch (e) {
             // never let logging break the page
@@ -230,10 +230,18 @@
             return '(blocked)';
           }
         }
-        // Whether a fresh WebGL context comes back alive right now, then released at once.
-        function probe(type) {
+        // Whether a fresh WebGL context comes back alive right now, then released at once:
+        // plain, with the game's power preference, and full-size in the page like the game's.
+        function probe(type, attrs, inPage) {
+          var c = document.createElement('canvas');
           try {
-            var gl = document.createElement('canvas').getContext(type);
+            if (inPage) {
+              c.width = Math.round(innerWidth * Math.min(devicePixelRatio, 1.5));
+              c.height = Math.round(innerHeight * Math.min(devicePixelRatio, 1.5));
+              c.style.cssText = 'position:fixed;left:0;top:0;width:100%;height:100%;opacity:0;pointer-events:none';
+              document.body.appendChild(c);
+            }
+            var gl = c.getContext(type, attrs);
             if (!gl) return 'no context';
             var lost = gl.isContextLost();
             var ext = gl.getExtension('WEBGL_lose_context');
@@ -241,6 +249,8 @@
             return lost ? 'lost' : 'ok';
           } catch (e) {
             return 'threw ' + e;
+          } finally {
+            c.remove();
           }
         }
         function report(text) {
@@ -266,7 +276,15 @@
             'Screen: ' + innerWidth + 'x' + innerHeight + ' css px, pixel ratio ' + devicePixelRatio,
             'Home Screen app: ' + standalone,
             'Service worker controls page: ' + !!(navigator.serviceWorker && navigator.serviceWorker.controller),
-            'WebGL probe now: webgl2 ' + probe('webgl2') + ', webgl ' + probe('webgl'),
+            'WebGL probe now: webgl2 ' +
+              probe('webgl2') +
+              ', webgl ' +
+              probe('webgl') +
+              ', webgl2 high-performance ' +
+              probe('webgl2', { powerPreference: 'high-performance' }) +
+              ', webgl2 high-performance full-size in page ' +
+              probe('webgl2', { powerPreference: 'high-performance', antialias: false, stencil: false }, true),
+            'Start-up choice that worked last: ' + read('localStorage', 'horde-run:gl-boot'),
             'Recovery state (this tab): ' + read('sessionStorage', 'horde-run:gpu-recovery'),
             'Render settings: ' + read('localStorage', 'horde-run:render-v1'),
             '',
@@ -370,14 +388,17 @@
             var t = e.target;
             // A missing image or font is not fatal; a script that will not load is.
             if (t && t !== window && t.tagName && t.tagName !== 'SCRIPT') return;
-            remember('uncaught', [e.message || 'Could not load ' + ((t && (t.src || t.href)) || 'a file')]);
+            remember('uncaught', [
+              (e.message || 'Could not load ' + ((t && (t.src || t.href)) || 'a file')) +
+                (e.error && e.error.stack ? '\n' + e.error.stack : ''),
+            ]);
             show(e.message || 'Could not load ' + ((t && (t.src || t.href)) || 'a file') + '.');
           },
           true,
         );
         addEventListener('unhandledrejection', function (e) {
           var r = e.reason;
-          remember('unhandled rejection', [r]);
+          remember('unhandled rejection', [String((r && r.message) || r) + (r && r.stack ? '\n' + r.stack : '')]);
           show(String((r && r.message) || r));
         });
         setTimeout(function () {
