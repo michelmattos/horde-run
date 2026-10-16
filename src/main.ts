@@ -134,16 +134,44 @@ declare global {
   }
 }
 
-const canvas = document.getElementById('game') as HTMLCanvasElement;
+let canvas = document.getElementById('game') as HTMLCanvasElement;
 const app = document.getElementById('app') as HTMLElement;
 
 // MSAA is expensive at phone DPRs and barely visible there; keep it for low-DPR screens.
 const antialias = window.devicePixelRatio < 2;
-const engine = createEngine();
+// Pauses between start-up attempts when the context comes back dead (about 6 s in all,
+// well inside the boot guard's 20 s).
+const BOOT_RETRY_MS: readonly number[] = [300, 700, 1500, 3500];
+
+const engine = await obtainEngine();
+
 // iOS can hand out a WebGL context that is already lost. Babylon then reads every GPU
 // limit as 0, and building the bloom blur on those limits throws (the "e.toFixed" start-up
-// error). Recover the same way as a context lost mid-game, before anything is built on it.
-if (!contextUsable(engine)) recoverDeadContextAtBoot();
+// error). This happens while the GPU process is still recovering from an earlier loss (or
+// from another page's), so reloading straight away gets another dead context: three of
+// those in a row used to end on the "could not start" card within a second or two. So the
+// boot first waits and tries again on a fresh canvas (a canvas keeps its lost context for
+// good), and only then falls back to the reload plan, before anything is built on it.
+async function obtainEngine(): Promise<Engine> {
+  for (let attempt = 0; ; attempt++) {
+    const e = createEngine();
+    if (contextUsable(e)) {
+      if (attempt > 0) console.warn(`WebGL context usable after ${attempt} retries`);
+      return e;
+    }
+    if (attempt >= BOOT_RETRY_MS.length) recoverDeadContextAtBoot();
+    console.warn(`WebGL context lost at start-up: retrying in ${BOOT_RETRY_MS[attempt]} ms`);
+    try {
+      e.dispose();
+    } catch {
+      // A dead context can fail to release; the canvas is dropped either way.
+    }
+    const fresh = canvas.cloneNode(false) as HTMLCanvasElement;
+    canvas.replaceWith(fresh);
+    canvas = fresh;
+    await new Promise((r) => setTimeout(r, BOOT_RETRY_MS[attempt]));
+  }
+}
 
 // True when the context is alive and reported real limits.
 function contextUsable(e: Engine): boolean {

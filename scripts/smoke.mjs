@@ -13,7 +13,8 @@
 //   __horde.win() ends, and the upgrade pick; taking a card must land back on the run map
 //   with the upgrade owned.
 // - meta: the collection with debug coins buys an upgrade, then the 3D home village puts up
-//   a building.
+//   a building; then a boot whose first two WebGL contexts come back lost must still reach
+//   the map without reloading.
 // Each step saves a smoke-*.png screenshot and a JSON summary is printed. Any console error,
 // page error, shader compile error or blank-canvas fallback fails the run. The battle
 // screenshots are decoded and a flat, featureless frame (a grey void with only the HUD)
@@ -464,6 +465,47 @@ try {
     const afterBuild = await page.evaluate(() => window.__horde.profile());
     const home = { built: builtId, tier: afterBuild.village[builtId] ?? 0, coins: afterBuild.coins };
     Object.assign(summary, { collection, home });
+
+    // Dead contexts at start-up (iOS hands them out while its GPU process recovers): the
+    // first two WebGL contexts come back lost, and the game must still reach the map on
+    // this page load, retrying on a fresh canvas instead of reloading into the give-up card.
+    // The village page is left first: its rendering would starve software GL for seconds.
+    await page.goto('about:blank');
+    const deadCtx = await browser.newContext({
+      viewport: { width: W, height: H },
+      deviceScaleFactor: 2,
+      isMobile: true,
+      hasTouch: true,
+    });
+    await deadCtx.addInitScript(() => {
+      let dead = 2;
+      const getContext = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function (type, ...rest) {
+        const gl = getContext.call(this, type, ...rest);
+        if (gl && /webgl/.test(type) && dead > 0 && !gl.isContextLost()) {
+          dead--;
+          gl.getExtension('WEBGL_lose_context')?.loseContext();
+        }
+        return gl;
+      };
+    });
+    const deadPage = await deadCtx.newPage();
+    deadPage.on('pageerror', (e) => errors.push(`dead-context boot: pageerror: ${e.message}`));
+    let loads = 0;
+    deadPage.on('load', () => loads++);
+    await deadPage.goto(ROOT, { waitUntil: 'load' });
+    const deadBoot = await deadPage
+      .waitForFunction(() => window.__horde?.screen() === 'map', null, { timeout: 15000 })
+      .then(
+        () => 'map',
+        () => 'no map',
+      );
+    summary.deadContextBoot = { result: deadBoot, loads };
+    if (deadBoot !== 'map' || loads !== 1)
+      errors.push(
+        `boot with two dead WebGL contexts did not reach the map in one load: ${JSON.stringify(summary.deadContextBoot)}`,
+      );
+    await deadCtx.close();
 
     if (!upgradedId || collection.tier !== 1 || collection.coinsAfter >= coinsBefore)
       errors.push(`collection upgrade did not apply: ${JSON.stringify(collection)}`);
