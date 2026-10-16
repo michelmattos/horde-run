@@ -52,6 +52,7 @@ import { isWorldUnlocked, loadGame, recordResult, writeGame } from './core/save.
 import type { GameData } from './core/save.ts';
 import { planRecovery, readRecovery, takeRecoveryTarget, writeRecovery } from './core/recovery.ts';
 import type { RecoveryTarget } from './core/recovery.ts';
+import { logGpu } from './core/gpuLog.ts';
 import { writeSavedRender } from './render/look/quality.ts';
 import { createWorldMap } from './meta/worldMap.ts';
 import { createLoadoutScreen } from './meta/loadout.ts';
@@ -139,28 +140,41 @@ const app = document.getElementById('app') as HTMLElement;
 
 // MSAA is expensive at phone DPRs and barely visible there; keep it for low-DPR screens.
 const antialias = window.devicePixelRatio < 2;
-// Pauses between start-up attempts when the context comes back dead (about 6 s in all,
-// well inside the boot guard's 20 s).
-const BOOT_RETRY_MS: readonly number[] = [300, 700, 1500, 3500];
+// Start-up attempts when the context comes back dead: the pause before each retry (about
+// 6 s in all, well inside the boot guard's 20 s) and the WebGL version it asks for. Two
+// retries go to WebGL 1, a separate path through WebKit's GPU code that can still work
+// when WebGL 2 contexts keep arriving dead.
+const BOOT_RETRIES: readonly { ms: number; webgl1: boolean }[] = [
+  { ms: 300, webgl1: false },
+  { ms: 700, webgl1: true },
+  { ms: 1500, webgl1: false },
+  { ms: 3500, webgl1: true },
+];
 
 const engine = await obtainEngine();
 
 // iOS can hand out a WebGL context that is already lost. Babylon then reads every GPU
 // limit as 0, and building the bloom blur on those limits throws (the "e.toFixed" start-up
 // error). This happens while the GPU process is still recovering from an earlier loss (or
-// from another page's), so reloading straight away gets another dead context: three of
-// those in a row used to end on the "could not start" card within a second or two. So the
-// boot first waits and tries again on a fresh canvas (a canvas keeps its lost context for
-// good), and only then falls back to the reload plan, before anything is built on it.
+// from another page's), so the boot waits and tries again on a fresh canvas (a canvas
+// keeps its lost context for good), and only then falls back to the reload plan, before
+// anything is built on it. What each attempt got goes on the error card, since only the
+// phone can tell us why.
 async function obtainEngine(): Promise<Engine> {
+  const tried: string[] = [];
+  let webgl1 = false;
   for (let attempt = 0; ; attempt++) {
-    const e = createEngine();
-    if (contextUsable(e)) {
-      if (attempt > 0) console.warn(`WebGL context usable after ${attempt} retries`);
+    const e = createEngine(webgl1);
+    const why = contextProblem(e);
+    if (!why) {
+      if (attempt > 0) console.warn(`WebGL context usable after ${attempt} retries: ${tried.join(', ')}`);
+      logGpu('boot', `WebGL ${e.webGLVersion} ${glRenderer(e)}${tried.length ? ` after ${tried.join('; ')}` : ''}`);
       return e;
     }
-    if (attempt >= BOOT_RETRY_MS.length) recoverDeadContextAtBoot();
-    console.warn(`WebGL context lost at start-up: retrying in ${BOOT_RETRY_MS[attempt]} ms`);
+    tried.push(`WebGL ${e.webGLVersion}: ${why}${creationError ? ` (${creationError})` : ''}`);
+    if (attempt >= BOOT_RETRIES.length) recoverDeadContextAtBoot(tried);
+    const next = BOOT_RETRIES[attempt];
+    console.warn(`WebGL context unusable at start-up (${tried[attempt]}): retrying in ${next.ms} ms`);
     try {
       e.dispose();
     } catch {
@@ -169,21 +183,36 @@ async function obtainEngine(): Promise<Engine> {
     const fresh = canvas.cloneNode(false) as HTMLCanvasElement;
     canvas.replaceWith(fresh);
     canvas = fresh;
-    await new Promise((r) => setTimeout(r, BOOT_RETRY_MS[attempt]));
+    webgl1 = next.webgl1;
+    await new Promise((r) => setTimeout(r, next.ms));
   }
 }
 
-// True when the context is alive and reported real limits.
-function contextUsable(e: Engine): boolean {
+// Why the context cannot be used, or '' when it is alive and reported real limits.
+function contextProblem(e: Engine): string {
   const gl = (e as unknown as { _gl?: WebGLRenderingContext | null })._gl;
-  if (!gl || gl.isContextLost()) return false;
+  if (!gl) return 'no context';
+  if (gl.isContextLost()) return 'lost';
   const caps = e.getCaps();
-  return caps.maxVaryingVectors > 0 && caps.maxTextureSize > 0;
+  if (!(caps.maxVaryingVectors > 0 && caps.maxTextureSize > 0))
+    return `no limits (varyings ${caps.maxVaryingVectors}, texture ${caps.maxTextureSize})`;
+  return '';
 }
 
-function recoverDeadContextAtBoot(): never {
+// The GPU name the context reports ("Apple GPU" on an iPhone), for the log.
+function glRenderer(e: Engine): string {
+  try {
+    const gl = (e as unknown as { _gl?: WebGLRenderingContext | null })._gl;
+    return gl ? String(gl.getParameter(gl.RENDERER)) : '';
+  } catch {
+    return '';
+  }
+}
+
+function recoverDeadContextAtBoot(tried: readonly string[]): never {
   const prev = readRecovery();
   const { plan, count } = planRecovery(prev, Date.now());
+  logGpu('boot-failed', `${tried.join('; ')}; then ${plan}`);
   // Keep the place an earlier recovery asked to return to (this boot has not used it yet).
   const target: RecoveryTarget = prev?.target ?? { kind: 'map' };
   if (plan !== 'give-up' && writeRecovery({ at: Date.now(), count, target })) {
@@ -200,12 +229,27 @@ function recoverDeadContextAtBoot(): never {
   throw new Error('WebGL context lost at start-up');
 }
 
-function createEngine(): Engine {
+// The browser's reason when it refused or failed a context (webglcontextcreationerror).
+let creationError = '';
+
+function createEngine(webgl1: boolean): Engine {
+  creationError = '';
+  canvas.addEventListener(
+    'webglcontextcreationerror',
+    (ev) => (creationError = (ev as WebGLContextEvent).statusMessage || 'creation error'),
+    { once: true },
+  );
   try {
     return new Engine(
       canvas,
       antialias,
-      { stencil: false, preserveDrawingBuffer: false, powerPreference: 'high-performance', audioEngine: false },
+      {
+        stencil: false,
+        preserveDrawingBuffer: false,
+        powerPreference: 'high-performance',
+        audioEngine: false,
+        disableWebGL2Support: webgl1,
+      },
       false, // the renderer owns hardware scaling (automatic resolution scaling)
     );
   } catch (e) {
@@ -943,6 +987,13 @@ engine.onContextLostObservable.add(() => {
       : runMapShown || screens.visible
         ? { kind: 'expedition' }
         : { kind: 'map' };
+  const r = renderer.stats();
+  logGpu(
+    'lost',
+    `${target.kind === 'level' ? `level ${target.id}` : target.kind}, page up ${Math.round(performance.now() / 1000)} s, ` +
+      `${document.visibilityState}, ${r.quality} ${r.pixelRatio}x, ${r.drawCalls} draws, ${r.totalVertices} vertices, ` +
+      `${r.textures} textures ${r.textureMB} MB; then ${plan}`,
+  );
   if (plan !== 'give-up' && writeRecovery({ at: Date.now(), count, target })) {
     console.warn(`WebGL context lost: reloading (${plan})`);
     if (plan === 'reload-low') writeSavedRender({ quality: 'low', post: 'off' });
@@ -970,6 +1021,7 @@ function reloadWhenVisible(): void {
   document.addEventListener('visibilitychange', onVisible);
 }
 engine.onContextRestoredObservable.add(() => {
+  logGpu('restored', '');
   contextLost = false;
   renderer.contextRestored();
   wake();

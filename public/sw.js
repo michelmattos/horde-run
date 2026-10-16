@@ -48,7 +48,9 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(req)
         .then((res) => {
-          if (res.ok) {
+          // Only the game's page is the offline shell (not gl-check.html and the like).
+          const shell = url.pathname === new URL('./', self.registration.scope).pathname || url.pathname.endsWith('/index.html');
+          if (res.ok && shell) {
             const copy = res.clone();
             caches.open(CACHE).then((c) => c.put(new URL('./index.html', self.registration.scope).href, copy));
           }
