@@ -2,7 +2,8 @@
 // the recovery reloads and closing the app: each boot (which WebGL it got, or why each
 // start-up attempt failed) and each loss mid-game (where the player was, how long the
 // page had run, what the renderer held). The phone gives no other trace of a lost
-// context, so the error cards (index.html boot guard) and public/gl-check.html show it.
+// context, so the error card's Copy report (index.html boot guard) and public/gl-check.html
+// include it.
 
 export interface GpuLogEntry {
   at: number; // ms timestamp

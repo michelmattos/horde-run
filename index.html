@@ -196,25 +196,132 @@
     <script>
       // Boot guard: if the game fails to start (a script that won't load, an error before
       // the first screen, no WebGL), say so on screen instead of leaving an empty page.
+      // The card stays short; its Copy report button copies everything known about the
+      // failure (device, a WebGL probe, the graphics log of src/core/gpuLog.ts, recent
+      // console warnings and errors) as text to paste to whoever debugs it.
       (function () {
         var shown = false;
-        // The last graphics events (src/core/gpuLog.ts), so a screenshot of the card says
-        // what happened before it; the full log is on gl-check.html.
-        function history() {
+        var started = Date.now();
+        var consoleLines = [];
+        function remember(kind, args) {
           try {
-            var list = JSON.parse(localStorage.getItem('horde-run:gpu-log') || '[]').slice(-6);
-            if (!list.length) return '';
-            var lines = list.map(function (e) {
-              return new Date(e.at).toLocaleTimeString() + ' ' + e.event + ': ' + e.detail;
-            });
-            return '\n\nRecent graphics events:\n' + lines.join('\n') + '\n\nFull log: gl-check.html';
+            var text = Array.prototype.map
+              .call(args, function (a) {
+                return a && a.message ? a.message : String(a);
+              })
+              .join(' ');
+            consoleLines.push(new Date().toISOString().slice(11, 19) + ' ' + kind + ': ' + text.slice(0, 300));
+            if (consoleLines.length > 40) consoleLines.shift();
           } catch (e) {
-            return '';
+            // never let logging break the page
           }
+        }
+        ['warn', 'error'].forEach(function (kind) {
+          var orig = console[kind];
+          console[kind] = function () {
+            remember(kind, arguments);
+            return orig.apply(console, arguments);
+          };
+        });
+        function read(store, key) {
+          try {
+            return window[store].getItem(key);
+          } catch (e) {
+            return '(blocked)';
+          }
+        }
+        // Whether a fresh WebGL context comes back alive right now, then released at once.
+        function probe(type) {
+          try {
+            var gl = document.createElement('canvas').getContext(type);
+            if (!gl) return 'no context';
+            var lost = gl.isContextLost();
+            var ext = gl.getExtension('WEBGL_lose_context');
+            if (ext && !lost) ext.loseContext();
+            return lost ? 'lost' : 'ok';
+          } catch (e) {
+            return 'threw ' + e;
+          }
+        }
+        function report(text) {
+          var log = [];
+          try {
+            log = JSON.parse(localStorage.getItem('horde-run:gpu-log') || '[]');
+          } catch (e) {
+            log = [];
+          }
+          var standalone =
+            navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+          return [
+            'Horde Run error report (for an AI agent or developer debugging the game).',
+            'Game: Horde Run, a Babylon.js 9 WebGL phone game, https://github.com/michelmattos/horde-run',
+            '(start-up and recovery: src/main.ts and src/core/recovery.ts; graphics log: src/core/gpuLog.ts).',
+            '',
+            'Error shown:',
+            text,
+            '',
+            'When: ' + new Date().toString() + ', page open ' + Math.round((Date.now() - started) / 1000) + ' s',
+            'Page: ' + location.href,
+            'Agent: ' + navigator.userAgent,
+            'Screen: ' + innerWidth + 'x' + innerHeight + ' css px, pixel ratio ' + devicePixelRatio,
+            'Home Screen app: ' + standalone,
+            'Service worker controls page: ' + !!(navigator.serviceWorker && navigator.serviceWorker.controller),
+            'WebGL probe now: webgl2 ' + probe('webgl2') + ', webgl ' + probe('webgl'),
+            'Recovery state (this tab): ' + read('sessionStorage', 'horde-run:gpu-recovery'),
+            'Render settings: ' + read('localStorage', 'horde-run:render-v1'),
+            '',
+            'Graphics log (newest last):',
+            log.length
+              ? log
+                  .map(function (e) {
+                    return new Date(e.at).toISOString() + ' ' + e.event + ': ' + e.detail;
+                  })
+                  .join('\n')
+              : '(empty)',
+            '',
+            'Console warnings and errors (newest last):',
+            consoleLines.length ? consoleLines.join('\n') : '(none)',
+          ].join('\n');
+        }
+        function copy(text, done) {
+          function fallback() {
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            ta.setAttribute('readonly', '');
+            ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+            document.body.appendChild(ta);
+            ta.select();
+            ta.setSelectionRange(0, text.length);
+            var ok = false;
+            try {
+              ok = document.execCommand('copy');
+            } catch (e) {
+              ok = false;
+            }
+            ta.remove();
+            done(ok);
+          }
+          if (navigator.clipboard && navigator.clipboard.writeText)
+            navigator.clipboard.writeText(text).then(function () {
+              done(true);
+            }, fallback);
+          else fallback();
+        }
+        function button(label) {
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.textContent = label;
+          b.setAttribute(
+            'style',
+            'font:600 15px/1 -apple-system,system-ui,sans-serif;padding:11px 16px;margin:14px 8px 0 0;border-radius:10px;' +
+              'border:2px solid #3b2a1a;background:#fff;color:#3b2a1a',
+          );
+          return b;
         }
         function show(msg, title) {
           if (shown || (!title && window.__hordeBooted)) return;
           shown = true;
+          var text = (title || 'Horde Run could not start.') + '\n\n' + msg;
           // Stop promising progress: the loading screen keeps only its background.
           var ld = document.getElementById('loading');
           if (ld) ld.className = 'failed';
@@ -224,9 +331,30 @@
             'style',
             'position:fixed;left:16px;right:16px;top:30%;padding:16px;border-radius:12px;background:#fff8e7;' +
               'color:#3b2a1a;font:15px/1.4 -apple-system,system-ui,sans-serif;z-index:99;white-space:pre-wrap;' +
-              'max-height:60%;overflow:auto;-webkit-user-select:text;user-select:text',
+              'max-height:60%;overflow:auto',
           );
-          d.textContent = (title || 'Horde Run could not start.') + '\n\n' + msg + history();
+          var p = document.createElement('div');
+          p.textContent = text;
+          var copyBtn = button('Copy report');
+          copyBtn.dataset.action = 'copy-report';
+          copyBtn.onclick = function () {
+            var r = report(text);
+            window.__hordeReport = r; // the smoke test reads what was copied
+            copy(r, function (ok) {
+              copyBtn.textContent = ok ? 'Copied' : 'Copy failed';
+            });
+          };
+          // A fresh start: forget this tab's recent losses so the game gets its full retries.
+          var retry = button('Try again');
+          retry.onclick = function () {
+            try {
+              sessionStorage.removeItem('horde-run:gpu-recovery');
+            } catch (e) {
+              // blocked storage: reload anyway
+            }
+            location.reload();
+          };
+          d.append(p, copyBtn, retry);
           (document.body || document.documentElement).appendChild(d);
         }
         window.__hordeBootError = function (msg) {
@@ -242,12 +370,14 @@
             var t = e.target;
             // A missing image or font is not fatal; a script that will not load is.
             if (t && t !== window && t.tagName && t.tagName !== 'SCRIPT') return;
+            remember('uncaught', [e.message || 'Could not load ' + ((t && (t.src || t.href)) || 'a file')]);
             show(e.message || 'Could not load ' + ((t && (t.src || t.href)) || 'a file') + '.');
           },
           true,
         );
         addEventListener('unhandledrejection', function (e) {
           var r = e.reason;
+          remember('unhandled rejection', [r]);
           show(String((r && r.message) || r));
         });
         setTimeout(function () {
