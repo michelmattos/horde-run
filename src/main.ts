@@ -141,15 +141,40 @@ const app = document.getElementById('app') as HTMLElement;
 // MSAA is expensive at phone DPRs and barely visible there; keep it for low-DPR screens.
 const antialias = window.devicePixelRatio < 2;
 // Start-up attempts when the context comes back dead: the pause before each retry (about
-// 6 s in all, well inside the boot guard's 20 s) and the WebGL version it asks for. Two
-// retries go to WebGL 1, a separate path through WebKit's GPU code that can still work
-// when WebGL 2 contexts keep arriving dead.
-const BOOT_RETRIES: readonly { ms: number; webgl1: boolean }[] = [
-  { ms: 300, webgl1: false },
-  { ms: 700, webgl1: true },
-  { ms: 1500, webgl1: false },
-  { ms: 3500, webgl1: true },
+// 6 s in all, well inside the boot guard's 20 s), the WebGL version it asks for and the
+// power preference. On Michel's iPhone (2026-10-16) every game context came back lost
+// while a plain test context made a moment later was fine, so the retries change one
+// thing at a time (power preference, WebGL version) and each failure records whether a
+// plain context works right then: the report then says what the phone objects to.
+interface BootTry {
+  ms: number;
+  webgl1: boolean;
+  power: WebGLPowerPreference;
+}
+// A retry that worked is remembered and tried first on the next start.
+const BOOT_KEY = 'horde-run:gl-boot';
+const FIRST_TRY: BootTry = savedBootTry() ?? { ms: 0, webgl1: false, power: 'high-performance' };
+const BOOT_RETRIES: readonly BootTry[] = [
+  { ms: 300, webgl1: false, power: 'default' },
+  { ms: 700, webgl1: true, power: 'high-performance' },
+  { ms: 1500, webgl1: true, power: 'default' },
+  { ms: 3500, webgl1: false, power: 'low-power' },
 ];
+
+function savedBootTry(): BootTry | null {
+  try {
+    const o = JSON.parse(localStorage.getItem(BOOT_KEY) ?? 'null') as Partial<BootTry> | null;
+    const power = o?.power;
+    if (
+      typeof o?.webgl1 !== 'boolean' ||
+      (power !== 'default' && power !== 'low-power' && power !== 'high-performance')
+    )
+      return null;
+    return { ms: 0, webgl1: o.webgl1, power };
+  } catch {
+    return null;
+  }
+}
 
 const engine = await obtainEngine();
 
@@ -162,16 +187,26 @@ const engine = await obtainEngine();
 // phone can tell us why.
 async function obtainEngine(): Promise<Engine> {
   const tried: string[] = [];
-  let webgl1 = false;
+  let t = FIRST_TRY;
   for (let attempt = 0; ; attempt++) {
-    const e = createEngine(webgl1);
+    const e = createEngine(t);
     const why = contextProblem(e);
+    const what = `WebGL ${e.webGLVersion} ${t.power} ${canvas.width}x${canvas.height}`;
     if (!why) {
-      if (attempt > 0) console.warn(`WebGL context usable after ${attempt} retries: ${tried.join(', ')}`);
-      logGpu('boot', `WebGL ${e.webGLVersion} ${glRenderer(e)}${tried.length ? ` after ${tried.join('; ')}` : ''}`);
+      if (attempt > 0) {
+        console.warn(`WebGL context usable after ${attempt} retries: ${tried.join(', ')}`);
+        try {
+          localStorage.setItem(BOOT_KEY, JSON.stringify({ webgl1: t.webgl1, power: t.power }));
+        } catch {
+          // Blocked storage: the next start retries again.
+        }
+      }
+      logGpu('boot', `${what} ${glRenderer(e)}${tried.length ? ` after ${tried.join('; ')}` : ''}`);
       return e;
     }
-    tried.push(`WebGL ${e.webGLVersion}: ${why}${creationError ? ` (${creationError})` : ''}`);
+    tried.push(
+      `${what}: ${why}${creationError ? ` (${creationError})` : ''}, ${document.visibilityState}, plain context ${plainContext()}`,
+    );
     if (attempt >= BOOT_RETRIES.length) recoverDeadContextAtBoot(tried);
     const next = BOOT_RETRIES[attempt];
     console.warn(`WebGL context unusable at start-up (${tried[attempt]}): retrying in ${next.ms} ms`);
@@ -183,8 +218,22 @@ async function obtainEngine(): Promise<Engine> {
     const fresh = canvas.cloneNode(false) as HTMLCanvasElement;
     canvas.replaceWith(fresh);
     canvas = fresh;
-    webgl1 = next.webgl1;
+    t = next;
     await new Promise((r) => setTimeout(r, next.ms));
+  }
+}
+
+// Whether a plain WebGL 2 context (small, detached, default options) comes back alive right
+// now, released at once: tells a phone that refuses all contexts from one that refuses ours.
+function plainContext(): string {
+  try {
+    const gl = document.createElement('canvas').getContext('webgl2');
+    if (!gl) return 'none';
+    const lost = gl.isContextLost();
+    if (!lost) gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return lost ? 'lost' : 'ok';
+  } catch {
+    return 'threw';
   }
 }
 
@@ -232,7 +281,7 @@ function recoverDeadContextAtBoot(tried: readonly string[]): never {
 // The browser's reason when it refused or failed a context (webglcontextcreationerror).
 let creationError = '';
 
-function createEngine(webgl1: boolean): Engine {
+function createEngine(t: BootTry): Engine {
   creationError = '';
   canvas.addEventListener(
     'webglcontextcreationerror',
@@ -246,9 +295,9 @@ function createEngine(webgl1: boolean): Engine {
       {
         stencil: false,
         preserveDrawingBuffer: false,
-        powerPreference: 'high-performance',
+        powerPreference: t.power,
         audioEngine: false,
-        disableWebGL2Support: webgl1,
+        disableWebGL2Support: t.webgl1,
       },
       false, // the renderer owns hardware scaling (automatic resolution scaling)
     );
