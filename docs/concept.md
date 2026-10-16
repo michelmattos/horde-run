@@ -166,7 +166,7 @@ Touch is the primary input. Mouse and keyboard are mapped onto the same actions 
 - **Portrait first**: levels are designed for a tall phone screen. Wider screens show more scenery at the sides, never more lane.
 - **Safe areas**: the HUD stays clear of notches and the home indicator (`env(safe-area-inset-*)`), and the layout uses `100dvh` so the browser's collapsing toolbar doesn't crop the game.
 - **Readable at arm's length**: big gate numbers and high-contrast team colours, legible on a 6-inch screen.
-- Fixed camera looking up the lane from low behind the player's fort, turned slightly so the lane runs from bottom right to top left, with strong perspective like Mob Control (picked 2026-10-16). It never follows the action: the whole lane, both forts and the full rug width are always on screen, and it only zooms out gently as the crowd grows. **No screen shake, ever** (decided 2026-10-14); big hits read through flashes, particles and sound instead.
+- Fixed camera looking straight up the lane from low behind the player's fort (30 degrees), for a stronger sense of depth, like Mob Control (picked 2026-10-16). It never follows the action: the whole lane, both forts and the full rug width are always on screen, and it only zooms out gently as the crowd grows. **No screen shake, ever** (decided 2026-10-14); big hits read through flashes, particles and sound instead.
 
 ### Phone performance
 

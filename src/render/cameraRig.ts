@@ -1,8 +1,9 @@
-// Fixed lane camera, tilted and turned slightly (see framing.ts). Framing comes from
-// computeFraming on every resize and level load; per frame the only change is a gentle zoom-out (a slightly wider fov) as
-// the player's crowd grows, eased smoothly so it never steps. The camera position never
-// moves: no screen shake or jitter of any kind (Michel found camera motion unpleasant
-// on the phone), so hit feedback lives on the units, gates, bases and defenders.
+// Fixed, low lane camera (see framing.ts). Framing comes from computeFraming on every
+// resize and level load; per frame the only change is a gentle zoom-out (a slightly
+// wider fov) as the player's crowd grows, eased smoothly so it never steps. The camera
+// position never moves: no screen shake or jitter of any kind (Michel found camera
+// motion unpleasant on the phone), so hit feedback lives on the units, gates, bases and
+// defenders.
 import type { Scene } from '@babylonjs/core/scene';
 import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';

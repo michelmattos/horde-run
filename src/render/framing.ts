@@ -1,21 +1,20 @@
 // Camera framing math for the fixed portrait lane camera. Pure (no Babylon) so it can
 // be reasoned about and tested in isolation.
 //
-// The camera looks up the lane (+Z) from behind the player's fort, turned a little
-// (CAMERA_YAW) so the lane runs from bottom right to top left, low (CAMERA_PITCH) and
-// with a wide fov for strong perspective, like Mob Control (Michel picked this "F3" look
-// on 2026-10-16). The angles are fixed; only the position is solved: the camera moves as
-// close to the lane as it can while the whole rug (both edges, from the back of the
-// player's fort to the back of the enemy base) and the top of the enemy fort or boss
-// stay on screen. Wide screens are framed as if they were DESIGN_ASPECT, so they show
-// the same lane plus extra scenery at the sides.
+// The camera looks straight up the lane (+Z) from low behind the player's fort
+// (CAMERA_PITCH, 30 degrees; Michel picked this "B" look on 2026-10-16). The angles are
+// fixed; only the position is solved: the camera moves as close to the lane as it can
+// while the whole rug (both edges, from the back of the player's fort to the back of the
+// enemy base) and the top of the enemy fort or boss stay on screen. Wide screens are
+// framed as if they were DESIGN_ASPECT, so they show the same lane plus extra scenery at
+// the sides.
 
 export const DESIGN_ASPECT = 0.5; // widest aspect that is framed by lane width
 export const NEAR_NDC_Y = -0.6; // bottom HUD row: the HUD buttons sit below it
 export const FAR_NDC_Y = 0.8; // default top of the playfield: ~10% from the top
-export const CAMERA_YAW = 0.08; // radians, turned toward +x: the lane leans to the top left
-export const CAMERA_PITCH = 0.64; // radians below horizontal
-export const CAMERA_FOV = 1.2; // vertical fov, radians
+export const CAMERA_YAW = 0; // radians about +y: straight up the lane
+export const CAMERA_PITCH = Math.PI / 6; // radians below horizontal (30 degrees)
+export const CAMERA_FOV = 1.05; // vertical fov, radians
 const SIDE_NDC = 0.97; // rug edges stay this far inside the screen sides
 const BOTTOM_NDC = -0.97; // the back of the player's fort stays above the bottom edge
 const MIN_ROW_GAP = 0.6; // NDC; the rows never squeeze closer than this
