@@ -375,8 +375,8 @@
           d.append(p, copyBtn, retry);
           (document.body || document.documentElement).appendChild(d);
         }
-        window.__hordeBootError = function (msg) {
-          show(msg);
+        window.__hordeBootError = function (msg, title) {
+          show(msg, title);
         };
         // Also after boot (the graphics gave up for good).
         window.__hordeFatal = function (msg) {
