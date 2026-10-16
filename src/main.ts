@@ -52,7 +52,7 @@ import { isWorldUnlocked, loadGame, recordResult, writeGame } from './core/save.
 import type { GameData } from './core/save.ts';
 import { planRecovery, readRecovery, takeRecoveryTarget, writeRecovery } from './core/recovery.ts';
 import type { RecoveryTarget } from './core/recovery.ts';
-import { logGpu } from './core/gpuLog.ts';
+import { aliveStep, logGpu, startAliveTrail } from './core/gpuLog.ts';
 import { writeSavedRender } from './render/look/quality.ts';
 import { createWorldMap } from './meta/worldMap.ts';
 import { createLoadoutScreen } from './meta/loadout.ts';
@@ -112,7 +112,7 @@ const RESULT_DELAY = 1.2;
 declare global {
   interface Window {
     __hordeBooted?: boolean; // set once the first screen is up (index.html boot guard)
-    __hordeBootError?: (message: string) => void; // shows a start-up failure on screen (index.html)
+    __hordeBootError?: (message: string, title?: string) => void; // shows a start-up failure on screen (index.html)
     __hordeFatal?: (message: string) => void; // shows a later, unrecoverable failure on screen (index.html)
     __horde?: {
       state(): BattleState;
@@ -176,7 +176,10 @@ function savedBootTry(): BootTry | null {
   }
 }
 
+startAliveTrail();
+aliveStep('getting WebGL');
 const engine = await obtainEngine();
+aliveStep('building the game');
 
 // iOS can hand out a WebGL context that is already lost. Babylon then reads every GPU
 // limit as 0, and building the bloom blur on those limits throws (the "e.toFixed" start-up
@@ -260,10 +263,23 @@ function glRenderer(e: Engine): string {
 
 function recoverDeadContextAtBoot(tried: readonly string[]): never {
   const prev = readRecovery();
-  const { plan, count } = planRecovery(prev, Date.now());
-  logGpu('boot-failed', `${tried.join('; ')}; then ${plan}`);
   // Keep the place an earlier recovery asked to return to (this boot has not used it yet).
   const target: RecoveryTarget = prev?.target ?? { kind: 'map' };
+  // No page gets a live context: reloading cannot help and turning the quality down is
+  // not the cause, so wait for the phone's graphics instead.
+  if (plainContext() !== 'ok') {
+    logGpu('boot-failed', `${tried.join('; ')}; then wait`);
+    window.__hordeBootError?.(
+      "The phone's graphics are not available to any page right now (WebGL contexts come back lost).\n\n" +
+        'The game starts by itself as soon as they come back. If nothing happens for a few minutes, ' +
+        'close the game and Safari completely, then open it again.',
+      'Waiting for the graphics…',
+    );
+    waitForGraphics(target);
+    throw new Error('WebGL context lost at start-up');
+  }
+  const { plan, count } = planRecovery(prev, Date.now());
+  logGpu('boot-failed', `${tried.join('; ')}; then ${plan}`);
   if (plan !== 'give-up' && writeRecovery({ at: Date.now(), count, target })) {
     console.warn(`WebGL context lost at start-up: reloading (${plan})`);
     if (plan === 'reload-low') writeSavedRender({ quality: 'low', post: 'off' });
@@ -276,6 +292,30 @@ function recoverDeadContextAtBoot(tried: readonly string[]): never {
     );
   }
   throw new Error('WebGL context lost at start-up');
+}
+
+// Every page gets lost contexts (the GPU process is down or recovering): retrying the game
+// is pointless until a plain context comes back alive, so watch for that and then start
+// over with a fresh recovery count (keeping where the player was). How long it took goes in the log.
+const GRAPHICS_POLL_MS = 2000;
+const GRAPHICS_WAIT_MS = 10 * 60_000;
+function waitForGraphics(target: RecoveryTarget): void {
+  const since = Date.now();
+  aliveStep('waiting for the phone graphics');
+  const timer = setInterval(() => {
+    if (document.hidden) return;
+    const waited = Date.now() - since;
+    if (plainContext() === 'ok') {
+      clearInterval(timer);
+      logGpu('waited', `plain WebGL came back after ${Math.round(waited / 1000)} s: starting again`);
+      // A fresh count with the same place to return to.
+      writeRecovery({ at: 0, count: 0, target });
+      location.reload();
+    } else if (waited > GRAPHICS_WAIT_MS) {
+      clearInterval(timer);
+      logGpu('waited', `plain WebGL still lost after ${Math.round(waited / 1000)} s: gave up waiting`);
+    }
+  }, GRAPHICS_POLL_MS);
 }
 
 // The browser's reason when it refused or failed a context (webglcontextcreationerror).
@@ -471,6 +511,7 @@ function openLoadout(id: string): void {
   hideMeta();
   overlays.hide();
   loadoutLevel = id;
+  aliveStep(`loadout for ${id}`);
   loadoutScreen.show(loadoutView(levelDef(id), facts()));
 }
 
@@ -479,6 +520,7 @@ function openCollection(back: () => void): void {
   hideMeta();
   overlays.hide();
   collectionBack = back;
+  aliveStep('in the collection');
   const f = facts();
   collection.show(collectionView(f));
   const fresh = unannouncedUnlocks(f);
@@ -503,6 +545,7 @@ function openHome(): void {
 }
 
 function showHome(h: HomeBase): void {
+  aliveStep('in the home base');
   h.show(homeView(facts()));
   wake();
 }
@@ -529,6 +572,7 @@ function leaveBattlefield(): void {
 }
 
 function showMap(): void {
+  aliveStep('on the map');
   screens.hide();
   hideMeta();
   leaveBattlefield();
@@ -587,8 +631,11 @@ function beginBattle(def: LevelDef, seed: number, loadout?: BattleLoadout): void
   const load = ++battleLoad;
   renderer.loadLevel(level);
   const ready = settle(Promise.all([fontsReady, renderer.whenReady()]), LOADING_TIMEOUT_MS);
+  aliveStep(`loading level ${def.id}`);
   void ready.then(() => {
-    if (load === battleLoad) stageLoading = false;
+    if (load !== battleLoad) return;
+    stageLoading = false;
+    aliveStep(`in battle ${def.id}`);
   });
   void loading.hideWhen(ready);
   input.configure({ laneWidth: level.lane.width, aimLimit: level.cannon.aimLimit });
@@ -655,6 +702,7 @@ function startRun(seed: number, daily?: string): void {
 
 // Shows whatever the run's phase calls for (also how a saved run resumes).
 function showRunStep(): void {
+  aliveStep('on the expedition');
   const r = run;
   if (!r) return openExpeditionStart();
   runMapShown = false;
@@ -873,6 +921,7 @@ function showPauseOverlay(reason: 'user' | InterruptReason): void {
 }
 
 function showResult(b: Battle): void {
+  aliveStep(`result of ${level.id}`);
   resultShown = true;
   audio.setMusic('menu', { delay: 1 }); // after the fanfare
   input.setPaused(true);

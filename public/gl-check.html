@@ -195,6 +195,7 @@
             'service worker controls page: ' + !!(navigator.serviceWorker && navigator.serviceWorker.controller),
             'recovery state (this tab): ' + get(sessionStorage, 'horde-run:gpu-recovery'),
             'render settings: ' + get(localStorage, 'horde-run:render-v1'),
+            'last game page (step, sign of life): ' + get(localStorage, 'horde-run:alive'),
             'time: ' + new Date().toString(),
           ].join('\n');
         }
