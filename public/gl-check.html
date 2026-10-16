@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <title>Horde Run graphics check</title>
+    <!-- Diagnostics for lost WebGL contexts on phones: opens WebGL contexts the way the game
+         does (and plainer ways), draws into each, and shows the game's graphics log
+         (src/core/gpuLog.ts) with the recovery state, so one screenshot or copied report
+         says what the phone does. No game code runs here. -->
+    <style>
+      body {
+        margin: 0;
+        padding: max(16px, env(safe-area-inset-top)) 16px 32px;
+        background: #f6efe2;
+        color: #2b1d12;
+        font: 15px/1.45 -apple-system, system-ui, sans-serif;
+      }
+      h1 {
+        font-size: 20px;
+        margin: 0 0 8px;
+      }
+      h2 {
+        font-size: 16px;
+        margin: 20px 0 6px;
+      }
+      pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: #fffaf0;
+        border: 1px solid #d9c7a6;
+        border-radius: 8px;
+        padding: 10px;
+        margin: 0;
+        font: 12.5px/1.4 ui-monospace, Menlo, monospace;
+      }
+      .ok {
+        color: #1d6b2a;
+        font-weight: 600;
+      }
+      .bad {
+        color: #a5241b;
+        font-weight: 600;
+      }
+      button {
+        font: inherit;
+        font-weight: 600;
+        margin: 4px 6px 4px 0;
+        padding: 9px 14px;
+        border-radius: 10px;
+        border: 2px solid #2b1d12;
+        background: #fff;
+        color: #2b1d12;
+      }
+      a {
+        color: #7a4a1c;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Horde Run graphics check</h1>
+    <div>
+      <button id="copy">Copy report</button>
+      <button id="rerun">Run again</button>
+      <button id="reset">Reset recovery and offline cache</button>
+      <a href="./">Back to the game</a>
+    </div>
+    <h2>WebGL contexts</h2>
+    <pre id="tests">Running…</pre>
+    <h2>Graphics log (newest last)</h2>
+    <pre id="log"></pre>
+    <h2>This page and device</h2>
+    <pre id="env"></pre>
+    <script>
+      (function () {
+        var $ = function (id) {
+          return document.getElementById(id);
+        };
+        var wait = function (ms) {
+          return new Promise(function (r) {
+            setTimeout(r, ms);
+          });
+        };
+        var dpr = window.devicePixelRatio || 1;
+        // The game asks for this (src/main.ts createEngine; Babylon adds the rest).
+        var GAME = {
+          alpha: true,
+          antialias: dpr < 2,
+          stencil: false,
+          preserveDrawingBuffer: false,
+          powerPreference: 'high-performance',
+        };
+        var CASES = [
+          { name: 'WebGL 2, game options, full-screen canvas', type: 'webgl2', opts: GAME, full: true },
+          { name: 'WebGL 2, default options, small canvas', type: 'webgl2', opts: {}, full: false },
+          { name: 'WebGL 1, game options, full-screen canvas', type: 'webgl', opts: GAME, full: true },
+          { name: 'WebGL 1, default options, small canvas', type: 'webgl', opts: {}, full: false },
+        ];
+
+        async function runCase(c) {
+          var canvas = document.createElement('canvas');
+          canvas.width = c.full ? Math.round(innerWidth * Math.min(dpr, 1.5)) : 64;
+          canvas.height = c.full ? Math.round(innerHeight * Math.min(dpr, 1.5)) : 64;
+          var creationError = '';
+          canvas.addEventListener('webglcontextcreationerror', function (e) {
+            creationError = e.statusMessage || 'creation error event';
+          });
+          var lostLater = false;
+          canvas.addEventListener('webglcontextlost', function () {
+            lostLater = true;
+          });
+          var gl = null;
+          var thrown = '';
+          try {
+            gl = canvas.getContext(c.type, c.opts);
+          } catch (e) {
+            thrown = String((e && e.message) || e);
+          }
+          var out = c.name + ' (' + canvas.width + 'x' + canvas.height + '):\n';
+          if (!gl) {
+            return { ok: false, text: out + '  BAD: no context ' + (thrown || creationError || '(null)') };
+          }
+          var lostAtOnce = gl.isContextLost();
+          var info = '';
+          var drew = 'not tried';
+          if (!lostAtOnce) {
+            try {
+              info =
+                '  ' +
+                gl.getParameter(gl.VERSION) +
+                ', ' +
+                gl.getParameter(gl.RENDERER) +
+                ', max texture ' +
+                gl.getParameter(gl.MAX_TEXTURE_SIZE) +
+                ', varyings ' +
+                gl.getParameter(gl.MAX_VARYING_VECTORS) +
+                '\n';
+              gl.clearColor(0.2, 0.6, 0.3, 1);
+              gl.clear(gl.COLOR_BUFFER_BIT);
+              var px = new Uint8Array(4);
+              gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+              drew = px[1] > 120 && px[0] < 80 ? 'yes' : 'NO (read ' + Array.prototype.join.call(px, ',') + ')';
+            } catch (e) {
+              drew = 'threw ' + String((e && e.message) || e);
+            }
+          }
+          await wait(1000);
+          var lostAfter = gl.isContextLost();
+          var ok = !lostAtOnce && !lostAfter && drew === 'yes';
+          var text =
+            out +
+            info +
+            '  lost at once: ' +
+            lostAtOnce +
+            ', drew: ' +
+            drew +
+            ', lost after 1 s: ' +
+            lostAfter +
+            (lostLater ? ' (lost event)' : '') +
+            (creationError ? ', creation error: ' + creationError : '');
+          var ext = gl.getExtension('WEBGL_lose_context');
+          if (ext && !gl.isContextLost()) ext.loseContext(); // give the GPU memory back at once
+          return { ok: ok, text: (ok ? 'OK  ' : 'BAD ') + text };
+        }
+
+        function readLog() {
+          try {
+            var list = JSON.parse(localStorage.getItem('horde-run:gpu-log') || '[]');
+            if (!list.length) return '(empty)';
+            return list
+              .map(function (e) {
+                return new Date(e.at).toLocaleString() + '  ' + e.event + ': ' + e.detail;
+              })
+              .join('\n');
+          } catch (e) {
+            return '(unreadable: ' + e + ')';
+          }
+        }
+
+        function readEnv() {
+          var get = function (store, key) {
+            try {
+              return store.getItem(key);
+            } catch (e) {
+              return '(blocked)';
+            }
+          };
+          var standalone =
+            navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+          return [
+            'url: ' + location.href,
+            'agent: ' + navigator.userAgent,
+            'screen: ' + innerWidth + 'x' + innerHeight + ' css px, pixel ratio ' + dpr,
+            'home screen app: ' + standalone,
+            'service worker controls page: ' + !!(navigator.serviceWorker && navigator.serviceWorker.controller),
+            'recovery state (this tab): ' + get(sessionStorage, 'horde-run:gpu-recovery'),
+            'render settings: ' + get(localStorage, 'horde-run:render-v1'),
+            'time: ' + new Date().toString(),
+          ].join('\n');
+        }
+
+        async function run() {
+          $('tests').textContent = 'Running…';
+          $('log').textContent = readLog();
+          $('env').textContent = readEnv();
+          var lines = [];
+          for (var i = 0; i < CASES.length; i++) {
+            var r = await runCase(CASES[i]);
+            lines.push(r.text);
+            $('tests').textContent = lines.join('\n\n') + (i < CASES.length - 1 ? '\n\nRunning…' : '');
+          }
+        }
+
+        $('rerun').onclick = run;
+        $('copy').onclick = function () {
+          var report =
+            'WebGL contexts\n' +
+            $('tests').textContent +
+            '\n\nGraphics log\n' +
+            $('log').textContent +
+            '\n\nDevice\n' +
+            $('env').textContent;
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(report).then(
+              function () {
+                $('copy').textContent = 'Copied';
+              },
+              function () {
+                $('copy').textContent = 'Copy failed';
+              },
+            );
+          }
+        };
+        $('reset').onclick = async function () {
+          try {
+            sessionStorage.removeItem('horde-run:gpu-recovery');
+          } catch (e) {
+            // blocked storage: nothing to reset
+          }
+          if (navigator.serviceWorker) {
+            var regs = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(
+              regs.map(function (r) {
+                return r.unregister();
+              }),
+            );
+          }
+          if (window.caches) {
+            var keys = await caches.keys();
+            await Promise.all(
+              keys.map(function (k) {
+                return caches.delete(k);
+              }),
+            );
+          }
+          $('reset').textContent = 'Reset done';
+          $('env').textContent = readEnv();
+        };
+        run();
+      })();
+    </script>
+  </body>
+</html>

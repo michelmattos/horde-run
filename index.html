@@ -198,6 +198,20 @@
       // the first screen, no WebGL), say so on screen instead of leaving an empty page.
       (function () {
         var shown = false;
+        // The last graphics events (src/core/gpuLog.ts), so a screenshot of the card says
+        // what happened before it; the full log is on gl-check.html.
+        function history() {
+          try {
+            var list = JSON.parse(localStorage.getItem('horde-run:gpu-log') || '[]').slice(-6);
+            if (!list.length) return '';
+            var lines = list.map(function (e) {
+              return new Date(e.at).toLocaleTimeString() + ' ' + e.event + ': ' + e.detail;
+            });
+            return '\n\nRecent graphics events:\n' + lines.join('\n') + '\n\nFull log: gl-check.html';
+          } catch (e) {
+            return '';
+          }
+        }
         function show(msg, title) {
           if (shown || (!title && window.__hordeBooted)) return;
           shown = true;
@@ -209,9 +223,10 @@
           d.setAttribute(
             'style',
             'position:fixed;left:16px;right:16px;top:30%;padding:16px;border-radius:12px;background:#fff8e7;' +
-              'color:#3b2a1a;font:15px/1.4 -apple-system,system-ui,sans-serif;z-index:99;white-space:pre-wrap',
+              'color:#3b2a1a;font:15px/1.4 -apple-system,system-ui,sans-serif;z-index:99;white-space:pre-wrap;' +
+              'max-height:60%;overflow:auto;-webkit-user-select:text;user-select:text',
           );
-          d.textContent = (title || 'Horde Run could not start.') + '\n\n' + msg;
+          d.textContent = (title || 'Horde Run could not start.') + '\n\n' + msg + history();
           (document.body || document.documentElement).appendChild(d);
         }
         window.__hordeBootError = function (msg) {
