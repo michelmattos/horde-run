@@ -1,4 +1,4 @@
-// Pure render-side logic: adaptive resolution and camera framing (no Babylon).
+// Pure render-side logic: adaptive resolution and camera framing rows (no Babylon).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ResolutionScaler } from '../src/render/resolution.ts';
@@ -7,7 +7,6 @@ import {
   NEAR_NDC_Y,
   ZOOM_MAX,
   computeFraming,
-  projectNdc,
   crowdZoomTarget,
   easeZoom,
   screenRows,
@@ -57,33 +56,21 @@ test('screen rows keep defaults on a plain screen and move inward for the HUD an
   assert.ok(tiny.far - tiny.near >= 0.6 - 1e-9);
 });
 
-test('framing keeps the whole rug and the enemy fort on screen, as close as that allows', () => {
-  for (const aspect of [390 / 844, 0.42, 0.75]) {
-    for (const length of [45, 55, 70]) {
-      const farNdcY = 0.72;
-      const top = { y: 6, z: length + 2 };
-      const input = { aspect, laneWidth: 10, margin: 0.4, nearZ: -3.2, farZ: length + 4, farNdcY, top, topNdcY: 0.78 };
-      const f = computeFraming(input);
-      const shown = Math.min(aspect, 0.5);
-      const slack: number[] = [];
-      for (const x of [-5.4, 5.4]) {
-        for (const z of [input.nearZ, input.farZ]) {
-          const p = projectNdc(f, x, 0, z, shown);
-          assert.ok(p, `corner (${x}, ${z}) in front of the camera`);
-          const [nx, ny] = p;
-          const where = `aspect ${aspect.toFixed(2)} lane ${length} corner (${x}, ${z}): ${nx.toFixed(3)}, ${ny.toFixed(3)}`;
-          assert.ok(Math.abs(nx) <= 0.97 + 1e-6, where);
-          assert.ok(ny >= -0.97 - 1e-6 && ny <= farNdcY + 1e-6, where);
-          slack.push(0.97 - Math.abs(nx), ny + 0.97, farNdcY - ny);
-        }
-      }
-      const p = projectNdc(f, 0, top.y, top.z, shown);
-      assert.ok(p && p[1] <= 0.78 + 1e-6, `fort top at ${p?.[1]}`);
-      if (p) slack.push(0.78 - p[1]);
-      // As close as allowed: moving any nearer would push something off screen.
-      assert.ok(Math.min(...slack) < 1e-3, `closest bound has ${Math.min(...slack)} spare`);
-    }
-  }
+test('framing honours the requested rows', () => {
+  const input = { aspect: 390 / 844, laneWidth: 10, nearZ: 1.5, farZ: 59, margin: 0.6 };
+  const project = (f: ReturnType<typeof computeFraming>, z: number): number => {
+    // NDC y of ground point (0, 0, z) for a camera at (0, y, cz) pitched down by `pitch`.
+    const dy = -f.y;
+    const dz = z - f.z;
+    const fwd = dz * Math.cos(f.pitch) - dy * Math.sin(f.pitch);
+    const up = dy * Math.cos(f.pitch) + dz * Math.sin(f.pitch);
+    return up / fwd / Math.tan(f.fov / 2);
+  };
+  const def = computeFraming(input);
+  assert.ok(Math.abs(project(def, 59) - FAR_NDC_Y) < 1e-3);
+  const moved = computeFraming({ ...input, farNdcY: 0.66, nearNdcY: -0.45 });
+  assert.ok(Math.abs(project(moved, 59) - 0.66) < 1e-3, `far row ${project(moved, 59)}`);
+  assert.ok(Math.abs(project(moved, 1.5) + 0.45) < 1e-3, `near row ${project(moved, 1.5)}`);
 });
 
 test('crowd zoom-out: grows smoothly with the crowd, capped, never overshoots', () => {

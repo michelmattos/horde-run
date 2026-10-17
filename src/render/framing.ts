@@ -1,51 +1,55 @@
 // Camera framing math for the fixed portrait lane camera. Pure (no Babylon) so it can
 // be reasoned about and tested in isolation.
 //
-// The camera looks straight up the lane (+Z) from low behind the player's fort
-// (CAMERA_PITCH, 30 degrees; Michel picked this "B" look on 2026-10-16). The angles are
-// fixed; only the position is solved: the camera moves as close to the lane as it can
-// while the whole rug (both edges, from the back of the player's fort to the back of the
-// enemy base) and the top of the enemy fort or boss stay on screen. Wide screens are
-// framed as if they were DESIGN_ASPECT, so they show the same lane plus extra scenery at
-// the sides.
+// The camera sits on the lane centre line (x = 0) behind the cannon, pitched down by
+// `pitch` and looking up +Z. We pin two ground points to screen heights (NDC y):
+//   - the cannon row near the bottom (above the thumb zone),
+//   - the far edge of the enemy base near the top,
+// and then pick pitch + vertical fov so the lane width (plus margin) at the cannon row
+// just fills the screen width. Wide screens are framed as if they were DESIGN_ASPECT,
+// so they show the same lane plus extra scenery at the sides. The caller can move the
+// two rows inward (screenRows) so the bases stay clear of the HUD and safe-area insets.
 
 export const DESIGN_ASPECT = 0.5; // widest aspect that is framed by lane width
-export const NEAR_NDC_Y = -0.6; // bottom HUD row: the HUD buttons sit below it
-export const FAR_NDC_Y = 0.8; // default top of the playfield: ~10% from the top
-export const CAMERA_YAW = 0; // radians about +y: straight up the lane
-export const CAMERA_PITCH = Math.PI / 6; // radians below horizontal (30 degrees)
-export const CAMERA_FOV = 1.05; // vertical fov, radians
-const SIDE_NDC = 0.97; // rug edges stay this far inside the screen sides
-const BOTTOM_NDC = -0.97; // the back of the player's fort stays above the bottom edge
+export const NEAR_NDC_Y = -0.6; // default cannon row: 80% down the screen (the fort's courtyard sits under the bottom HUD)
+export const FAR_NDC_Y = 0.8; // default far edge of the enemy base: ~10% from the top
 const MIN_ROW_GAP = 0.6; // NDC; the rows never squeeze closer than this
+const PITCH_MAX = (60 * Math.PI) / 180;
+const PITCH_MIN = (45 * Math.PI) / 180;
+const FOV_MIN = (38 * Math.PI) / 180;
+const FOV_MAX = (72 * Math.PI) / 180;
 
 export interface FramingInput {
   aspect: number; // width / height of the render target
   laneWidth: number;
-  margin: number; // rug beyond each lane edge, world units
-  nearZ: number; // back of the player's fort
-  farZ: number; // back of the enemy base
-  farNdcY?: number; // highest screen row (NDC y) for the far rug corners; default FAR_NDC_Y
-  top?: { y: number; z: number }; // the enemy fort's flag tip or the boss's plume (x = 0)
-  topNdcY?: number; // highest screen row for `top`; default farNdcY
+  nearZ: number; // ground z pinned near the bottom (the cannon row)
+  farZ: number; // ground z pinned near the top (back of the enemy base)
+  margin: number; // extra world units on each side of the lane
+  nearNdcY?: number; // screen row (NDC y) for nearZ; default NEAR_NDC_Y
+  farNdcY?: number; // screen row (NDC y) for farZ; default FAR_NDC_Y
 }
 
 export interface Framing {
   pitch: number; // radians below horizontal
-  yaw: number; // radians about +y
   fov: number; // vertical fov, radians
-  x: number;
-  y: number;
-  z: number;
+  y: number; // camera height
+  z: number; // camera z (x is always 0)
 }
 
+interface Solved {
+  y: number;
+  z: number;
+  halfWidth: number; // visible half-width in world units at the near row
+}
+
+// For a fixed pitch and tan(fov/2), place the camera so nearZ and farZ land on their NDC rows.
 interface Rows {
   near: number;
   far: number;
 }
 
-// Screen rows (NDC y) that keep the playfield clear of `reserveTop` / `reserveBottom`
-// CSS px on a screen `cssHeight` tall, never more outward than the defaults.
+// Screen rows (NDC y) that keep the bases clear of `reserveTop` / `reserveBottom` CSS px
+// on a screen `cssHeight` tall, never more outward than the defaults.
 export function screenRows(cssHeight: number, reserveTop: number, reserveBottom: number): Rows {
   if (!(cssHeight > 0)) return { near: NEAR_NDC_Y, far: FAR_NDC_Y };
   const far = Math.min(FAR_NDC_Y, 1 - (2 * reserveTop) / cssHeight);
@@ -55,115 +59,101 @@ export function screenRows(cssHeight: number, reserveTop: number, reserveBottom:
   return { near: mid - MIN_ROW_GAP / 2, far: mid + MIN_ROW_GAP / 2 };
 }
 
-type Vec = [number, number, number];
-
-// Camera axes for a yaw/pitch (Babylon, left-handed: +x right, +y up, +z forward).
-function axes(yaw: number, pitch: number): { r: Vec; u: Vec; f: Vec } {
-  const sy = Math.sin(yaw);
-  const cy = Math.cos(yaw);
-  const sp = Math.sin(pitch);
-  const cp = Math.cos(pitch);
-  return { r: [cy, 0, -sy], u: [sy * sp, cp, cy * sp], f: [sy * cp, -sp, cy * cp] };
+function place(pitch: number, t: number, nearZ: number, farZ: number, aspect: number, rows: Rows): Solved | null {
+  const s = Math.sin(pitch);
+  const c = Math.cos(pitch);
+  // A ground point at depth dz ahead and h below the camera projects to NDC y = k/t when
+  // dz * (s - k c) = h * (c + k s); r(k) is that dz/h ratio.
+  const r = (k: number): number => (c + k * s) / (s - k * c);
+  const kN = rows.near * t;
+  const kF = rows.far * t;
+  if (s - kF * c <= 1e-4) return null; // far row would be above the horizon
+  const span = r(kF) - r(kN);
+  if (span <= 1e-6) return null;
+  const h = (farZ - nearZ) / span;
+  const z = nearZ - h * r(kN);
+  const forward = h * s + (nearZ - z) * c; // view-axis distance to the near row
+  return { y: h, z, halfWidth: forward * t * aspect };
 }
 
-const dot = (a: Vec, b: Vec): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-
-// Maximum of a concave function on [lo, hi] (ternary search).
-function argmaxConcave(fn: (v: number) => number, lo: number, hi: number): number {
-  for (let i = 0; i < 100; i++) {
-    const m1 = lo + (hi - lo) / 3;
-    const m2 = hi - (hi - lo) / 3;
-    if (fn(m1) < fn(m2)) lo = m1;
-    else hi = m2;
-  }
-  return (lo + hi) / 2;
-}
-
-// Centre of {v : fn(v) >= level} around `best`, where fn is concave with its peak at best.
-function centreOfLevelSet(fn: (v: number) => number, best: number, level: number, span: number): number {
-  const edge = (dir: number): number => {
-    let inside = best;
-    let outside = best + dir * span;
-    if (fn(outside) >= level) return outside;
-    for (let i = 0; i < 60; i++) {
-      const mid = (inside + outside) / 2;
-      if (fn(mid) >= level) inside = mid;
-      else outside = mid;
-    }
-    return inside;
-  };
-  return (edge(-1) + edge(1)) / 2;
-}
-
-// In camera coordinates (a, b, g) = (c·r, c·u, c·f) a point P is seen at
-// X = P·r - a, Y = P·u - b, depth Z = P·f - g, and lies on screen when
-// |X| <= kx Z and -kBottom Z <= Y <= kTop Z. Each bound caps g, horizontal and vertical
-// bounds separately, so the closest camera (largest g) maximises two concave functions.
 export function computeFraming(input: FramingInput): Framing {
   const aspect = Math.min(input.aspect, DESIGN_ASPECT);
-  const t = Math.tan(CAMERA_FOV / 2);
-  const { r, u, f } = axes(CAMERA_YAW, CAMERA_PITCH);
-  const hw = input.laneWidth / 2 + input.margin;
-  const farRow = input.farNdcY ?? FAR_NDC_Y;
-  const pts: { p: Vec; top: number }[] = [];
-  for (const sx of [-1, 1]) {
-    pts.push({ p: [sx * hw, 0, input.nearZ], top: farRow });
-    pts.push({ p: [sx * hw, 0, input.farZ], top: farRow });
-  }
-  if (input.top) pts.push({ p: [0, input.top.y, input.top.z], top: input.topNdcY ?? farRow });
-  const X = pts.map((q) => dot(q.p, r));
-  const Y = pts.map((q) => dot(q.p, u));
-  const Z = pts.map((q) => dot(q.p, f));
-  const kx = SIDE_NDC * t * aspect;
-  const kBottom = -BOTTOM_NDC * t;
+  const want = input.laneWidth / 2 + input.margin;
+  const tMin = Math.tan(FOV_MIN / 2);
+  const tMax = Math.tan(FOV_MAX / 2);
+  const { nearZ, farZ } = input;
+  const rows: Rows = { near: input.nearNdcY ?? NEAR_NDC_Y, far: input.farNdcY ?? FAR_NDC_Y };
 
-  const gx = (a: number): number => {
-    let g = Infinity;
-    for (let i = 0; i < pts.length; i++) g = Math.min(g, Z[i] - Math.abs(X[i] - a) / kx);
-    return g;
-  };
-  const gy = (b: number): number => {
-    let g = Infinity;
-    for (let i = 0; i < pts.length; i++) {
-      const kTop = pts[i].top * t;
-      const dy = Y[i] - b;
-      g = Math.min(g, Z[i] - (dy > 0 ? dy / kTop : -dy / kBottom));
+  // Prefer the steepest pitch at which some fov in range fits the width; visible width at
+  // the near row shrinks as fov grows (stronger perspective), so bisect on fov.
+  const step = (1 * Math.PI) / 180;
+  for (let pitch = PITCH_MAX; pitch >= PITCH_MIN - 1e-9; pitch -= step) {
+    const atMax = place(pitch, tMax, nearZ, farZ, aspect, rows);
+    if (!atMax || atMax.halfWidth > want) continue;
+    const atMin = place(pitch, tMin, nearZ, farZ, aspect, rows);
+    if (!atMin) continue;
+    if (atMin.halfWidth < want) {
+      // Lane is very wide for its length: use the flattest fov and back the camera off
+      // along its view axis until the width fits (the far end stays in view).
+      return pullBack(pitch, tMin, atMin, want, aspect);
     }
-    return g;
-  };
-  const span = 4 * (input.farZ - input.nearZ + hw + 10);
-  let a = argmaxConcave(gx, Math.min(...X), Math.max(...X));
-  let b = argmaxConcave(gy, Math.min(...Y) - span, Math.max(...Y) + span);
-  const g = Math.min(gx(a), gy(b));
-  // The other direction has room to spare: centre the view within it.
-  if (gx(a) > g) a = centreOfLevelSet(gx, a, g, span);
-  else b = centreOfLevelSet(gy, b, g, span);
+    let lo = tMin;
+    let hi = tMax;
+    for (let i = 0; i < 30; i++) {
+      const mid = (lo + hi) / 2;
+      const p = place(pitch, mid, nearZ, farZ, aspect, rows);
+      if (p && p.halfWidth >= want) lo = mid;
+      else hi = mid;
+    }
+    const best = place(pitch, lo, nearZ, farZ, aspect, rows) ?? atMin;
+    return { pitch, fov: 2 * Math.atan(lo), y: best.y, z: best.z };
+  }
+  // Very long lane: even the strongest perspective leaves spare width. Show it as scenery.
+  const fallback = place(PITCH_MIN, tMax, nearZ, farZ, aspect, rows) ?? { y: 30, z: nearZ - 20, halfWidth: want };
+  return { pitch: PITCH_MIN, fov: FOV_MAX, y: fallback.y, z: fallback.z };
+}
+
+function pullBack(pitch: number, t: number, at: Solved, want: number, aspect: number): Framing {
+  const forward = at.halfWidth / (t * aspect);
+  const extra = want / (t * aspect) - forward;
   return {
-    pitch: CAMERA_PITCH,
-    yaw: CAMERA_YAW,
-    fov: CAMERA_FOV,
-    x: a * r[0] + b * u[0] + g * f[0],
-    y: a * r[1] + b * u[1] + g * f[1],
-    z: a * r[2] + b * u[2] + g * f[2],
+    pitch,
+    fov: 2 * Math.atan(t),
+    y: at.y + extra * Math.sin(pitch),
+    z: at.z - extra * Math.cos(pitch),
   };
 }
 
-// NDC [x, y] of the world point (x, y, z) seen by a framing's camera (fov widened by
-// `zoom`, as zoomedFov), or null when it is behind the camera.
-export function projectNdc(
-  fr: Framing,
-  x: number,
-  y: number,
-  z: number,
-  aspect: number,
-  zoom = 0,
-): [number, number] | null {
-  const { r, u, f } = axes(fr.yaw, fr.pitch);
-  const d: Vec = [x - fr.x, y - fr.y, z - fr.z];
-  const depth = dot(d, f);
-  if (depth <= 1e-6) return null;
-  const t = Math.tan(zoomedFov(fr.fov, zoom) / 2);
-  return [dot(d, r) / depth / (t * aspect), dot(d, u) / depth / t];
+// NDC y of the point (0, y, z) seen by a framing's camera.
+export function projectNdcY(f: Framing, y: number, z: number): number {
+  const dy = y - f.y;
+  const dz = z - f.z;
+  const fwd = dz * Math.cos(f.pitch) - dy * Math.sin(f.pitch);
+  const up = dy * Math.cos(f.pitch) + dz * Math.sin(f.pitch);
+  return fwd > 1e-6 ? up / fwd / Math.tan(f.fov / 2) : Infinity;
+}
+
+// Frames like computeFraming, then lowers the far row until the point `top` (the enemy
+// fort's flag tip or the boss's plume) projects no higher than `limitNdcY`, so tall
+// models at the far end never poke into the HUD.
+export function computeFramingClear(input: FramingInput, top: { y: number; z: number }, limitNdcY: number): Framing {
+  const farRow = input.farNdcY ?? FAR_NDC_Y;
+  const nearRow = input.nearNdcY ?? NEAR_NDC_Y;
+  const f = computeFraming(input);
+  if (!(projectNdcY(f, top.y, top.z) > limitNdcY)) return f;
+  // Bisect the far row: the highest one that keeps `top` under the limit.
+  let lo = nearRow + MIN_ROW_GAP;
+  let hi = farRow;
+  let best = computeFraming({ ...input, farNdcY: lo });
+  for (let i = 0; i < 18; i++) {
+    const mid = (lo + hi) / 2;
+    const m = computeFraming({ ...input, farNdcY: mid });
+    if (projectNdcY(m, top.y, top.z) <= limitNdcY) {
+      lo = mid;
+      best = m;
+    } else hi = mid;
+  }
+  return best;
 }
 
 // ---------- Crowd zoom-out ----------
