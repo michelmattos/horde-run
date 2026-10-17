@@ -230,7 +230,7 @@ export function createRenderer(engine: Engine, canvas: HTMLCanvasElement, opts: 
     // (the level-name row under it fades out early; its badges sit at the right edge).
     const ch = canvas.clientHeight;
     const limit = reserve && rows && ch > 0 ? 1 - (2 * ((reserve.topBar ?? reserve.top) + 16)) / ch : undefined;
-    rig.reframe(level.level, aspect, rows, level.farTop(), limit);
+    rig.reframe(level.level, aspect, rows?.far, level.farTop(), limit);
     level.setLabelTilt(rig.pitch);
     bars.setTilt(rig.pitch);
   };

@@ -141,18 +141,18 @@ function applyView(v: View): void {
   result.root.rotation.y = v === 'game' ? gameYaw : 0;
   frameBounds();
   if (v === 'game') {
-    // Same pitch, fov and height as the lane camera on a 390x844 phone, with the model
+    // Same angles, fov and position as the lane camera on a 390x844 phone, with the model
     // standing at lane z = gameZ.
     const aspect = engine.getRenderWidth() / Math.max(1, engine.getRenderHeight());
     const f = computeFraming({
       aspect,
       laneWidth: 10,
-      nearZ: LAYOUT.cannonZ,
+      nearZ: LAYOUT.playerBaseZ - LAYOUT.playerBaseDepth - 0.2,
       farZ: 55 + LAYOUT.enemyBaseDepth,
-      margin: 0.6,
+      margin: 0.4,
     });
-    game.position.set(0, f.y, f.z - gameZ);
-    game.rotation.set(f.pitch, 0, 0);
+    game.position.set(f.x, f.y, f.z - gameZ);
+    game.rotation.set(f.pitch, f.yaw, 0);
     game.fov = f.fov;
     look.fitShadows({ minX: -10, maxX: 10, minZ: -gameZ - 6, maxZ: 60 - gameZ, maxY: 6 });
     setActive(game);
